@@ -758,11 +758,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
     def ct_harvest_start(self):
-        if len(ct_cooking_dishes_dict) == 0:
-            QMessageBox().information(self, "提示",
-                                      f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
-            return
-        timers = self.timers("餐厅收菜")
         if self.ctHarvestButton.text() == "自动收菜":
             self.ctHarvestButton.setText("停止")
             send_lines([
@@ -772,10 +767,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             run_later(self.ct_harvest_run)
         else:
             self.ctHarvestButton.setText("自动收菜")
-            for timer in timers:
+            for timer in self.timers("餐厅收菜"):
                 timer.stop()
 
     def ct_harvest_run(self):
+        if len(ct_cooking_dishes_dict) == 0:
+            self.ctHarvestButton.setText("自动收菜")
+            QMessageBox().information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
+            return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
         interval = need_time + 3  # 发做菜包2秒后还要发完成包
         timers = self.timers("餐厅收菜")
