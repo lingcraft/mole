@@ -694,6 +694,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def mlcs_run(self):
         now = datetime.now()
         weekday = now.weekday()
+        is_fight_arena = mlcs_arena_times > 0  # 是否挑战竞技场
         if weekday < 5:
             double_start = now.replace(hour=19)
         else:
@@ -716,7 +717,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 +
                 [
                     "000000000000002B3D000000000000000000000000"  # 消除冷却
-                ] * (mlcs_arena_times > 0)
+                ] * is_fight_arena
                 +
                 [
                     f"0000000000000001FF0000000000000000{get_hex(user_id)}001A65E8001A65E902",  # 获取声望数量
@@ -741,7 +742,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 +
                 [
                     "000000000000002B3D000000000000000000000000"  # 消除冷却
-                ] * (mlcs_arena_times > 0)
+                ] * is_fight_arena
                 +
                 [
                     f"0000000000000001FF0000000000000000{get_hex(user_id)}001A65E8001A65E902",  # 获取声望数量
