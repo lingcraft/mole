@@ -778,7 +778,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox().information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
-        interval = need_time + 3  # 发做菜包2秒后还要发完成包
+        interval = need_time + 5  # 发做菜包2秒后还要发完成包
         timers = self.timers("餐厅收菜")
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             cook_time = dish_info.get("时间")
