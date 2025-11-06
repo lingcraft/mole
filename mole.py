@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer, QThread, Signal, Slot
+from PySide6.QtCore import QTimer, QThread, Signal
 from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
 from PySide6.QtGui import QFont
 from ui_main import Ui_MainWindow
@@ -143,7 +143,6 @@ class RunTimer(QTimer):
         self.is_first = True
         super().start(self.delay)
 
-    @Slot()
     def on_timeout(self):
         self.signal.emit()
         if self.is_first:
