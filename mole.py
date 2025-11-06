@@ -199,7 +199,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1500), ""),
+            "摩摩怪": (RunTimer(self.mmg_run, 1000, 1000), ""),
             "好友查询": (RunTimer(self.mmg_query_run, 500), ""),
             "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
@@ -605,7 +605,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "000000000000002015000000000000000000000000",  # 翻牌
             f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础属性
             "000000000000000194000000000000000000"  # 离开游戏
-        ]), 500)
+        ]))
         mmg_times += 1
 
     def mmg_stop(self):
