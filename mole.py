@@ -508,9 +508,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if not skill_success:  # 上次技能拿取失败
                 lamu_item_limit_dict[item_id] = item_id
                 item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
-                if item_id is None:
-                    self.lamu_stop()
-                    return
+            if item_id is None:
+                self.lamu_stop()
+                return
             send_lines([
                 f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}",  # 变身
                 f"0000000000000004B90000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}"  # 拿取物品
