@@ -639,7 +639,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:  # 已过无尽深渊开放时间
                     fight_times = remain_times
             else:  # 战力未达标
-                fight_times = 100
+                fight_times = 50
         else:
             fight_times = 0
         send_lines_backstage(

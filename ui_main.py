@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'ui_main.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.9.3
+## Created by: Qt User Interface Compiler version 6.10.0
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -118,6 +118,7 @@ class Ui_MainWindow(object):
         self.ysqsFightButton.setEnabled(False)
         self.ysqsFightButton.setGeometry(QRect(100, 20, 80, 31))
         self.ysqsLevelBox = QComboBox(self.groupBox3)
+        self.ysqsLevelBox.addItem("")
         self.ysqsLevelBox.addItem("")
         self.ysqsLevelBox.addItem("")
         self.ysqsLevelBox.setObjectName(u"ysqsLevelBox")
@@ -267,6 +268,7 @@ class Ui_MainWindow(object):
         self.ysqsFightButton.setText(QCoreApplication.translate("MainWindow", u"\u4e00\u952e\u6311\u6218", None))
         self.ysqsLevelBox.setItemText(0, QCoreApplication.translate("MainWindow", u"\u6fc0\u6218\u86cb\u86cb", None))
         self.ysqsLevelBox.setItemText(1, QCoreApplication.translate("MainWindow", u"\u6c89\u7761\u5965\u4e01", None))
+        self.ysqsLevelBox.setItemText(2, QCoreApplication.translate("MainWindow", u"\u838e\u58eb\u6469\u4e9a", None))
 
         self.groupBox1.setTitle(QCoreApplication.translate("MainWindow", u"\u6469\u6469\u602a", None))
         self.mmgPVPButton.setText(QCoreApplication.translate("MainWindow", u"\u4e00\u952e\u6311\u6218\u597d\u53cb", None))
