@@ -461,9 +461,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for key, value in lamu_pick_result_dict.items():
                 text += f"{key}：{value}，"
             text = text[:-1]
-            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功获得以下物品：\n{text}")
+            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
         else:
-            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天获得的物品已上限")
+            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
 
     def lamu_start(self):
         global lamu_times, lamu_max_skill_success, lamu_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
