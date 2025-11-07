@@ -18,7 +18,7 @@ from pathlib import Path
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-login_socket, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
+login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
 user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
 recv_buff = bytearray()  # 接收封包的数据缓冲区
 show_send, show_recv = True, True  # 显示send包、recv包
@@ -26,13 +26,14 @@ lock = Lock()  # 发送锁
 # 拉姆
 is_get_lamu_info = True  # 是否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
-skill_types = ["火", "水", "木"]  # 拉姆技能类型
-max_skill_level, last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
-last_item_level, max_item_level = 0, 0  # 拿取的物品等级
-last_type_index, max_type_index = 0, 0  # 拿取的物品类型索引
-last_item_index, max_item_index = 0, 0  # 拿取的物品索引
-max_skill_success, last_skill_success = True, True  # 最大技能拿取物品是否成功、次大技能拿取物品是否成功
-lamu_pick_result = {}  # 拉姆拿取物品结果
+lamu_skill_types = ["火", "水", "木"]  # 拉姆技能类型
+lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
+lamu_last_item_level, lamu_max_item_level = 0, 0  # 拿取的物品等级
+lamu_last_type_index, lamu_max_type_index = 0, 0  # 拿取的物品类型索引
+lamu_last_item_index, lamu_max_item_index = 0, 0  # 拿取的物品索引
+lamu_item_limit_dict = {}  # 已经拿到上限的物品
+lamu_max_skill_success, lamu_last_skill_success = True, True  # 最大技能拿取物品是否成功、次大技能拿取物品是否成功
+lamu_pick_result_dict = {}  # 拉姆拿取物品结果
 super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
 # 摩摩怪
 mmg_energy, mmg_vigour, mmg_game_id = 0, 0, ""  # 能量、活力、游戏ID
@@ -297,7 +298,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.enable_all_buttons(False)
 
-    def add_data(self, type, socket, cmd_id, analyse, data):
+    def add_data(self, data_type, socket_num, cmd_id, cmd_analyse, data):
         global packet_index
         if packet_index >= 10000:  # 已有数据10000条，清空
             self.clear_table()
@@ -307,20 +308,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.tableWidget.setColumnWidth(4, self.column_width)
         if packet_index >= self.tableWidget.rowCount():
             self.tableWidget.setRowCount(packet_index + 1)
-        self.tableWidget.setItem(packet_index, 0, QTableWidgetItem(type))
-        self.tableWidget.setItem(packet_index, 1, QTableWidgetItem(str(socket)))
+        self.tableWidget.setItem(packet_index, 0, QTableWidgetItem(data_type))
+        self.tableWidget.setItem(packet_index, 1, QTableWidgetItem(str(socket_num)))
         self.tableWidget.setItem(packet_index, 2, QTableWidgetItem(str(cmd_id)))
-        self.tableWidget.setItem(packet_index, 3, QTableWidgetItem(analyse))
+        self.tableWidget.setItem(packet_index, 3, QTableWidgetItem(cmd_analyse))
         self.tableWidget.setItem(packet_index, 4, QTableWidgetItem(data))
-        if socket == login_socket:
+        if socket_num == login_socket_num:
             tip = f"IP: {login_ip} Port: {login_port}"
         else:
-            ip, port = get_ip_port(socket)
+            ip, port = get_ip_port(socket_num)
             tip = f"IP: {ip} Port: {port}"
         self.tableWidget.item(packet_index, 0).setToolTip(tip)
         self.tableWidget.item(packet_index, 1).setToolTip(tip)
         self.tableWidget.item(packet_index, 2).setToolTip(str(cmd_id))
-        self.tableWidget.item(packet_index, 3).setToolTip(analyse)
+        self.tableWidget.item(packet_index, 3).setToolTip(cmd_analyse)
         self.tableWidget.item(packet_index, 4).setToolTip(data)
         if packet_index >= 10:  # 已有10条数据后拖动到底部
             self.tableWidget.scrollToBottom()
@@ -369,6 +370,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_mlcs_button(enable)
         if not enable:  # 刷新游戏后的操作
             mmg_friends.clear()
+            lamu_item_limit_dict.clear()
             self.enable_ct_button(False)
             if self.timer("拉姆").isActive():
                 self.timer("拉姆").stop()
@@ -402,38 +404,45 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_get_info(self):
         send_lines([
             f"0000000000000000D40000000000000000{get_hex(user_id)}{get_hex(lamu_id)}00",  # 获取拉姆信息
-            f"0000000000000000CC0000000000000000{get_hex(user_id)}",  # 获取超拉信息
+            f"0000000000000000CC0000000000000000{get_hex(user_id)}"  # 获取超拉信息
         ])
 
     def lamu_gift(self):
         send_lines([
             "00000000000000277500000000000000003B9ACA16",  # 超拉每日礼包
-            f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}",
+            f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}"
+        ])
+
+    def lamu_learn(self):
+        send_lines([
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000100000001",  # 学习火系技能
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000200000001",  # 学习水系技能
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000300000001"  # 学习木系技能
         ])
 
     def lamu_feed(self):
         send_lines([
             "0000000000000001F500000000000000000002BF2600000002",  # 买十字架
             f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26",  # 喂十字架
-            f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26",  # 喂十字架
+            f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26"  # 喂十字架
         ])
 
     def lamu_get_vars(self):
         if lamu_times == 0:
-            return last_skill_success, last_skill_level, last_item_level, last_type_index, last_item_index
+            return lamu_last_skill_success, lamu_last_skill_level, lamu_last_item_level, lamu_last_type_index, lamu_last_item_index
         else:
-            return max_skill_success, max_skill_level, max_item_level, max_type_index, max_item_index
+            return lamu_max_skill_success, lamu_max_skill_level, lamu_max_item_level, lamu_max_type_index, lamu_max_item_index
 
     def lamu_set_vars(self, *args):
-        global last_item_level, last_type_index, last_item_index, max_item_level, max_type_index, max_item_index
+        global lamu_last_item_level, lamu_last_type_index, lamu_last_item_index, lamu_max_item_level, lamu_max_type_index, lamu_max_item_index
         if lamu_times == 0:
-            last_item_level, last_type_index, last_item_index = args
+            lamu_last_item_level, lamu_last_type_index, lamu_last_item_index = args
         else:
-            max_item_level, max_type_index, max_item_index = args
+            lamu_max_item_level, lamu_max_type_index, lamu_max_item_index = args
 
     def lamu_get_skill_info(self, skill_level, item_level, type_index):
-        skill_type = skill_types[type_index]
-        return skill_types[type_index], get_skill_id(skill_level, skill_type), list(
+        skill_type = lamu_skill_types[type_index]
+        return skill_type, get_skill_id(skill_level, skill_type), list(
             lamu_dict.get(item_level).get(skill_type).items())
 
     def lamu_collect_result(self):
@@ -441,15 +450,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_name = items[item_index][0]
         if skill_success:
-            if item_name in lamu_pick_result:
-                lamu_pick_result[item_name] += 1
+            if item_name in lamu_pick_result_dict:
+                lamu_pick_result_dict[item_name] += 1
             else:
-                lamu_pick_result[item_name] = 1
+                lamu_pick_result_dict[item_name] = 1
 
     def lamu_show_result(self):
-        if len(lamu_pick_result) > 0:
+        if len(lamu_pick_result_dict) > 0:
             text = ""
-            for key, value in lamu_pick_result.items():
+            for key, value in lamu_pick_result_dict.items():
                 text += f"{key}：{value}，"
             text = text[:-1]
             QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功获得以下物品：\n{text}")
@@ -457,40 +466,51 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天获得的物品已上限")
 
     def lamu_start(self):
-        global lamu_times, max_skill_success, last_skill_success, max_skill_level, last_skill_level, \
-            max_item_level, last_item_level, max_type_index, last_type_index, max_item_index, last_item_index
+        global lamu_times, lamu_max_skill_success, lamu_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
+            lamu_max_item_level, lamu_last_item_level, lamu_max_type_index, lamu_last_type_index, lamu_max_item_index, lamu_last_item_index
         self.enable_lamu_button(False)
         self.lamu_gift()
+        self.lamu_learn()
         self.lamu_feed()
         lamu_times = 0
-        max_skill_level = get_max_skill_level(lamu_level)
-        last_skill_level = get_last_skill_level(lamu_level)
-        max_skill_success, last_skill_success = True, True
-        max_item_level, last_item_level = max_skill_level, last_skill_level
-        max_type_index, last_type_index = 0, 0
-        max_item_index, last_item_index = 0, 0
-        lamu_pick_result.clear()
+        lamu_max_skill_level = get_max_skill_level(lamu_level)
+        lamu_last_skill_level = get_last_skill_level(lamu_level)
+        lamu_max_skill_success, lamu_last_skill_success = True, True
+        lamu_max_item_level, lamu_last_item_level = lamu_max_skill_level, lamu_last_skill_level
+        lamu_max_type_index, lamu_last_type_index = 0, 0
+        lamu_max_item_index, lamu_last_item_index = 0, 0
+        lamu_pick_result_dict.clear()
+
+    def lamu_get_item(self, skill_level, item_level, type_index, item_index):
+        skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
+        item_id = items[item_index][1]
+        while item_id in lamu_item_limit_dict:
+            type_index += 1
+            if type_index >= len(lamu_skill_types):  # 技能类型都用过了
+                item_index += 1
+                type_index = 0
+                if item_index >= len(items):  # 当前等级物品都拿过了
+                    item_level -= 1
+                    if item_level >= 1:
+                        item_index = 0
+                        type_index = 0
+                    else:  # 全部等级物品都拿过了
+                        return None, None
+            self.lamu_set_vars(item_level, type_index, item_index)
+            skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
+            item_id = items[item_index][1]
+        return item_id, skill_id
 
     def lamu_run(self):
         skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
-        skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
-        if lamu_times < 11 or item_level == 5:  # 最高级物品全部拿到上限
+        item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
+        if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
             if not skill_success:  # 上次技能拿取失败
-                type_index += 1
-                if type_index >= len(skill_types):  # 技能类型都用过了
-                    item_index += 1
-                    type_index = 0
-                    if item_index >= len(items):  # 当前等级物品都拿过了
-                        item_level -= 1
-                        if item_level >= 0:
-                            item_index = 0
-                            type_index = 0
-                        else:  # 全部等级物品都拿过了，停止
-                            self.lamu_stop()
-                            return
-                self.lamu_set_vars(item_level, type_index, item_index)
-                skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
-            item_id = items[item_index][1]
+                lamu_item_limit_dict[item_id] = item_id
+                item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
+                if item_id is None:
+                    self.lamu_stop()
+                    return
             send_lines([
                 f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}",  # 变身
                 f"0000000000000004B90000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}"  # 拿取物品
@@ -504,25 +524,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lamu_show_result()
         self.timer("拉姆").stop()
 
-    def mmg_start(self, type):
+    def mmg_start(self, fight_type):
         global mmg_type, mmg_times
         self.enable_mmg_button(False)
-        mmg_type, mmg_times = type, 0
+        mmg_type, mmg_times = fight_type, 0
         send_lines([
-            "0000000000000020200000000000000000" * (type == 1),  # 查询Boss已挑战次数
+            "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
             f"0000000000000020080000000000000000{get_hex(user_id)}",  # 拉取基础信息
             "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
         ])
-        if type != 3:
-            run_later(lambda: self.mmg_enter_game(type))
+        if fight_type != 3:
+            run_later(lambda: self.mmg_enter_game(fight_type))
         else:
             if len(mmg_friends) == 0:
                 QMessageBox().information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
             self.timer("好友查询").start()
 
-    def mmg_enter_game(self, type):
-        if (type == 1 and mmg_boss_index3 == 0) or (type == 2 and mmg_energy < 10) or (type == 3 and mmg_vigour < 10):
-            if type == 3:
+    def mmg_enter_game(self, fight_type):
+        if (fight_type == 1 and mmg_boss_index3 == 0) or (fight_type == 2 and mmg_energy < 10) or (fight_type == 3 and mmg_vigour < 10):
+            if fight_type == 3:
                 self.mmg_wish()
             self.enable_mmg_button(True)
             return
@@ -833,12 +853,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cook_start = datetime(now.year, now.month, now.day, 6)
             self.timers("餐厅收菜")[pos - 1].restart((cook_start - now).total_seconds() * 1000)
 
-    def ct_cook_after(self, dish_type, dish_id):
+    def ct_cook_after(self, dish_id, dish_type, step, is_delay=True):
         # 自动完成做菜后续步骤
-        run_later(lambda: send_lines([
-            f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}",
-            f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"
-        ]), 2000)
+        lines = [f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"]
+        if step == 1 and is_delay:
+            run_later(lambda: send_lines(lines), 2000)
+        else:
+            send_lines(lines)
 
 
 class Packet:
@@ -904,12 +925,12 @@ class Packet:
         return self
 
 
-def show_data(packet: Packet, type: str, socket: int = None):
+def show_data(packet: Packet, data_type: str, socket_num: int = None):
     global window_defined
     if window_defined:
-        if socket is None:
-            socket = login_socket
-        window.add_data(type, socket, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
+        if socket_num is None:
+            socket_num = login_socket_num
+        window.add_data(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
     else:
         if "window" in globals():
             window_defined = True
@@ -946,12 +967,12 @@ def get_lamu_level(value: int):
 
 
 def get_max_skill_level(level: int):
-    return (level - 1) // 2
+    return (level + 1) // 2
 
 
 def get_last_skill_level(level: int):
     if level < 3:
-        return 0
+        return 1
     else:
         return get_max_skill_level(level) - 1
 
@@ -959,11 +980,11 @@ def get_last_skill_level(level: int):
 def get_skill_id(skill_level: int, skill_type):
     match skill_type:
         case "火":
-            return 3 * skill_level + 1
+            return 3 * skill_level - 2
         case "水":
-            return 3 * skill_level + 2
+            return 3 * skill_level - 1
         case "木":
-            return 3 * skill_level + 3
+            return 3 * skill_level
         case _:
             return 1
 
@@ -984,8 +1005,6 @@ def get_super_lamu_level(value: int):
             return 6
         case n if 7286 <= n < 9146:
             return 7
-        case n if 9146 <= n < 11005:
-            return 8
         case _:
             return 8
 
@@ -1020,14 +1039,14 @@ def is_valid_ip(ip):
         return False
 
 
-def get_ip_port(socket: int):
-    with fromfd(socket, AF_INET, SOCK_STREAM) as s:
+def get_ip_port(socket_num: int):
+    with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
         ip, port = s.getpeername()
     return ip, port
 
 
-def get_remote_info(socket: int):
-    ip, port = get_ip_port(socket)
+def get_remote_info(socket_num: int):
+    ip, port = get_ip_port(socket_num)
     if ip == "123.206.131.236":
         if port in [1965, 1865, 1201, 1239]:
             return 2
@@ -1066,7 +1085,7 @@ def send_lines(lines: list, interval: int = Interval.NONE):
         packet = Packet(data)
         with lock:
             packet.encrypt()
-        send(login_socket, packet.data(), packet.length)
+        send(login_socket_num, packet.data(), packet.length)
         packet.decrypt()
         if show_send:
             show_data(packet, "S ==>")
@@ -1074,48 +1093,48 @@ def send_lines(lines: list, interval: int = Interval.NONE):
             sleep(interval / 1000)
 
 
-def send(socket: int, buff: bytes, length: int):
-    return hook.Send(socket, ffi.from_buffer(buff), length)
+def send(socket_num: int, buff: bytes, length: int):
+    return hook.Send(socket_num, ffi.from_buffer(buff), length)
 
 
 @ffi.callback("int(ULONG64, PCHAR, INT)")
-def process_send_packet(socket, buff, length):
-    global login_socket, login_ip, login_port, user_id, is_get_lamu_info
-    sock_type = get_remote_info(socket)
+def process_send_packet(socket_num, buff, length):
+    global login_socket_num, login_ip, login_port, user_id, is_get_lamu_info
+    sock_type = get_remote_info(socket_num)
     cipher = ffi.buffer(buff, length)[:]
     # 摩尔主服务器包
     if sock_type and cipher.startswith(b'\x00\x00') and len(cipher) > 17:
         packet = Packet(cipher)
         if packet.cmd_id == 201:  # 登录包
-            login_socket = socket
-            login_ip, login_port = get_ip_port(socket)
+            login_socket_num = socket_num
+            login_ip, login_port = get_ip_port(socket_num)
             user_id = packet.user_id
             is_get_lamu_info = True
             window.enable_all_buttons(True)
-        if socket == login_socket:
+        if socket_num == login_socket_num:
             packet.decrypt()
             if show_send:
                 show_data(packet, "S ==>")  # 界面添加send数据
             with lock:
                 packet.encrypt()
-            return send(socket, packet.data(), length)
+            return send(socket_num, packet.data(), length)
     # 其他包
     if show_send:
         packet = Packet(cipher)
-        show_data(packet, "S ==>", socket)  # 界面添加send数据
-    return send(socket, cipher, length)
+        show_data(packet, "S ==>", socket_num)  # 界面添加send数据
+    return send(socket_num, cipher, length)
 
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
-def process_recv_packet(socket, buff, length):
-    global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, last_skill_success, max_skill_success, \
+def process_recv_packet(socket_num, buff, length):
+    global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, \
         mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, mmg_boss_index3, \
         mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
     cipher = ffi.buffer(buff, length)[:]
     recv_buff.extend(cipher)
     # 摩尔主服务器包
-    if socket == login_socket:
+    if socket_num == login_socket_num:
         while True:
             if len(recv_buff) >= 4:
                 packet_len = get_int(recv_buff)
@@ -1142,9 +1161,9 @@ def process_recv_packet(socket, buff, length):
                             super_lamu_level = get_super_lamu_level(super_lamu_value)
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
-                                last_skill_success = True
+                                lamu_last_skill_success = True
                             else:
-                                max_skill_success = True
+                                lamu_max_skill_success = True
                             window.lamu_collect_result()
                             lamu_times += 1
                         if packet.cmd_id == 8200:  # 获取摩摩怪能量和活力值
@@ -1248,17 +1267,19 @@ def process_recv_packet(socket, buff, length):
                                 dish_type = get_int(packet.body[72 + i * 24 + 4:])
                                 dish_id = get_int(packet.body[72 + i * 24 + 8:])
                                 dish_num = get_int(packet.body[72 + i * 24 + 12:])
-                                dish_cook_state = get_int(packet.body[72 + i * 24 + 16:])
-                                dish_cook_time = get_int(packet.body[72 + i * 24 + 20:])
+                                dish_step = get_int(packet.body[72 + i * 24 + 16:])
+                                dish_time = get_int(packet.body[72 + i * 24 + 20:])
                                 dish_info = get_dish_info(dish_type)
-                                if dish_cook_state == 6:  # 已熟菜信息
+                                if dish_step == 6:  # 已熟菜信息
                                     ct_cooked_dishes_dict[dish_info.get("名称")] = {
                                         "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
                                     }
-                                elif dish_cook_state == 3 and dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:  # 正在做的菜信息
+                                elif dish_step == 3 and dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:  # 正在做的菜信息
                                     ct_cooking_dishes_dict[dish_pos] = {
-                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_cook_time, "跳过收菜": False
+                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
                                     }
+                                elif dish_step < 3:
+                                    window.ct_cook_after(dish_id, dish_type, dish_step, False)
                             window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
                             window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
                         if packet.cmd_id == 1017:  # 餐厅做菜信息
@@ -1266,8 +1287,8 @@ def process_recv_packet(socket, buff, length):
                             dish_id = get_int(packet.body[4:])
                             dish_pos = get_int(packet.body[8:])
                             dish_step = get_int(packet.body[12:])
-                            if dish_step == 1:
-                                window.ct_cook_after(dish_type, dish_id)
+                            if dish_step < 3:
+                                window.ct_cook_after(dish_id, dish_type, dish_step)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
                                 ct_cooking_dishes_dict[dish_pos] = {
                                     "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
@@ -1275,9 +1296,9 @@ def process_recv_packet(socket, buff, length):
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
-                                last_skill_success = False
+                                lamu_last_skill_success = False
                             else:
-                                max_skill_success = False
+                                lamu_max_skill_success = False
                             window.lamu_collect_result()
                 else:
                     break
@@ -1287,7 +1308,7 @@ def process_recv_packet(socket, buff, length):
     else:
         if show_recv:
             packet = Packet(cipher)
-            show_data(packet, "R <==", socket)  # 界面添加recv数据
+            show_data(packet, "R <==", socket_num)  # 界面添加recv数据
         if length == len(recv_buff):
             # 刚好取完所有包
             recv_buff.clear()
