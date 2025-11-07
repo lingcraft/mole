@@ -143,6 +143,11 @@ class RunTimer(QTimer):
         self.is_first = True
         super().start(self.delay)
 
+    def restart(self, delay):
+        self.stop()
+        self.delay = delay
+        self.start()
+
     def on_timeout(self):
         self.signal.emit()
         if self.is_first:
@@ -696,9 +701,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         weekday = now.weekday()
         is_fight_arena = mlcs_arena_times > 0  # 是否挑战竞技场
         if weekday < 5:
-            double_start = now.replace(hour=19)
+            double_start = datetime(now.year, now.month, now.day, 19)
         else:
-            double_start = now.replace(hour=13)
+            double_start = datetime(now.year, now.month, now.day, 13)
         if now < double_start:
             recoverable_energy = int((double_start - now).total_seconds()) // 420  # 到双倍时间时可恢复体力
             double_start_energy = mlcs_energy + recoverable_energy  # 双倍时间开始时的体力
@@ -756,7 +761,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later(self.mlcs_sell_run)
 
     def mlcs_sell_run(self):
-        send_lines_backstage([f"000000000000002F02000000000000000000000001{get_hex(elf_id)}" for elf_id in mlcs_elves_dict.keys()])
+        send_lines_backstage([
+            f"000000000000002F02000000000000000000000001{get_hex(elf_id)}" for elf_id in mlcs_elves_dict.keys()
+        ])
 
     def ct_sell_run(self):
         send_lines([
@@ -801,10 +808,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ct_harvest_func(self, pos):
         cooked_info = ct_cooked_dishes_dict.get(self.ctDishBox.currentText())
         dish_info = ct_cooking_dishes_dict[pos]
-        send_lines([
-            f"0000000000000003FD0000000000000000{get_hex(cooked_info.get("种类"))}{get_hex(dish_info.get("ID"))}{get_hex(pos)}{get_hex(cooked_info.get("位置"))}",  # 收菜
-            f"0000000000000003F90000000000000000{get_hex(dish_info.get("种类"))}{get_hex(pos)}"  # 做菜
-        ])
+        now = datetime.now()
+        if not dish_info.get("跳过收菜"):
+            send_lines([
+                f"0000000000000003FD0000000000000000{get_hex(cooked_info.get("种类"))}{get_hex(dish_info.get("ID"))}{get_hex(pos)}{get_hex(cooked_info.get("位置"))}"  # 收菜
+            ])
+        else:
+            dish_info["跳过收菜"] = False
+        if now.hour >= 6:
+            send_lines([
+                f"0000000000000003F90000000000000000{get_hex(dish_info.get("种类"))}{get_hex(pos)}"  # 做菜
+            ])
+        else:
+            dish_info["跳过收菜"] = True
+            cook_start = datetime(now.year, now.month, now.day, 6)
+            self.timers("餐厅收菜")[pos - 1].restart((cook_start - now).total_seconds() * 1000)
 
     def ct_cook_after(self, dish_type, dish_id):
         # 自动完成做菜后续步骤
@@ -1230,7 +1248,7 @@ def process_recv_packet(socket, buff, length):
                                     }
                                 elif dish_cook_state == 3 and dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:  # 正在做的菜信息
                                     ct_cooking_dishes_dict[dish_pos] = {
-                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_cook_time
+                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_cook_time, "跳过收菜": False
                                     }
                             window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
                             window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
@@ -1243,7 +1261,7 @@ def process_recv_packet(socket, buff, length):
                                 window.ct_cook_after(dish_type, dish_id)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
                                 ct_cooking_dishes_dict[dish_pos] = {
-                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0
+                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
                                 }
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
