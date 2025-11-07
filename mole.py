@@ -199,7 +199,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1000, 1000), ""),
+            "摩摩怪": (RunTimer(self.mmg_run, 1250), ""),
             "好友查询": (RunTimer(self.mmg_query_run, 500), ""),
             "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
@@ -627,9 +627,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_run(self):
         hour = datetime.now().hour
-        can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
-        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy  # 是否挑战莎士摩亚
         is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
         remain_times = ysqs_energy // 5  # 当前体力可挑战次数
         if ysqs_energy > 0:  # 剩余体力大于0
@@ -657,12 +655,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 40 * is_fight_ssmy
+            ] * 40 * is_fight_wjsy
             +
             [
                 "000000000000002331000000000000000000000000",  # 每日任务领奖1
                 "000000000000002331000000000000000000000001"  # 每日任务领奖2
-            ] * is_fight_ssmy
+            ] * is_fight_wjsy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
@@ -671,7 +669,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 20 * is_fight_ssmy
+            ] * 20 * is_fight_wjsy
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}",
@@ -700,14 +698,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             double_start = now.replace(hour=13)
         if now < double_start:
-            recoverable_energy = (double_start - now).total_seconds() // 420  # 到双倍时间时可恢复体力
+            recoverable_energy = int((double_start - now).total_seconds()) // 420  # 到双倍时间时可恢复体力
             double_start_energy = mlcs_energy + recoverable_energy  # 双倍时间开始时的体力
             need_times = (double_start_energy - 60) // 10  # 保留经验之路体力后的可挑战次数
             remain_times = mlcs_energy // 10  # 当前体力可挑战次数
-            if double_start_energy < 60:
-                fight_times = 0
-            else:
-                fight_times = min(need_times, remain_times)
+            fight_times = min(need_times, remain_times)
             send_lines_backstage(
                 [
                     f"000000000000002EE70000000000000000{get_hex(get_level_id("希望之光5"))}",
