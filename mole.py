@@ -544,12 +544,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         mmg_friends_state_dict.get(2).clear()
         mmg_friends_state_dict.get(3).clear()
         mmg_friends_state_dict.get(4).clear()
-        lines = []
         mmg_query_page = 0
         max_size = mmg_query_size_max
         max_page = mmg_friends_num // max_size
         last_size = mmg_friends_num % max_size
         mmg_query_page_max = max_page + (last_size > 0)
+        lines = []
         for page in range(max_page):
             friends = mmg_friends[page * max_size:(page + 1) * max_size]
             ids = "".join([get_hex(friend[0]) for friend in friends])
@@ -761,9 +761,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later(self.mlcs_sell_run)
 
     def mlcs_sell_run(self):
-        send_lines_backstage([
-            f"000000000000002F02000000000000000000000001{get_hex(elf_id)}" for elf_id in mlcs_elves_dict.keys()
-        ])
+        elves = [get_hex(elf_id) for elf_id in mlcs_elves_dict.keys()]
+        elves_num = len(mlcs_elves_dict)
+        max_page = elves_num // 10
+        last_size = elves_num % 10
+        lines = []
+        for page in range(max_page):
+            elf_ids = "".join(elves[page * 10:(page + 1) * 10])
+            lines.append(f"000000000000002F020000000000000000{get_hex(10)}{elf_ids}")
+        if last_size > 0:
+            elf_ids = "".join(elves[-last_size:])
+            lines.append(f"000000000000002F020000000000000000{get_hex(last_size)}{elf_ids}")
+        send_lines_backstage(lines)
 
     def ct_sell_run(self):
         send_lines([
@@ -1216,7 +1225,7 @@ def process_recv_packet(socket, buff, length):
                                 elf_type = get_int(packet.body[4 + i * 28 + 4:])
                                 elf_level = get_int(packet.body[4 + i * 28 + 9:], 1)
                                 if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:  # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
-                                    mlcs_elves_dict[elf_id] = elf_type
+                                    mlcs_elves_dict[elf_id] = elf_id
                         if packet.cmd_id == 11009:  # 魔灵竞技场信息
                             info_type = get_int(packet.body)
                             if info_type == 5:  # 竞技场信息
