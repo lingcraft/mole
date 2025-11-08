@@ -852,7 +852,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ct_harvest_func(self, pos):
         cooked_info = ct_cooked_dishes_dict.get(self.ctDishBox.currentText())
-        dish_info = ct_cooking_dishes_dict[pos]
+        dish_info = ct_cooking_dishes_dict.get(pos)
         now = datetime.now()
         if not dish_info.get("跳过收菜"):
             send_lines([
@@ -1296,6 +1296,10 @@ def process_recv_packet(socket_num, buff, length):
                                     }
                                 elif dish_step < 3:
                                     window.ct_cook_after(dish_id, dish_type, dish_step, False)
+                                    if dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:
+                                        ct_cooking_dishes_dict[dish_pos] = {
+                                            "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": -1, "跳过收菜": False
+                                        }
                             window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
                             window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
                         if packet.cmd_id == 1017:  # 餐厅做菜信息
@@ -1306,9 +1310,7 @@ def process_recv_packet(socket_num, buff, length):
                             if dish_step < 3:
                                 window.ct_cook_after(dish_id, dish_type, dish_step)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
-                                ct_cooking_dishes_dict[dish_pos] = {
-                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
-                                }
+                                ct_cooking_dishes_dict.get(dish_pos)["ID"] = dish_id
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
