@@ -680,7 +680,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
                         fight_times = 0
                     else:  # 探索类副本
-                        fight_times = 100
+                        fight_times = remain_times * 2
                 else:
                     fight_times = remain_times
         else:
