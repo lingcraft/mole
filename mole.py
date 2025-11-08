@@ -31,7 +31,7 @@ lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级�
 lamu_last_item_level, lamu_max_item_level = 0, 0  # 拿取的物品等级
 lamu_last_type_index, lamu_max_type_index = 0, 0  # 拿取的物品类型索引
 lamu_last_item_index, lamu_max_item_index = 0, 0  # 拿取的物品索引
-lamu_item_limit_dict = {}  # 已经拿到上限的物品
+lamu_limit_item_dict, limit_data = {}, {}  # 已经拿到上限的物品
 lamu_max_skill_success, lamu_last_skill_success = True, True  # 最大技能拿取物品是否成功、次大技能拿取物品是否成功
 lamu_pick_result_dict = {}  # 拉姆拿取物品结果
 super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
@@ -370,7 +370,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_mlcs_button(enable)
         if not enable:  # 刷新游戏后的操作
             mmg_friends.clear()
-            lamu_item_limit_dict.clear()
             self.enable_ct_button(False)
             if self.timer("拉姆").isActive():
                 self.timer("拉姆").stop()
@@ -467,7 +466,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def lamu_start(self):
         global lamu_times, lamu_max_skill_success, lamu_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
-            lamu_max_item_level, lamu_last_item_level, lamu_max_type_index, lamu_last_type_index, lamu_max_item_index, lamu_last_item_index
+            lamu_max_item_level, lamu_last_item_level, lamu_max_type_index, lamu_last_type_index, lamu_max_item_index, \
+            lamu_last_item_index, limit_data
         self.enable_lamu_button(False)
         self.lamu_gift()
         self.lamu_learn()
@@ -480,11 +480,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         lamu_max_type_index, lamu_last_type_index = 0, 0
         lamu_max_item_index, lamu_last_item_index = 0, 0
         lamu_pick_result_dict.clear()
+        now = datetime.now()
+        refresh_time = datetime(now.year, now.month, now.day, 3)
+        limit_data = lamu_limit_item_dict.get(user_id)
+        if limit_data is None:
+            limit_data = {"数据": {}, "时间": now}
+            lamu_limit_item_dict[user_id] = limit_data
+        elif limit_data.get("时间") < refresh_time <= now:
+            limit_data.get("数据").clear()
+            limit_data["时间"] = now
 
     def lamu_get_item(self, skill_level, item_level, type_index, item_index):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
-        while item_id in lamu_item_limit_dict:
+        while item_id in limit_data.get("数据"):
             type_index += 1
             if type_index >= len(lamu_skill_types):  # 技能类型都用过了
                 item_index += 1
@@ -506,7 +515,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
             if not skill_success:  # 上次技能拿取失败
-                lamu_item_limit_dict[item_id] = item_id
+                limit_data.get("数据")[item_id] = item_id
+                limit_data["时间"] = datetime.now()
                 item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
             if item_id is None:
                 self.lamu_stop()
@@ -666,7 +676,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:  # 已过无尽深渊开放时间
                     fight_times = remain_times
             else:  # 战力未达标
-                fight_times = 100
+                if ysqs_attack == 0:  # 无卡牌挑战
+                    if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
+                        fight_times = 0
+                    else:  # 探索类副本
+                        fight_times = 100
+                else:
+                    fight_times = remain_times
         else:
             fight_times = 0
         send_lines_backstage(
