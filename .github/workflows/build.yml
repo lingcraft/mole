@@ -36,7 +36,7 @@ jobs:
       - name: 设置路径
         run: | 
           path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
-          echo "MINGW="${path}"" >> $GITHUB_ENV
+          echo "MINGW=${path}" >> $GITHUB_ENV
           echo ${{env.MINGW}}
 
 #      - name: 下载测试
