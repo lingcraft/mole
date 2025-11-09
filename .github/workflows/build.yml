@@ -19,8 +19,9 @@ jobs:
         run: |
           pip3 install -r requirements.txt
       - name: 开始打包
+        shell: pwsh
         run: |
-          cmd /c package.bat && Y
+          echo "Y" | .\package.bat
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
