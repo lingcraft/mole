@@ -39,7 +39,16 @@ jobs:
           $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
           echo "MINGW64=$path" >> $env:GITHUB_ENV
 
+      - name: 缓存环境
+        id: cache-mingw64
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.MINGW64 }}\mingw64
+          key: ${{ runner.os }}-mingw64-${{ hashFiles('**\version_info.txt') }}
+          restore-keys:  ${{ runner.os }}-mingw64-
+
       - name: 下载测试
+        if: steps.cache-mingw64.outputs.cache-hit != true
         uses: robinraju/release-downloader@v1
         with:
           repository: brechtsanders/winlibs_mingw
