@@ -33,19 +33,21 @@ jobs:
 #          mkdir -p $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
 #          curl -o mingw64.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-msvcrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
 #          Expand-Archive -Path mingw64.zip -DestinationPath $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2 -Force
-      - name: 测试
+      - name: 设置路径
         run: |
-          echo "$env:LOCALAPPDATA"
-      - name: 下载测试
-        uses: robinraju/release-downloader@v1
-        with:
-          repository: brechtsanders/winlibs_mingw
-          tag: 14.2.0posix-19.1.1-12.0.0-msvcrt-r2
-          fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
-          extract: true
-          out-file-path: "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+          echo "MINGW_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" >> $GITHUB_ENV
+          echo $MINGW_PATH
 
-      - name: 测试
-        shell: cmd
-        run: |
-          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+#      - name: 下载测试
+#        uses: robinraju/release-downloader@v1
+#        with:
+#          repository: brechtsanders/winlibs_mingw
+#          tag: 14.2.0posix-19.1.1-12.0.0-msvcrt-r2
+#          fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
+#          extract: true
+#          out-file-path: "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+
+#      - name: 测试
+#        shell: cmd
+#        run: |
+#          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
