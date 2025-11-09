@@ -43,12 +43,12 @@ jobs:
       - name: Create target directory structure
         shell: cmd
         run: |
-          mkdir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+          mkdir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64"
 
       - name: Copy MinGW64 to Nuitka cache
         shell: cmd
         run: |
-          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" /E /H /Y /Q
+          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64" /E /H /Y /Q
 
       - name: Verify copy operation
         shell: cmd
