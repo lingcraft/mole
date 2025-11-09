@@ -37,7 +37,7 @@ jobs:
         run: | 
           $path = Join-Path $env:LOCALAPPDATA "Nuitka\Nuitka\Cache"
           echo "MINGW=$path" >> $env:GITHUB_ENV
-          echo "${{env.MINGW}}"
+          echo "$path"
 
 #      - name: 下载测试
 #        uses: robinraju/release-downloader@v1
