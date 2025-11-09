@@ -35,7 +35,7 @@ jobs:
 #          Expand-Archive -Path mingw64.zip -DestinationPath $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2 -Force
       - name: 测试
         run: |
-          echo "LocalAppData 路径: $env:LOCALAPPDATA"
+          echo $env:LOCALAPPDATA
       - name: 下载测试
         uses: robinraju/release-downloader@v1
         with:
