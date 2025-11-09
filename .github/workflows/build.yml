@@ -7,8 +7,6 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    env:
-      chcp: 936
     steps:
       - name: 拉取代码
         uses: actions/checkout@v4
