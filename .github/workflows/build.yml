@@ -40,17 +40,26 @@ jobs:
 #          install-dir: C:/tools/mingw64
 #          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
 
-      - name: Create target directory structure
-        shell: cmd
-        run: |
-          mkdir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64"
+#      - name: Download GCC Toolchain
+#        shell: pwsh
+#        run: |
+#          mkdir -p $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
+#          curl -o mingw64.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-msvcrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
+#          Expand-Archive -Path mingw64.zip -DestinationPath $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2 -Force
 
-      - name: Copy MinGW64 to Nuitka cache
-        shell: cmd
-        run: |
-          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64" /E /H /Y /Q
+      - name: 下载测试
+        uses: actions/download-release-asset@v1
+        with:
+          # GitHub 仓库（格式：owner/repo）
+          repo: brechtsanders/winlibs_mingw
+          # Release 标签（如 v1.0.0 或 latest）
+          tag: 14.2.0posix-19.1.1-12.0.0-msvcrt-r2
+          # Release 中的资源文件名
+          asset-name: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
+          # 下载后的保存路径
+          file-path: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
 
-      - name: Verify copy operation
+      - name: 测试
         shell: cmd
         run: |
           dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
