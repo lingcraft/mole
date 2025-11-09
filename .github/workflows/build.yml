@@ -22,7 +22,7 @@ jobs:
         run: |
           cmd /c package.bat && Y
       - name: 上传文件
-        uses: actions/upload-artifact@v
+        uses: actions/upload-artifact@4
         with:
           name: windows
           path: |
