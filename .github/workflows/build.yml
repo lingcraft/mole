@@ -58,6 +58,6 @@ jobs:
           out-file-path: ${{ env.MINGW64 }}
 
       - name: 测试
-        shell: cmd
+        shell: pwsh
         run: |
-          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64"
+          dir "${{ env.MINGW64 }}\mingw64"
