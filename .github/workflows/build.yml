@@ -48,9 +48,9 @@ jobs:
       - name: Copy MinGW64 to Nuitka cache
         shell: cmd
         run: |
-          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" /E /H /Y
+          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" /E /H /Y /Q
 
       - name: Verify copy operation
         shell: cmd
         run: |
-          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\bin\gcc.exe" >nul 2>&1 && echo "Copy successful" || echo "Copy failed"
+          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
