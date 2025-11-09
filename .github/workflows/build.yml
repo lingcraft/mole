@@ -7,6 +7,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      test: "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
     steps:
 #      - name: 拉取代码
 #        uses: actions/checkout@v4
@@ -42,6 +44,7 @@ jobs:
         shell: pwsh
         run: |
           echo ${{ env.MINGW }}
+          echo ${{ env.test }}
 
 #      - name: 下载测试
 #        uses: robinraju/release-downloader@v1
