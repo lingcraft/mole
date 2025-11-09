@@ -8,47 +8,28 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-#      - name: 拉取代码
-#        uses: actions/checkout@v4
-#      - name: 安装环境
-#        uses: actions/setup-python@master
-#        with:
-#          python-version: 3.12
-#      - name: 安装依赖
-#        run: |
-#          pip3 install -r requirements.txt
-#      - name: 开始打包
-#        shell: pwsh
-#        run: |
-#          (chcp 936) -and (echo "Yes" | .\package.bat)
-#      - name: 上传文件
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: windows
-#          path: |
-#            D:\Downloads\*.exe
-#      - name: 安装编译环境
-#        shell: pwsh
-#        run: |
-#          mkdir -p $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
-#          curl -o mingw64.zip https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-msvcrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
-#          Expand-Archive -Path mingw64.zip -DestinationPath $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2 -Force
-
-      - name: 设置路径
-        run: | 
+      - name: 设置变量
+        run: |
           $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
           echo "MINGW64=$path" >> $env:GITHUB_ENV
-
-      - name: 缓存环境
+      - name: 拉取代码
+        uses: actions/checkout@v4
+      - name: 安装环境
+        uses: actions/setup-python@master
+        with:
+          python-version: 3.12
+      - name: 安装依赖
+        run: |
+          pip3 install -r requirements.txt
+      - name: 缓存编译环境
         id: cache-mingw64
         uses: actions/cache@v4
         with:
           path: ${{ env.MINGW64 }}\mingw64
-          key: ${{ runner.os }}-mingw64-${{ hashFiles('**/version_info.txt') }}
-          restore-keys:  ${{ runner.os }}-mingw64-
-
-      - name: 下载测试
-        if: steps.cache-mingw64.outputs.cache-hit != true
+          key: ${{ runner.os }}-mingw64-14.2.0
+          restore-keys: ${{ runner.os }}-mingw64-
+      - name: 安装编译环境
+        if: steps.cache-mingw64.outputs.cache-hit != 'true'
         uses: robinraju/release-downloader@v1
         with:
           repository: brechtsanders/winlibs_mingw
@@ -56,8 +37,13 @@ jobs:
           fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
           extract: true
           out-file-path: ${{ env.MINGW64 }}
-
-      - name: 测试
+      - name: 开始打包
         shell: pwsh
         run: |
-          dir "${{ env.MINGW64 }}\mingw64"
+          (chcp 936) -and (echo "Yes" | .\package.bat)
+      - name: 上传文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            D:\Downloads\*.exe
