@@ -28,4 +28,4 @@ jobs:
         with:
           name: 摩尔抓包
           path: |
-            D:\Downloads\*.exe
+            D:\Downloads\摩尔抓包.exe
