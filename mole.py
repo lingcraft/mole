@@ -83,79 +83,6 @@ class Interval(IntEnum):
     NORMAL = 25  # 正常模式，后台发送，适用于元素骑士、魔灵传说等需要一定间隔发送的游戏
 
 
-class SendDialog(QWidget, Ui_Dialog):
-    def __init__(self):
-        super().__init__()
-        self.setupUi(self)
-        self.sendButton.clicked.connect(self.send)
-        self.clearButton.clicked.connect(self.clear)
-
-    def send(self):
-        if is_valid_ip(self.ipLineEdit.text()):
-            ip = self.ipLineEdit.text()
-        else:
-            QMessageBox().warning(self, "错误", "IP 格式错误！")
-            return
-        if self.portLineEdit.text().isdigit():
-            port = int(self.portLineEdit.text())
-        else:
-            QMessageBox().warning(self, "错误", "Port 格式错误，应为数字！")
-            return
-        lines = self.textEdit.toPlainText().split('\n')
-        if ip == login_ip and port == login_port:
-            send_lines(lines)
-        else:
-            send_lines_address((ip, port), lines)
-
-    def clear(self):
-        self.textEdit.clear()
-
-
-class SendThread(QThread):
-    def __init__(self):
-        super().__init__()
-
-    def set_data(self, lines: list, interval: int):
-        self.lines = lines
-        self.interval = interval
-
-    def run(self):
-        send_lines(self.lines, self.interval)
-
-
-class RunTimer(QTimer):
-    signal = Signal()
-
-    def __init__(self, func=None, interval: int = 1000, delay: int = 300):
-        super().__init__()
-        super().timeout.connect(self.on_timeout)
-        self.func = None
-        self.set_data(func, interval, delay)
-
-    def set_data(self, func, interval: int, delay: int):
-        if self.func is None and func is not None:
-            self.func = func
-            self.signal.connect(func)
-        self.interval = interval
-        self.delay = min(delay, interval)
-        return self
-
-    def start(self):
-        self.is_first = True
-        super().start(self.delay)
-
-    def restart(self, delay):
-        self.stop()
-        self.delay = delay
-        self.start()
-
-    def on_timeout(self):
-        self.signal.emit()
-        if self.is_first:
-            self.is_first = False
-            super().setInterval(self.interval)
-
-
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super().__init__()
@@ -622,8 +549,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         self.mmg_stop()
             case 3:  # 挑战好友
                 match mmg_times:
-                    case n if n < mmg_vigour // 10 and n < len(mmg_fight_friends):
-                        level_id, fight_type = mmg_fight_friends[n]
+                    case n if n < mmg_vigour // 10 and len(mmg_fight_friends) > 0:
+                        level_id, fight_type = mmg_fight_friends.pop(0)
                         self.mmg_fight(level_id, fight_type)
                     case _:
                         self.mmg_wish()
@@ -643,7 +570,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础属性
             "000000000000000194000000000000000000"  # 离开游戏
         ]))
-        mmg_times += 1
 
     def mmg_stop(self):
         self.enable_mmg_button(True)
@@ -876,6 +802,79 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             run_later(lambda: send_lines(lines), 2000)
         else:
             send_lines(lines)
+
+
+class SendDialog(QWidget, Ui_Dialog):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+        self.sendButton.clicked.connect(self.send)
+        self.clearButton.clicked.connect(self.clear)
+
+    def send(self):
+        if is_valid_ip(self.ipLineEdit.text()):
+            ip = self.ipLineEdit.text()
+        else:
+            QMessageBox().warning(self, "错误", "IP 格式错误！")
+            return
+        if self.portLineEdit.text().isdigit():
+            port = int(self.portLineEdit.text())
+        else:
+            QMessageBox().warning(self, "错误", "Port 格式错误，应为数字！")
+            return
+        lines = self.textEdit.toPlainText().split('\n')
+        if ip == login_ip and port == login_port:
+            send_lines(lines)
+        else:
+            send_lines_address((ip, port), lines)
+
+    def clear(self):
+        self.textEdit.clear()
+
+
+class SendThread(QThread):
+    def __init__(self):
+        super().__init__()
+
+    def set_data(self, lines: list, interval: int):
+        self.lines = lines
+        self.interval = interval
+
+    def run(self):
+        send_lines(self.lines, self.interval)
+
+
+class RunTimer(QTimer):
+    signal = Signal()
+
+    def __init__(self, func=None, interval: int = 1000, delay: int = 300):
+        super().__init__()
+        super().timeout.connect(self.on_timeout)
+        self.func = None
+        self.set_data(func, interval, delay)
+
+    def set_data(self, func, interval: int, delay: int):
+        if self.func is None and func is not None:
+            self.func = func
+            self.signal.connect(func)
+        self.interval = interval
+        self.delay = min(delay, interval)
+        return self
+
+    def start(self):
+        self.is_first = True
+        super().start(self.delay)
+
+    def restart(self, delay):
+        self.stop()
+        self.delay = delay
+        self.start()
+
+    def on_timeout(self):
+        self.signal.emit()
+        if self.is_first:
+            self.is_first = False
+            super().setInterval(self.interval)
 
 
 class Packet:
@@ -1144,8 +1143,8 @@ def process_send_packet(socket_num, buff, length):
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buff, length):
     global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
-        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, \
-        mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, mmg_boss_index3, \
+        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_times, mmg_friends, mmg_friends_num, mmg_friends_dict, \
+        mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, mmg_boss_index3, \
         mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
     cipher = ffi.buffer(buff, length)[:]
     recv_buff.extend(cipher)
@@ -1199,6 +1198,8 @@ def process_recv_packet(socket_num, buff, length):
                                 mmg_boss_index3 = mmg_boss_index2 + mmg_limit_boss_times
                         if packet.cmd_id == 10007:  # 获取摩摩怪游戏ID
                             mmg_game_id = packet.body[18:130].hex()
+                        if packet.cmd_id == 8212:  # 翻牌成功
+                            mmg_times += 1
                         if packet.cmd_id == 8226:  # 获取师徒ID
                             mmg_students.clear()
                             students_num = get_int(packet.body[40:])
@@ -1319,7 +1320,6 @@ def process_recv_packet(socket_num, buff, length):
                                 lamu_last_skill_success = False
                             else:
                                 lamu_max_skill_success = False
-                            window.lamu_collect_result()
                 else:
                     break
             else:
