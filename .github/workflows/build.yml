@@ -38,7 +38,7 @@ jobs:
         shell: pwsh
         run: | 
           $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
-          echo "MINGW=$path" >> $env:GITHUB_ENV
+          echo "MINGW=$path" >> $GITHUB_ENV
       - name: 验证
         shell: pwsh
         run: |
