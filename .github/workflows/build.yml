@@ -38,11 +38,12 @@ jobs:
         shell: pwsh
         run: | 
           $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
-          echo "MINGW=$path" >> $GITHUB_ENV
+          echo "MINGW=$path" >> $env:GITHUB_ENV
       - name: 验证
         shell: pwsh
         run: |
           echo ${{ env.MINGW }}
+          echo ${{ env.LOCALAPPDATA }}
 
 #      - name: 下载测试
 #        uses: robinraju/release-downloader@v1
