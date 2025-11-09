@@ -8,22 +8,33 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: 拉取代码
-        uses: actions/checkout@v4
-      - name: 安装环境
-        uses: actions/setup-python@master
+#      - name: 拉取代码
+#        uses: actions/checkout@v4
+#      - name: 安装环境
+#        uses: actions/setup-python@master
+#        with:
+#          python-version: 3.12
+#      - name: 安装依赖
+#        run: |
+#          pip3 install -r requirements.txt
+      - name: 安装编译环境
+        uses: msys2/setup-msys2@v2
         with:
-          python-version: 3.12
-      - name: 安装依赖
+          msystem: mingw64
+          install: mingw-w64-x86_64-openssl
+          location: D:\
+#          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
+      - name: 查看目录
         run: |
-          pip3 install -r requirements.txt
-      - name: 开始打包
-        shell: pwsh
-        run: |
-          (chcp 936) -and (echo "Yes" | .\package.bat)
-      - name: 上传文件
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: |
-            D:\Downloads\*.exe
+          cd /d D:\
+          dir
+#      - name: 开始打包
+#        shell: pwsh
+#        run: |
+#          (chcp 936) -and (echo "Yes" | .\package.bat)
+#      - name: 上传文件
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: windows
+#          path: |
+#            D:\Downloads\*.exe
