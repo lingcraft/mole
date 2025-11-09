@@ -35,8 +35,8 @@ jobs:
 #          Expand-Archive -Path mingw64.zip -DestinationPath $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2 -Force
       - name: 设置路径
         run: |
-          echo "MINGW_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" >> $GITHUB_ENV
-          echo "$env:LOCALAPPDATA"
+          echo "MINGW=$env:LOCALAPPDATA" >> $GITHUB_ENV
+          echo "$MINGW"
 
 #      - name: 下载测试
 #        uses: robinraju/release-downloader@v1
