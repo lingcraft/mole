@@ -51,4 +51,4 @@ jobs:
       - name: 测试
         shell: cmd
         run: |
-          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\mingw64"
