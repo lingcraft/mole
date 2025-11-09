@@ -18,12 +18,20 @@ jobs:
 #        run: |
 #          pip3 install -r requirements.txt
       - name: 安装编译环境
-        uses: msys2/setup-msys2@v2
+        uses: egor-tensin/setup-mingw@v2
         with:
-          msystem: mingw64
-          install: mingw-w64-x86_64-openssl
-          location: D:\
+          version: 14.2.0
+          platform: x86_64
+          thread: posix
+          exception: seh
+          runtime: msvcrt
+          revision: 2
+          install-dir: C:/tools/mingw64
 #          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
+      - name: 验证版本
+        run: |
+          C:/tools/mingw64/bin/gcc --version
+          C:/tools/mingw64/bin/g++ --version
       - name: 查看目录
         shell: cmd
         run: |
