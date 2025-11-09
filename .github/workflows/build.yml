@@ -3,7 +3,7 @@ name: 打包
 on:
   push:
   workflow_dispatch:
-  
+
 jobs:
   build:
     runs-on: windows-latest
@@ -17,6 +17,17 @@ jobs:
 #      - name: 安装依赖
 #        run: |
 #          pip3 install -r requirements.txt
+#      - name: 开始打包
+#        shell: pwsh
+#        run: |
+#          (chcp 936) -and (echo "Yes" | .\package.bat)
+#      - name: 上传文件
+#        uses: actions/upload-artifact@v4
+#        with:
+#          name: windows
+#          path: |
+#            D:\Downloads\*.exe
+
 #      - name: 安装编译环境
 #        uses: egor-tensin/setup-mingw@v2
 #        with:
@@ -28,16 +39,18 @@ jobs:
 #          revision: 2
 #          install-dir: C:/tools/mingw64
 #          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
-      - name: 验证版本
+
+      - name: Create target directory structure
+        shell: cmd
         run: |
-          C:/mingw64/bin/gcc --version
-#      - name: 开始打包
-#        shell: pwsh
-#        run: |
-#          (chcp 936) -and (echo "Yes" | .\package.bat)
-#      - name: 上传文件
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: windows
-#          path: |
-#            D:\Downloads\*.exe
+          mkdir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+
+      - name: Copy MinGW64 to Nuitka cache
+        shell: cmd
+        run: |
+          xcopy "C:\mingw64" "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" /E /H /Y
+
+      - name: Verify copy operation
+        shell: cmd
+        run: |
+          dir "%localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2\bin\gcc.exe" >nul 2>&1 && echo "Copy successful" || echo "Copy failed"
