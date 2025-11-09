@@ -25,6 +25,7 @@ jobs:
           location: D:\
 #          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
       - name: 查看目录
+        shell: cmd
         run: |
           cd /d D:\
           dir
