@@ -8,10 +8,6 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - name: 设置变量
-        run: |
-          $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
-          echo "MINGW64=$path" >> $env:GITHUB_ENV
       - name: 拉取代码
         uses: actions/checkout@v4
       - name: 安装环境
@@ -21,6 +17,10 @@ jobs:
       - name: 安装依赖
         run: |
           pip3 install -r requirements.txt
+      - name: 设置编译环境路径
+        run: |
+          $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+          echo "MINGW64=$path" >> $env:GITHUB_ENV
       - name: 缓存编译环境
         id: cache-mingw64
         uses: actions/cache@v4
