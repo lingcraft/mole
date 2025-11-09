@@ -1,0 +1,30 @@
+name: 打包
+
+on:
+  push:
+  workflow_dispatch:
+  
+jobs:
+  # 打包Windows
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+      - name: 安装环境
+        uses: actions/setup-python@master
+        with:
+          python-version: 3.12
+      - name: 安装依赖
+        run: |
+          pip3 install -r requirements.txt
+      - name: 开始打包
+        run: |
+          python3 package.bat
+      # 上传Windows至Artifacts
+      - name: 上传文件
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            *.exe
