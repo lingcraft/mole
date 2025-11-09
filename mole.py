@@ -760,7 +760,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             QMessageBox().information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
-        interval = need_time + 5  # 发做菜包2秒后还要发完成包
+        interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
         timers = self.timers("餐厅收菜")
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             cook_time = dish_info.get("时间")
@@ -795,13 +795,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cook_start = datetime(now.year, now.month, now.day, 6)
             self.timers("餐厅收菜")[pos - 1].restart((cook_start - now).total_seconds() * 1000)
 
-    def ct_cook_after(self, dish_id, dish_type, step, is_delay=True):
+    def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
         # 自动完成做菜后续步骤
         lines = [f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"]
-        if step == 1 and is_delay:
-            run_later(lambda: send_lines(lines), 2000)
-        else:
-            send_lines(lines)
+        if is_refresh:  # 刷新餐厅信息时触发的
+            run_later(lambda: send_lines(lines))  # 等待默认时间，否则显示有问题
+        else:  # 做菜时触发的
+            if step == 1:
+                run_later(lambda: send_lines(lines), 2000)  # 首次做菜时，等待2秒动画，否则显示有问题
+            else:
+                send_lines(lines)  # 后续设置菜状态时，不用等待动画
 
 
 class SendDialog(QWidget, Ui_Dialog):
@@ -1296,7 +1299,7 @@ def process_recv_packet(socket_num, buff, length):
                                         "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
                                     }
                                 elif dish_step < 3:
-                                    window.ct_cook_after(dish_id, dish_type, dish_step, False)
+                                    window.ct_cook_after(dish_id, dish_type, dish_step, True)
                                     if dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:
                                         ct_cooking_dishes_dict[dish_pos] = {
                                             "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
