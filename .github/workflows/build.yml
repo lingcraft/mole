@@ -47,6 +47,7 @@ jobs:
           fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
           extract: true
           out-file-path: ${{ env.MINGW64 }}
+          cache: true
 
       - name: 测试
         shell: cmd
