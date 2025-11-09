@@ -5,7 +5,6 @@ on:
   workflow_dispatch:
   
 jobs:
-  # 打包Windows
   build:
     runs-on: windows-latest
     steps:
@@ -21,7 +20,7 @@ jobs:
       - name: 开始打包
         shell: pwsh
         run: |
-          echo "Yes" | .\package.bat
+          (chcp 936) -and (echo "Yes" | .\package.bat)
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
