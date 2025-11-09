@@ -38,7 +38,7 @@ jobs:
       - name: 设置路径
         run: |
           echo "MINGW_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2" >> $GITHUB_ENV
-          echo "${{ PATH }}\Nuitka"
+          echo "${{ env.PATH }}\Nuitka"
 
 #      - name: 下载测试
 #        uses: robinraju/release-downloader@v1
