@@ -1310,7 +1310,9 @@ def process_recv_packet(socket_num, buff, length):
                             if dish_step < 3:
                                 window.ct_cook_after(dish_id, dish_type, dish_step)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
-                                ct_cooking_dishes_dict.get(dish_pos)["ID"] = dish_id
+                                ct_cooking_dishes_dict[dish_pos] = {
+                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": -1, "跳过收菜": False
+                                }
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
