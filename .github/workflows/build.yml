@@ -27,20 +27,7 @@ jobs:
 #          name: windows
 #          path: |
 #            D:\Downloads\*.exe
-
 #      - name: 安装编译环境
-#        uses: egor-tensin/setup-mingw@v2
-#        with:
-#          version: 14.2.0
-#          platform: x86_64
-#          thread: posix
-#          exception: seh
-#          runtime: msvcrt
-#          revision: 2
-#          install-dir: C:/tools/mingw64
-#          location: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64
-
-#      - name: Download GCC Toolchain
 #        shell: pwsh
 #        run: |
 #          mkdir -p $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
@@ -54,7 +41,7 @@ jobs:
           tag: 14.2.0posix-19.1.1-12.0.0-msvcrt-r2
           fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
           extract: true
-          out-file-path: %localappdata%\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
+          out-file-path: $env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2
 
       - name: 测试
         shell: cmd
