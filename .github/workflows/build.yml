@@ -23,13 +23,7 @@ jobs:
           $mingw64 = "$nuitka\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
           echo "NUITKA_PATH=$nuitka" >> $env:GITHUB_ENV
           echo "MINGW64_PATH=$mingw64" >> $env:GITHUB_ENV
-          $path = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-          $path = "$mingw64\mingw64\bin;" + $path
-          [System.Environment]::SetEnvironmentVariable("Path", $path, "Machine")
-      - name: 测试变量
-        shell: pwsh
-        run: |
-          [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+          [System.Environment]::SetEnvironmentVariable("Path", "$mingw64\mingw64\bin;" + $env:PATH, "Machine")
       - name: 恢复编译环境
         id: restore-mingw64
         uses: actions/cache@v4
@@ -59,6 +53,9 @@ jobs:
             ${{ env.NUITKA_PATH }}\module-cache
           key: ${{ runner.os }}-nuitka-cache
           restore-keys: ${{ runner.os }}-nuitka-
+      - name: 测试变量
+        run: |
+          gcc --version
       - name: 开始打包
         shell: pwsh
         run: |
