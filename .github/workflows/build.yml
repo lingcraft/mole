@@ -35,7 +35,7 @@ jobs:
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始编译
         run: |
-          (chcp 936) -and (echo "Yes" | .\package.bat)
+          (chcp 936) -and (echo "Yes" | .\build.bat)
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
