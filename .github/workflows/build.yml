@@ -14,6 +14,9 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.12
+      - name: 安装依赖
+        run: |
+          pip3 install -r requirements.txt
       - name: 设置路径变量
         run: |
           $nuitka = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
@@ -24,12 +27,7 @@ jobs:
       - name: 测试变量
         shell: pwsh
         run: |
-          "${{ env.MINGW64_PATH }}\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-          echo "$env:GITHUB_PATH"
-      - name: 安装依赖
-        if: steps.restore-pip-cache.outputs.cache-hit != 'true'
-        run: |
-          pip3 install -r requirements.txt
+          echo [System.Environment]::GetEnvironmentVariable("Path", "User")
       - name: 恢复编译环境
         id: restore-mingw64
         uses: actions/cache@v4
