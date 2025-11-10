@@ -17,6 +17,17 @@ jobs:
       - name: 安装依赖
         run: |
           pip3 install -r requirements.txt
+      - name: 设置缓存路径
+        run: |
+          $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
+          echo "NUITKA_CACHE=$path" >> $env:GITHUB_ENV
+      - name: 恢复编译缓存
+        id: restore-nuitka-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.NUITKA_CACHE }}
+          key: ${{ runner.os }}-nuitka-cache
+          restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始打包
         shell: pwsh
         run: |
@@ -27,3 +38,9 @@ jobs:
           name: mole
           path: |
             D:\Downloads\*.exe
+      - name: 保存编译缓存
+        if: steps.restore-nuitka-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.NUITKA_CACHE }}
+          key: ${{ steps.restore-nuitka-cache.outputs.cache-primary-key }}
