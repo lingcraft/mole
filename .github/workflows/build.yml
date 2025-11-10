@@ -17,19 +17,15 @@ jobs:
       - name: 安装依赖
         run: |
           pip install -r requirements.txt
-      - name: 设置路径变量
-        run: |
-          echo "CACHE_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-      - name: 恢复编译缓存
+      - name: 编译缓存
         uses: actions/cache@v4
         with:
-          path: ${{ env.CACHE_PATH }}
+          path: "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
           key: ${{ runner.os }}-nuitka-cache
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始打包
         run: |
-          chcp 936
-          (echo "Yes" | .\package.bat)
+          (chcp 936) -and (echo "Yes" | .\package.bat)
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
