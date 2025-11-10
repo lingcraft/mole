@@ -16,8 +16,7 @@ jobs:
           python-version: 3.12
       - name: 设置路径变量
         run: |
-          $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
-          echo "NUITKA_CACHE=$path" >> $GITHUB_ENV
+          echo "NUITKA_CACHE=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
 #          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:$GITHUB_ENV
 #          $nuitka = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
 #          $mingw64 = "$nuitka\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
