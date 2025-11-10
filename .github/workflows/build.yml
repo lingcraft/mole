@@ -27,7 +27,7 @@ jobs:
       - name: 测试变量
         shell: pwsh
         run: |
-          echo [System.Environment]::GetEnvironmentVariable("Path", "User")
+          [System.Environment]::GetEnvironmentVariable("Path", "User")
       - name: 恢复编译环境
         id: restore-mingw64
         uses: actions/cache@v4
