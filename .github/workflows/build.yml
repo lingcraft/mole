@@ -15,11 +15,9 @@ jobs:
         with:
           python-version: 3.13
       - name: 安装依赖
-        run: |
-          pip3 install -r requirements.txt
+        run: pip install -r requirements.txt
       - name: 设置路径变量
-        run: |
-          echo "CACHE_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
+        run: echo "CACHE_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
       - name: 恢复编译缓存
         id: restore-nuitka-cache
         uses: actions/cache@v4
@@ -29,11 +27,9 @@ jobs:
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始打包
         shell: pwsh
-        run: |
-          (chcp 936) -and (.\package.bat)
+        run: (chcp 936) -and (.\package.bat)
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
           name: mole
-          path: |
-            D:\Downloads\*.exe
+          path: D:\Downloads\*.exe
