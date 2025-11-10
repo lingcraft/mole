@@ -1,5 +1,5 @@
 nuitka mole.py ^
---standalone --windows-console-mode=disable --jobs=8 --lto=yes --remove-output --mingw64 ^
+--standalone --windows-console-mode=disable --jobs=8 --lto=yes --remove-output ^
 --enable-plugin=pyside6 ^
 --windows-icon-from-ico=icon.ico ^
 --include-data-files=hook.dll=hook.dll ^
