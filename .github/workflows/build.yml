@@ -18,7 +18,7 @@ jobs:
         run: |
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache"  >> $env:GITHUB_ENV
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-          echo "MINGW64_PATH=${{ env.NUITKA_PATH }}\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"  >> $env:GITHUB_ENV
+          echo "MINGW64_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"  >> $env:GITHUB_ENV
       - name: 恢复依赖
         id: restore-pip-cache
         uses: actions/cache@v4
