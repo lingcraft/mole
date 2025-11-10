@@ -26,8 +26,7 @@ jobs:
           [System.Environment]::SetEnvironmentVariable("Path", "$mingw64\mingw64\bin;$env:PATH", "Machine")
       - name: 测试变量
         run: |
-          echo "$env:PATH"
-          gcc --version
+          [System.Environment]::GetEnvironmentVariable("Path", "Machine")
 #      - name: 恢复编译环境
 #        id: restore-mingw64
 #        uses: actions/cache@v4
