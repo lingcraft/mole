@@ -590,27 +590,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_run(self):
         hour = datetime.now().hour
+        can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
+        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy  # 是否挑战莎士摩亚
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
         is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
         remain_times = ysqs_energy // 5  # 当前体力可挑战次数
-        if ysqs_energy > 0:  # 剩余体力大于0
-            if can_fight_wjsy:  # 战力达标
-                if hour < 13:  # 未到无尽深渊开放时间
-                    fight_times = 0
-                elif 13 <= hour < 21:  # 已到无尽深渊开放时间
-                    fight_times = 40
-                else:  # 已过无尽深渊开放时间
-                    fight_times = remain_times
-            else:  # 战力未达标
+        if can_fight_wjsy:  # 战力达标
+            if hour < 21:
+                fight_times = 40 * is_fight_wjsy
+            else:  # 已过无尽深渊开放时间
+                fight_times = remain_times
+        else:  # 战力未达标
+            if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
+                fight_times = remain_times * is_fight_ssmy
+            else:  # 探索类副本
                 if ysqs_attack == 0:  # 无卡牌挑战
-                    if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
-                        fight_times = 0
-                    else:  # 探索类副本
-                        fight_times = remain_times * 2
+                    fight_times = remain_times * 2
                 else:
                     fight_times = remain_times
-        else:
-            fight_times = 0
         send_lines_backstage(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能

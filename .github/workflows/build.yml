@@ -18,6 +18,7 @@ jobs:
         run: |
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
+          echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
       - name: 依赖缓存
         uses: actions/cache@v4
         with:
@@ -31,7 +32,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.NUITKA_PATH }}
-          key: ${{ runner.os }}-nuitka-${{ hashFiles('dict.py') }}
+          key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始编译
         run: |
