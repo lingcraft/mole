@@ -17,9 +17,6 @@ jobs:
       - name: 安装依赖
         run: |
           pip3 install -r requirements.txt
-      - name: 测试
-        shell: pwsh
-        run: cl -v
       - name: 开始打包
         shell: pwsh
         run: |
