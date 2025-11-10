@@ -14,19 +14,28 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.12
+      - name: 设置路径变量
+        run: |
+          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache"  >> $env:GITHUB_ENV
+          echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
+          echo "MINGW64_PATH=${{ env.NUITKA_PATH }}\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"  >> $env:GITHUB_ENV
+      - name: 恢复依赖
+        id: restore-pip-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PIP_PATH }}
+          key: ${{ runner.os }}-pip-cache-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
       - name: 安装依赖
+        if: steps.restore-pip-cache.outputs.cache-hit != 'true'
         run: |
           pip3 install -r requirements.txt
-      - name: 设置路径
-        run: |
-          $path = "$env:LOCALAPPDATA\Nuitka\Nuitka\Cache"
-          echo "NUITKA_PATH=$path" >> $env:GITHUB_ENV
-          echo "MINGW64_PATH=$path\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"  >> $env:GITHUB_ENV
       - name: 恢复编译环境
         id: restore-mingw64
         uses: actions/cache@v4
         with:
           path: |
+            ${{ env.NUITKA_PATH }}\downloads\depends
             ${{ env.MINGW64_PATH }}\mingw64
           key: ${{ runner.os }}-mingw64-14.2.0
           restore-keys: ${{ runner.os }}-mingw64-
