@@ -14,19 +14,26 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.13
+      - name: 设置变量
+        run: |
+          echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
+          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
+      - name: 依赖缓存
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PIP_PATH }}
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
       - name: 安装依赖
         run: |
           pip install -r requirements.txt
-      - name: 设置路径
-        run: |
-          echo "CACHE_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
       - name: 编译缓存
         uses: actions/cache@v4
         with:
-          path: ${{ env.CACHE_PATH }}
-          key: ${{ runner.os }}-nuitka-cache
+          path: ${{ env.NUITKA_PATH }}
+          key: ${{ runner.os }}-nuitka-${{ hashFiles('dict.py') }}
           restore-keys: ${{ runner.os }}-nuitka-
-      - name: 开始打包
+      - name: 开始编译
         run: |
           (chcp 936) -and (echo "Yes" | .\package.bat)
       - name: 上传文件
