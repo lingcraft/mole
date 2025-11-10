@@ -55,6 +55,7 @@ jobs:
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 测试变量
         run: |
+          echo "$env:PATH"
           gcc --version
       - name: 开始打包
         shell: pwsh
