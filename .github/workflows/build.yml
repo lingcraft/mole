@@ -23,7 +23,7 @@ jobs:
           $mingw64 = "$nuitka\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
           echo "NUITKA_PATH=$nuitka" >> $env:GITHUB_ENV
           echo "MINGW64_PATH=$mingw64" >> $env:GITHUB_ENV
-#          echo "$mingw64\mingw64\bin" >> $env:GITHUB_PATH
+          echo "$mingw64\mingw64\bin" >> $env:GITHUB_PATH
       - name: 恢复编译环境
         id: restore-mingw64
         uses: actions/cache@v4
@@ -33,15 +33,6 @@ jobs:
             ${{ env.MINGW64_PATH }}\mingw64
           key: ${{ runner.os }}-mingw64-14.2.0
           restore-keys: ${{ runner.os }}-mingw64-
-#      - name: 安装编译环境
-#        if: steps.restore-mingw64.outputs.cache-hit != 'true'
-#        uses: robinraju/release-downloader@v1
-#        with:
-#          repository: brechtsanders/winlibs_mingw
-#          tag: 14.2.0posix-19.1.1-12.0.0-msvcrt-r2
-#          fileName: winlibs-x86_64-posix-seh-gcc-14.2.0-llvm-19.1.1-mingw-w64msvcrt-12.0.0-r2.zip
-#          extract: true
-#          out-file-path: ${{ env.MINGW64_PATH }}
       - name: 恢复编译缓存
         id: restore-nuitka-cache
         uses: actions/cache@v4
