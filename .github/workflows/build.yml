@@ -16,9 +16,14 @@ jobs:
           python-version: 3.12
       - name: 设置路径变量
         run: |
-          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache"  >> $env:GITHUB_ENV
-          echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-          echo "MINGW64_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"  >> $env:GITHUB_ENV
+          echo "PIP_PATH=$LOCALAPPDATA\pip\cache" >> $GITHUB_ENV
+          $nuitka = "$LOCALAPPDATA\Nuitka\Nuitka\Cache"
+          $mingw64 = "$nuitka\downloads\gcc\x86_64\14.2.0posix-19.1.1-12.0.0-msvcrt-r2"
+          echo "NUITKA_PATH=$nuitka" >> $GITHUB_ENV
+          echo "MINGW64_PATH=$mingw64" >> $GITHUB_ENV
+          echo "$mingw64\mingw64\bin" >> $GITHUB_PATH
+      - name: 测试变量
+        run: gcc --version
       - name: 恢复依赖
         id: restore-pip-cache
         uses: actions/cache@v4
