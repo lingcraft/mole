@@ -602,7 +602,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 fight_times = remain_times
         else:  # 战力未达标
             if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
-                fight_times = remain_times * is_fight_ssmy
+                fight_times = min(40, remain_times) * is_fight_ssmy
             else:  # 探索类副本
                 if ysqs_attack == 0:  # 无卡牌挑战
                     fight_times = remain_times * 2
