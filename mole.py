@@ -1314,6 +1314,17 @@ def process_recv_packet(socket_num, buff, length):
                                 ct_cooking_dishes_dict[dish_pos] = {
                                     "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
                                 }
+                        if packet.cmd_id == 1021:  # 餐厅收菜信息
+                            dish_type = get_int(packet.body)
+                            dish_id = get_int(packet.body[4:])
+                            dish_pos = get_int(packet.body[12:])
+                            dish_info = get_dish_info(dish_type)
+                            if dish_info.get("名称") not in ct_cooked_dishes_dict: # 新收的菜
+                                ct_cooked_dishes_dict[dish_info.get("名称")] = {
+                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
+                                }
+                                window.ctDishBox.addItem(dish_info.get("名称"))
+                                window.enable_ct_button(True)
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
