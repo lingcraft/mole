@@ -17,11 +17,22 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.13
+      - name: 获取版本
+        id: version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: version.json
       - name: 设置变量
         run: |
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
           echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
+          echo "VERSION=${{ fromJson(steps.version.outputs.content).version }}" >> $env:GITHUB_ENV
+          {
+            echo "DESCRIPTION<<EOF"
+            echo "${{ fromJson(steps.version.outputs.content).description }}"
+            echo "EOF"
+          } >> $env:GITHUB_ENV
       - name: 依赖缓存
         uses: actions/cache@v4
         with:
@@ -37,14 +48,9 @@ jobs:
           path: ${{ env.NUITKA_PATH }}
           key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
           restore-keys: ${{ runner.os }}-nuitka-
-      - name: 获取版本
-        id: version
-        uses: juliangruber/read-file-action@v1
-        with:
-          path: version.json
       - name: 开始编译
         run: |
-          .\build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
+          .\build.ps1 -version ${{ env.VERSION }}
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
@@ -54,17 +60,17 @@ jobs:
         id: check
         uses: action-pack/tag-exists@v1
         with:
-          tag: v${{ fromJson(steps.version.outputs.content).version }}
+          tag: v${{ env.VERSION }}
       - name: 创建标签
         if: steps.check.outputs.exists == 'false'
-        uses: rickstaa/action-create-tag@v1
-        with:
-          tag: v${{ fromJson(steps.version.outputs.content).version }}
+        run: |
+          git tag v${{ env.VERSION }}
+          git push origin v${{ env.VERSION }}
       - name: 发布版本
         if: steps.check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ fromJson(steps.version.outputs.content).version }}
-          body: ${{ fromJson(steps.version.outputs.content).description }}
-          tag_name: v${{ fromJson(steps.version.outputs.content).version }}
+          name: ${{ env.VERSION }}
+          body: ${{ env.DESCRIPTION }}
+          tag_name: v${{ env.VERSION }}
           files: D:/Downloads/*.exe
