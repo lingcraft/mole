@@ -11,8 +11,8 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-#      - name: 拉取代码
-#        uses: actions/checkout@v5
+      - name: 拉取代码
+        uses: actions/checkout@v5
 #      - name: 安装环境
 #        uses: actions/setup-python@v6
 #        with:
