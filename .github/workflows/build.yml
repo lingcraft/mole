@@ -49,7 +49,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mole
-          path: D:/Downloads/摩尔抓包.exe
+          path: D:/Downloads/*.exe
       #      - name: 查询标签
       #        uses: mukunku/tag-exists-action@v1
       #        id: check-tag
@@ -65,4 +65,4 @@ jobs:
           body: ${{ fromJson(steps.version.outputs.content).description }}
           tag_name: v${{ fromJson(steps.version.outputs.content).version }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          files: D:/Downloads/摩尔抓包.exe
+          files: D:/Downloads/*.exe

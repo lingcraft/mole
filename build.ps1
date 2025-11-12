@@ -15,5 +15,5 @@ Write-Output "Yes" | nuitka mole.py `
 --file-version=$version `
 --product-version=$version `
 --onefile `
---output-filename=摩尔抓包.exe `
---output-dir="D:\Downloads"
+--output-filename=mole.exe `
+--output-dir=D:\Downloads
