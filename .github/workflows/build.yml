@@ -14,18 +14,11 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: 3.13
-      - name: 获取版本
-        id: version
-        uses: juliangruber/read-file-action@v1
-        with:
-          path: version.json
       - name: 设置变量
         run: |
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
           echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
-          echo "VERSION=${{ fromJson(steps.version.outputs.content).version }}" >> $env:GITHUB_ENV
-          echo "DESCRIPTION=${{ fromJson(steps.version.outputs.content).description }}" >> $env:GITHUB_ENV
       - name: 依赖缓存
         uses: actions/cache@v4
         with:
@@ -41,9 +34,14 @@ jobs:
           path: ${{ env.NUITKA_PATH }}
           key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
           restore-keys: ${{ runner.os }}-nuitka-
+      - name: 获取版本
+        id: version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: version.json
       - name: 开始编译
         run: |
-          .\build.ps1 -version ${{ env.VERSION }}
+          .\build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
@@ -60,7 +58,7 @@ jobs:
       - name: 发布版本
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.VERSION }}
-          body: ${{ env.DESCRIPTION }}
-#          token: ${{ secrets.GITHUB_TOKEN }}
-          files: D:\Downloads\*.exe
+          name: ${{ fromJson(steps.version.outputs.content).version }}
+          body: ${{ fromJson(steps.version.outputs.content).description }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: D:/Downloads/*.exe
