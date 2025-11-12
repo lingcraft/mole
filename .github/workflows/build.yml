@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,8 +19,8 @@ jobs:
           python-version: 3.13
       - name: 设置变量
         run: |
-          echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
+          echo "NUITKA_PATH=$env:LOCALAPPDATA/Nuitka/Nuitka/Cache" >> $env:GITHUB_ENV
+          echo "PIP_PATH=$env:LOCALAPPDATA/pip/cache" >> $env:GITHUB_ENV
           echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
       - name: 依赖缓存
         uses: actions/cache@v4
@@ -41,20 +44,20 @@ jobs:
           path: version.json
       - name: 开始编译
         run: |
-          .\build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
+          ./build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
           name: mole
-          path: D:\Downloads\*.exe
-#      - name: 查询标签
-#        uses: mukunku/tag-exists-action@v1
-#        id: check-tag
-#        with:
-#          tag: v${{ env.VERSION }}
-#      - name: 创建标签
-#        if: steps.check-tag.outputs.exists == 'false'
-#        run: |
+          path: D:/Downloads/*.exe
+      #      - name: 查询标签
+      #        uses: mukunku/tag-exists-action@v1
+      #        id: check-tag
+      #        with:
+      #          tag: v${{ env.VERSION }}
+      #      - name: 创建标签
+      #        if: steps.check-tag.outputs.exists == 'false'
+      #        run: |
       - name: 发布版本
         uses: softprops/action-gh-release@v2
         with:
