@@ -28,11 +28,9 @@ jobs:
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
           echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
           echo "VERSION=${{ fromJson(steps.version.outputs.content).version }}" >> $env:GITHUB_ENV
-          {
-            echo "DESCRIPTION<<EOF"
-            echo "${{ fromJson(steps.version.outputs.content).description }}"
-            echo "EOF"
-          } >> $env:GITHUB_ENV
+          echo "DESCRIPTION<<EOF" >> $env:GITHUB_ENV
+          echo "${{ fromJson(steps.version.outputs.content).description }}" >> $env:GITHUB_ENV
+          echo "EOF" >> $env:GITHUB_ENV
       - name: 依赖缓存
         uses: actions/cache@v4
         with:
