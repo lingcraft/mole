@@ -37,11 +37,11 @@ jobs:
 #          path: ${{ env.NUITKA_PATH }}
 #          key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
 #          restore-keys: ${{ runner.os }}-nuitka-
-#      - name: 获取版本
-#        id: version
-#        uses: juliangruber/read-file-action@v1
-#        with:
-#          path: version.json
+      - name: 获取版本
+        id: version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: version.json
 #      - name: 开始编译
 #        run: |
 #          .\build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
