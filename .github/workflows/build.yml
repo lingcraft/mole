@@ -59,22 +59,11 @@ jobs:
 #          token: ${{ secrets.GITHUB_TOKEN }}
 #          files: D:/Downloads/*.exe
 
-#      - name: 查询标签
-#        uses: mukunku/tag-exists-action@v1
-#        id: check-tag
-#        with:
-#          tag: v${{ env.VERSION }}
-#      - name: 创建标签
-#        if: steps.check-tag.outputs.exists == 'false'
-#        run: |
-      - name: Bump version and push tag
-        id: tag
-        uses: mathieudutour/github-tag-action@v6.2
+      - name: 查询标签
+        uses: action-pack/tag-exists@v1
+        id: check
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: v${{ fromJson(steps.version.outputs.content).version }}
       - name: 测试
         run: |
-          echo ${{ steps.tag.outputs.new_tag }}
-          echo ${{ steps.tag.outputs.old_tag }}
-          echo ${{ steps.tag.outputs.tag }}
-          echo ${{ steps.tag.outputs.part }}
+          echo ${{ steps.check.outputs.exists }}
