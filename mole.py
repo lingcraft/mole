@@ -608,6 +608,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     fight_times = remain_times * 2
                 else:
                     fight_times = remain_times
+        is_reward = is_fight_wjsy or fight_times >= 20  # 是否领取每日任务奖励
         send_lines_backstage(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能
@@ -624,11 +625,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ] * 40 * is_fight_wjsy
             +
             [
-                "000000000000002331000000000000000000000000",  # 每日任务领奖1
-                "000000000000002331000000000000000000000001"  # 每日任务领奖2
-            ] * is_fight_wjsy
-            +
-            [
                 "000000000000002319000000000000000000000000"  # 恢复体力
             ] * is_fight_wjsy
             +
@@ -641,6 +637,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 f"00000000000000231D0000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}"
             ] * fight_times
+            +
+            [
+                "000000000000002331000000000000000000000000",  # 每日任务奖励1
+                "000000000000002331000000000000000000000001"  # 每日任务奖励2
+            ] * is_reward
         )
 
     def mlcs_start(self):
@@ -1319,7 +1320,7 @@ def process_recv_packet(socket_num, buff, length):
                             dish_id = get_int(packet.body[4:])
                             dish_pos = get_int(packet.body[12:])
                             dish_info = get_dish_info(dish_type)
-                            if dish_info.get("名称") not in ct_cooked_dishes_dict: # 新收的菜
+                            if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
                                 ct_cooked_dishes_dict[dish_info.get("名称")] = {
                                     "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
                                 }

@@ -34,11 +34,24 @@ jobs:
           path: ${{ env.NUITKA_PATH }}
           key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
           restore-keys: ${{ runner.os }}-nuitka-
+      - name: 获取版本
+        id: version
+        uses: juliangruber/read-file-action@v1
+        with:
+          path: version.json
       - name: 开始编译
         run: |
-          (chcp 936) -and (echo "Yes" | .\build.bat)
+          .\build.ps1 -version ${{ fromJson(steps.version.outputs.content).version }}
       - name: 上传文件
         uses: actions/upload-artifact@v4
         with:
           name: mole
           path: D:\Downloads\*.exe
+      - name: 发布版本
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ fromJson(steps.version.outputs.content).version }}
+          body: ${{ fromJson(steps.version.outputs.content).description }}
+#          prerelease: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: D:\Downloads\*.exe
