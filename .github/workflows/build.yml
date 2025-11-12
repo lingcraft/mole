@@ -60,5 +60,6 @@ jobs:
         with:
           name: ${{ fromJson(steps.version.outputs.content).version }}
           body: ${{ fromJson(steps.version.outputs.content).description }}
+          tag_name: v${{ fromJson(steps.version.outputs.content).version }}
           token: ${{ secrets.GITHUB_TOKEN }}
           files: D:\Downloads\*.exe
