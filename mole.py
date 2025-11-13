@@ -102,8 +102,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.config = ConfigParser()
         if config.exists():  # 读取配置
             self.config.read(config)
-            self.server = self.config["Settings"].get("server")
-            self.node = self.config["Settings"].get("node")
+            self.server = self.config["Settings"].get("server", "官服")
+            self.node = self.config["Settings"].get("node", "主节点")
         else:
             self.server = "官服"
             self.node = "主节点"
