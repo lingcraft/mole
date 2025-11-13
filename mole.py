@@ -1,6 +1,8 @@
-from PySide6.QtCore import QTimer, QThread, Signal
+import os.path
+
+from PySide6.QtCore import QTimer, QThread, Signal, QUrl
 from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QIcon, QDesktopServices
 from ui_main import Ui_MainWindow
 from ui_send import Ui_Dialog
 from struct import pack, unpack
@@ -15,6 +17,8 @@ from enum import IntEnum
 from configparser import ConfigParser
 from os import getenv
 from pathlib import Path
+from json import loads
+from requests import get
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -51,7 +55,7 @@ ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数�
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
 # 游戏版本
-version_dict = {
+server_dict = {
     "官服": "http://mole.61.com",
     "平行服": f"http://$node.61player.com",
     "骑士版": f"http://$node.61player.com/moleverse/20090626",
@@ -65,6 +69,11 @@ node_dict = {
     "主节点": "mole",
     "子节点": "mole-sub"
 }
+# 版本文件地址
+version_urls = [
+    "https://gh.halonice.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json",
+    "https://hk.gh-proxy.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
+]
 # Hook文件
 ffi = FFI()
 ffi.cdef("""
@@ -75,6 +84,7 @@ void SetRecvCallBack(RecvCallBack);
 int WINAPI Send(ULONG64, PCHAR, INT);
 """)
 config = Path(getenv("appdata")) / "mole" / "config.ini"
+base_dir = Path(__file__).resolve().parent
 window_defined = False
 
 
@@ -92,11 +102,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.config = ConfigParser()
         if config.exists():  # 读取配置
             self.config.read(config)
-            self.version = self.config["Settings"].get("version")
+            self.server = self.config["Settings"].get("server")
             self.node = self.config["Settings"].get("node")
         else:
-            self.version = "官服"
+            self.server = "官服"
             self.node = "主节点"
+        with open(path("version.json"), "r", encoding="utf-8") as f:  # 获取版本
+            self.version = loads(f.read()).get("version")
         self.check_menu()
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
@@ -109,13 +121,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.init_table_size()
         self.tableWidget.setHorizontalHeaderLabels(["类型", "通信号", "命令号", "解析", "封包数据"])
         self.tableWidget.currentCellChanged.connect(self.change_row)
-        for action in self.versionMenu.actions():  # 切换版本
-            action.triggered.connect(self.change_version)
+        for action in self.serverMenu.actions():  # 切换版本
+            action.triggered.connect(self.change_server)
         for action in self.nodeMenu.actions():  # 切换节点
             action.triggered.connect(self.change_node)
         self.menubar.addAction("刷新游戏", self.refresh)
+        self.menubar.addAction("检查更新", self.check_update)
+        self.menubar.addAction(QIcon(path("github.ico")), "关于", self.open_github)
         self.send_dialog = SendDialog()
         self.send_thread = SendThread()
+        self.update_thread = UpdateThread(self.update_result)
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
         self.sendClearButton.clicked.connect(self.send_clear)
@@ -145,7 +160,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def closeEvent(self, event):
         self.config["Settings"] = {
-            "version": self.version,
+            "server": self.server,
             "node": self.node
         }
         if not config.parent.exists():
@@ -161,7 +176,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return self.timer_pool.get(name)
 
     def url(self):
-        return f"{version_dict.get(self.version)}/Client.swf".replace("$node", node_dict.get(self.node))
+        return f"{server_dict.get(self.server)}/Client.swf".replace("$node", node_dict.get(self.node))
 
     def init_table_size(self):
         self.row_len = 2  # 行数位数
@@ -196,10 +211,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if data is not None:
             self.textEdit.setPlainText(data.toolTip() if column < 2 else data.text())
 
-    def change_version(self, checked):
+    def change_server(self, checked):
         if checked:
-            self.version = self.sender().text()
-            if self.version == "官服":
+            self.server = self.sender().text()
+            if self.server == "官服":
                 self.node = "主节点"
             self.refresh()
         else:
@@ -213,11 +228,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.sender().setChecked(True)
 
     def check_menu(self):
-        for action in self.versionMenu.actions():
-            action.setChecked(action.text() == self.version)
+        for action in self.serverMenu.actions():
+            action.setChecked(action.text() == self.server)
         for action in self.nodeMenu.actions():
             action.setChecked(action.text() == self.node)
-        self.nodeAction2.setEnabled(self.version != "官服")
+        self.nodeAction2.setEnabled(self.server != "官服")
 
     def refresh(self):
         self.check_menu()
@@ -324,6 +339,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 button.setText(button_stop_text)
             timer.start()
+
+    def check_update(self):
+        if not self.update_thread.isRunning():
+            self.update_thread.start()
+
+    def update_result(self, res, msg):
+        if res < 3:
+            button = QMessageBox.information(self, "提示", msg)
+            if res == 2 and button == QMessageBox.StandardButton.Ok:
+                QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole/releases"))
+        else:
+            QMessageBox.warning(self, "错误", msg)
+
+    def open_github(self):
+        QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
 
     # =======================================上面是界面功能，下面是游戏功能============================================
 
@@ -474,7 +504,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             run_later(lambda: self.mmg_enter_game(fight_type))
         else:
             if len(mmg_friends) == 0:
-                QMessageBox().information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
+                QMessageBox.information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
             self.timer("好友查询").start()
 
     def mmg_enter_game(self, fight_type):
@@ -755,7 +785,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ct_harvest_run(self):
         if len(ct_cooking_dishes_dict) == 0:
             self.ctHarvestButton.setText("自动收菜")
-            QMessageBox().information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
+            QMessageBox.information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
         interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
@@ -816,12 +846,12 @@ class SendDialog(QWidget, Ui_Dialog):
         if is_valid_ip(self.ipLineEdit.text()):
             ip = self.ipLineEdit.text()
         else:
-            QMessageBox().warning(self, "错误", "IP 格式错误！")
+            QMessageBox.warning(self, "错误", "IP 格式错误！")
             return
         if self.portLineEdit.text().isdigit():
             port = int(self.portLineEdit.text())
         else:
-            QMessageBox().warning(self, "错误", "Port 格式错误，应为数字！")
+            QMessageBox.warning(self, "错误", "Port 格式错误，应为数字！")
             return
         lines = self.textEdit.toPlainText().split('\n')
         if ip == login_ip and port == login_port:
@@ -843,6 +873,32 @@ class SendThread(QThread):
 
     def run(self):
         send_lines(self.lines, self.interval)
+
+
+class UpdateThread(QThread):
+    result = Signal(int, str)
+
+    def __init__(self, func):
+        super().__init__()
+        self.result.connect(func)
+
+    def run(self):
+        success = False
+        new_version = ""
+        try:
+            for url in version_urls:
+                response = get(url)
+                if response.status_code == 200:
+                    success = True
+                    new_version = loads(response.text).get("version")
+                    break
+            if success:
+                if new_version <= window.version:
+                    self.result.emit(1, "当前版本已是最新！")
+                else:
+                    self.result.emit(2, f"发现新版本：v{new_version}，点击 OK 将跳转到发布地址")
+        except Exception:
+            self.result.emit(3, "检查失败，请检查网络连接！")
 
 
 class RunTimer(QTimer):
@@ -939,6 +995,10 @@ class Packet:
                 key_index = 0
         self.body = res
         return self
+
+
+def path(file: str):
+    return str(base_dir / file)
 
 
 def show_data(packet: Packet, data_type: str, socket_num: int = None):
@@ -1082,7 +1142,7 @@ def send_lines_address(address: tuple, lines: list, recv_size: list = None):
                 if need_recv:
                     s.recv(recv_size[index])
         except Exception:
-            QMessageBox().warning(window.send_dialog, "错误", "连接服务器错误，请检查 IP 和 Port 是否正确！")
+            QMessageBox.warning(window.send_dialog, "错误", "连接服务器错误，请检查 IP 和 Port 是否正确！")
 
 
 def send_lines_backstage(lines: list, interval: int = Interval.NORMAL):
@@ -1135,9 +1195,8 @@ def process_send_packet(socket_num, buff, length):
                 packet.encrypt()
             return send(socket_num, packet.data(), length)
     # 其他包
-    if show_send:
-        packet = Packet(cipher)
-        show_data(packet, "S ==>", socket_num)  # 界面添加send数据
+    if show_send and cipher.startswith((b'\x00\x00', b'\x3C\x70', b'\x3C\x3F')):
+        show_data(Packet(cipher), "S ==>", socket_num)  # 界面添加send数据
     return send(socket_num, cipher, length)
 
 
@@ -1338,16 +1397,15 @@ def process_recv_packet(socket_num, buff, length):
                 break
     # 其他包
     else:
-        if show_recv:
-            packet = Packet(cipher)
-            show_data(packet, "R <==", socket_num)  # 界面添加recv数据
+        if show_recv and cipher.startswith((b'\x00\x00', b'\x3C\x70', b'\x3C\x3F')):
+            show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
         if length == len(recv_buff):
             # 刚好取完所有包
             recv_buff.clear()
 
 
 if __name__ == '__main__':
-    hook = ffi.dlopen(r"hook.dll")
+    hook = ffi.dlopen("hook.dll")
     hook.SetSendCallBack(process_send_packet)
     hook.SetRecvCallBack(process_recv_packet)
     app = QApplication([])

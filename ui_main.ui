@@ -640,17 +640,17 @@
      <height>21</height>
     </rect>
    </property>
-   <widget class="QMenu" name="versionMenu">
+   <widget class="QMenu" name="serverMenu">
     <property name="title">
      <string>切换版本</string>
     </property>
-    <addaction name="versionAction1"/>
-    <addaction name="versionAction2"/>
-    <addaction name="versionAction3"/>
-    <addaction name="versionAction4"/>
-    <addaction name="versionAction5"/>
-    <addaction name="versionAction6"/>
-    <addaction name="versionAction7"/>
+    <addaction name="serverAction1"/>
+    <addaction name="serverAction2"/>
+    <addaction name="serverAction3"/>
+    <addaction name="serverAction4"/>
+    <addaction name="serverAction5"/>
+    <addaction name="serverAction6"/>
+    <addaction name="serverAction7"/>
    </widget>
    <widget class="QMenu" name="nodeMenu">
     <property name="title">
@@ -659,10 +659,10 @@
     <addaction name="nodeAction1"/>
     <addaction name="nodeAction2"/>
    </widget>
-   <addaction name="versionMenu"/>
+   <addaction name="serverMenu"/>
    <addaction name="nodeMenu"/>
   </widget>
-  <action name="versionAction1">
+  <action name="serverAction1">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -673,7 +673,7 @@
     <string>官服</string>
    </property>
   </action>
-  <action name="versionAction2">
+  <action name="serverAction2">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -681,7 +681,7 @@
     <string>平行服</string>
    </property>
   </action>
-  <action name="versionAction3">
+  <action name="serverAction3">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -689,7 +689,7 @@
     <string>骑士版</string>
    </property>
   </action>
-  <action name="versionAction4">
+  <action name="serverAction4">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -697,7 +697,7 @@
     <string>圣诞版</string>
    </property>
   </action>
-  <action name="versionAction5">
+  <action name="serverAction5">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -705,7 +705,7 @@
     <string>万圣版</string>
    </property>
   </action>
-  <action name="versionAction6">
+  <action name="serverAction6">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -713,7 +713,7 @@
     <string>火神版</string>
    </property>
   </action>
-  <action name="versionAction7">
+  <action name="serverAction7">
    <property name="checkable">
     <bool>true</bool>
    </property>
