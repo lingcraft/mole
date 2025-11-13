@@ -345,12 +345,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.update_thread.start()
 
     def update_result(self, res, msg):
-        if res < 3:
-            button = QMessageBox.information(self, "提示", msg)
-            if res == 2 and button == QMessageBox.StandardButton.Ok:
-                QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole/releases"))
-        else:
-            QMessageBox.warning(self, "错误", msg)
+        match res:
+            case 1:
+                QMessageBox.information(self, "提示", msg)
+            case 2:
+                if QMessageBox.information(self, "提示", msg, QMessageBox.Ok | QMessageBox.Cancel) == QMessageBox.Ok:
+                    QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole/releases"))
+            case 3:
+                QMessageBox.warning(self, "错误", msg)
 
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
