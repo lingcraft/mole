@@ -17,7 +17,7 @@ from enum import IntEnum
 from configparser import ConfigParser
 from os import getenv
 from pathlib import Path
-from json import loads
+from json import load
 from requests import get
 
 # 封包
@@ -107,8 +107,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.server = "官服"
             self.node = "主节点"
-        with open(path("version.json"), "r", encoding="utf-8") as f:  # 获取版本
-            self.version = loads(f.read()).get("version")
+        with open(path("version.json"), "r", encoding="utf-8") as file:  # 获取版本
+            self.version = load(file).get("version")
         self.check_menu()
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
@@ -892,7 +892,7 @@ class UpdateThread(QThread):
                 response = get(url)
                 if response.status_code == 200:
                     success = True
-                    new_version = loads(response.text).get("version")
+                    new_version = response.json().get("version")
                     break
             if success:
                 if new_version <= window.version:
