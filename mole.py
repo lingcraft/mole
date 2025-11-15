@@ -342,13 +342,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.update_thread.isRunning():
             self.update_thread.start()
 
-    def update_result(self, res, msg):
+    def update_result(self, res, msg, version):
         match res:
             case 1:
                 QMessageBox.information(self, "提示", msg)
             case 2:
-                if QMessageBox.information(self, "提示", msg, QMessageBox.Ok | QMessageBox.Cancel) == QMessageBox.Ok:
-                    QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole/releases"))
+                button = QMessageBox.information(self, "提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+                if button == QMessageBox.StandardButton.Ok:
+                    QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
             case 3:
                 QMessageBox.warning(self, "错误", msg)
 
@@ -876,7 +877,7 @@ class SendThread(QThread):
 
 
 class UpdateThread(QThread):
-    result = Signal(int, str)
+    result = Signal(int, str, str)
 
     def __init__(self, func):
         super().__init__()
@@ -884,21 +885,21 @@ class UpdateThread(QThread):
 
     def run(self):
         success = False
-        new_version = ""
+        version, description = "", ""
         try:
             for url in version_urls:
                 response = get(url)
                 if response.status_code == 200:
                     success = True
-                    new_version = response.json().get("version")
+                    version, description = response.json().values()
                     break
             if success:
-                if new_version <= window.version:
-                    self.result.emit(1, "当前版本已是最新！")
+                if version <= window.version:
+                    self.result.emit(1, "当前版本已是最新！", version)
                 else:
-                    self.result.emit(2, f"发现新版本：v{new_version}，点击 OK 将跳转到发布地址")
+                    self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
         except Exception:
-            self.result.emit(3, "检查失败，请检查网络连接！")
+            self.result.emit(3, "检查失败，请检查网络连接！", version)
 
 
 class RunTimer(QTimer):
