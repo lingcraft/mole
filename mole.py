@@ -68,8 +68,8 @@ node_dict = {
 }
 # 版本文件地址
 version_urls = [
-    "https://gh.halonice.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json",
-    "https://hk.gh-proxy.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
+    "https://hk.gh-proxy.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json",
+    "https://cdn.jsdelivr.net/gh/lingcraft/mole@master/version.json"
 ]
 # Hook文件
 ffi = FFI()
@@ -862,21 +862,21 @@ class UpdateThread(QThread):
         self.result.connect(func)
 
     def run(self):
-        success = False
         version, description = "", ""
-        try:
-            for url in version_urls:
-                response = get(url)
-                if response.status_code == 200:
-                    success = True
-                    version, description = response.json().values()
-                    break
-            if success:
-                if version <= window.version:
-                    self.result.emit(1, "当前版本已是最新！", version)
-                else:
-                    self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
-        except Exception:
+        for url in version_urls:
+            try:
+                response = get(url, timeout=(3, 5))
+                response.raise_for_status()
+                version, description = response.json().values()
+                break
+            except Exception:
+                continue
+        if len(version) > 0:
+            if version <= window.version:
+                self.result.emit(1, "当前版本已是最新！", version)
+            else:
+                self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
+        else:
             self.result.emit(3, "检查失败，请检查网络连接！", version)
 
 
