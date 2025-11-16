@@ -848,7 +848,10 @@ class SendThread(QThread):
         self.interval = interval
 
     def run(self):
-        send_lines(self.lines, self.interval)
+        if not window.socketCheckBox.isChecked():
+            send_lines(self.lines, self.interval)
+        else:
+            send_lines_to_socket(self.lines, self.interval)
 
 
 class UpdateThread(QThread):
@@ -1108,6 +1111,22 @@ def get_remote_info(socket_num: int):
         return 0
 
 
+def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
+    socket_num = window.socketLineEdit.text()
+    if socket_num.isdigit():
+        socket_num = int(socket_num)
+        try:
+            with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
+                for data in lines:
+                    if len(data) < 17:
+                        continue
+                    s.send(Packet.parse_data(data))
+                    if interval > 0:
+                        sleep(interval / 1000)
+        except Exception:
+            return
+
+
 def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
     need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
@@ -1127,34 +1146,21 @@ def send_lines_back(lines: list, interval: int = Interval.NORMAL):
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
-    if not window.socketCheckBox.isChecked():
-        for data in lines:
-            if len(data) < 17:
-                if 0 < len(data) < 5:
-                    if (delay := int(data)) > 0:
-                        sleep(delay / 1000)
-                continue
-            packet = Packet(data)
-            with lock:
-                packet.encrypt()
-            send(login_socket_num, packet.data(), packet.length)
-            packet.decrypt()
-            if show_send:
-                show_data(packet, "S ==>")
-            if interval > 0:
-                sleep(interval / 1000)
-    else:
-        socket_num = window.socketLineEdit.text()
-        if socket_num.isdigit():
-            socket_num = int(socket_num)
-            try:
-                with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
-                    for data in lines:
-                        if len(data) < 17:
-                            continue
-                        s.send(Packet.parse_data(data))
-            except Exception:
-                return
+    for data in lines:
+        if len(data) < 17:
+            if 0 < len(data) < 5:
+                if (delay := int(data)) > 0:
+                    sleep(delay / 1000)
+            continue
+        packet = Packet(data)
+        with lock:
+            packet.encrypt()
+        send(login_socket_num, packet.data(), packet.length)
+        packet.decrypt()
+        if show_send:
+            show_data(packet, "S ==>")
+        if interval > 0:
+            sleep(interval / 1000)
 
 
 def send(socket_num: int, buff: bytes, length: int):
