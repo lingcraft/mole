@@ -18,9 +18,9 @@ from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
     QPainter, QPalette, QPixmap, QRadialGradient,
     QTransform)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGroupBox,
-    QHeaderView, QMainWindow, QMenu, QMenuBar,
-    QPlainTextEdit, QPushButton, QSizePolicy, QTabWidget,
-    QTableWidget, QTableWidgetItem, QWidget)
+    QHeaderView, QLineEdit, QMainWindow, QMenu,
+    QMenuBar, QPlainTextEdit, QPushButton, QSizePolicy,
+    QTabWidget, QTableWidget, QTableWidgetItem, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -91,9 +91,13 @@ class Ui_MainWindow(object):
         self.clearButton = QPushButton(self.groupBox)
         self.clearButton.setObjectName(u"clearButton")
         self.clearButton.setGeometry(QRect(162, 262, 61, 26))
-        self.extraButton = QPushButton(self.groupBox)
-        self.extraButton.setObjectName(u"extraButton")
-        self.extraButton.setGeometry(QRect(224, 262, 61, 26))
+        self.socketLineEdit = QLineEdit(self.groupBox)
+        self.socketLineEdit.setObjectName(u"socketLineEdit")
+        self.socketLineEdit.setEnabled(False)
+        self.socketLineEdit.setGeometry(QRect(450, 265, 50, 20))
+        self.socketCheckBox = QCheckBox(self.groupBox)
+        self.socketCheckBox.setObjectName(u"socketCheckBox")
+        self.socketCheckBox.setGeometry(QRect(360, 265, 85, 20))
         self.axWidget = QAxWidget(self.centralWidget)
         self.axWidget.setControl(u"{d27cdb6e-ae6d-11cf-96b8-444553540000}")
         self.axWidget.setObjectName(u"axWidget")
@@ -263,7 +267,8 @@ class Ui_MainWindow(object):
         self.sendButton.setText(QCoreApplication.translate("MainWindow", u"\u53d1\u9001", None))
         self.sendCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u62e6\u622a Send", None))
         self.clearButton.setText(QCoreApplication.translate("MainWindow", u"\u6e05\u7a7a\u5c01\u5305", None))
-        self.extraButton.setText(QCoreApplication.translate("MainWindow", u"\u62d3\u5c55\u53d1\u9001", None))
+        self.socketLineEdit.setText("")
+        self.socketCheckBox.setText(QCoreApplication.translate("MainWindow", u"\u6307\u5b9a\u901a\u4fe1\u53f7\uff1a", None))
         self.groupBox3.setTitle(QCoreApplication.translate("MainWindow", u"\u5143\u7d20\u9a91\u58eb", None))
         self.ysqsFightButton.setText(QCoreApplication.translate("MainWindow", u"\u4e00\u952e\u6311\u6218", None))
         self.ysqsLevelBox.setItemText(0, QCoreApplication.translate("MainWindow", u"\u6fc0\u6218\u86cb\u86cb", None))

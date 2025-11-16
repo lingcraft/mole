@@ -148,17 +148,33 @@
       <string>清空封包</string>
      </property>
     </widget>
-    <widget class="QPushButton" name="extraButton">
+    <widget class="QLineEdit" name="socketLineEdit">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
      <property name="geometry">
       <rect>
-       <x>224</x>
-       <y>262</y>
-       <width>61</width>
-       <height>26</height>
+       <x>450</x>
+       <y>265</y>
+       <width>50</width>
+       <height>20</height>
       </rect>
      </property>
      <property name="text">
-      <string>拓展发送</string>
+      <string/>
+     </property>
+    </widget>
+    <widget class="QCheckBox" name="socketCheckBox">
+     <property name="geometry">
+      <rect>
+       <x>360</x>
+       <y>265</y>
+       <width>85</width>
+       <height>20</height>
+      </rect>
+     </property>
+     <property name="text">
+      <string>指定通信号：</string>
      </property>
     </widget>
    </widget>

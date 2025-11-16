@@ -2,7 +2,6 @@ from PySide6.QtCore import QTimer, QThread, Signal, QUrl
 from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
 from PySide6.QtGui import QFont, QIcon, QDesktopServices
 from ui_main import Ui_MainWindow
-from ui_send import Ui_Dialog
 from struct import pack, unpack
 from threading import Lock
 from cffi import FFI
@@ -126,7 +125,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menubar.addAction("刷新游戏", self.refresh)
         self.menubar.addAction("检查更新", self.check_update)
         self.menubar.addAction(QIcon(path("github.ico")), "关于", self.open_github)
-        self.send_dialog = SendDialog()
         self.send_thread = SendThread()
         self.update_thread = UpdateThread(self.update_result)
         # 单次运行功能
@@ -134,8 +132,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.sendClearButton.clicked.connect(self.send_clear)
         self.sendCheckBox.stateChanged.connect(self.change_show_send)
         self.recvCheckBox.stateChanged.connect(self.change_show_recv)
+        self.socketCheckBox.stateChanged.connect(self.change_set_socket)
         self.clearButton.clicked.connect(self.clear_table)
-        self.extraButton.clicked.connect(self.show_dialog)
         self.ysqsFightButton.clicked.connect(self.ysqs_start)
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
@@ -197,17 +195,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         global show_recv
         show_recv = state > 0
 
+    def change_set_socket(self, state):
+        self.socketLineEdit.setEnabled(state > 0)
+        if state > 0 and len(self.socketLineEdit.text()) == 0 and login_socket_num != 0:
+            self.socketLineEdit.setText(str(login_socket_num))
+
     def send(self):
         # 使用后台发送，防止添加自定义延迟后阻塞界面
-        send_lines_backstage(self.textEdit.toPlainText().split('\n'), Interval.NONE)
+        send_lines_back(self.textEdit.toPlainText().split('\n'), Interval.NONE)
 
     def send_clear(self):
         self.textEdit.clear()
 
     def change_row(self, row, column):
-        data = self.tableWidget.item(row, 0 if column < 2 else 4)
+        data = self.tableWidget.item(row, column if column < 2 else 4)
         if data is not None:
-            self.textEdit.setPlainText(data.toolTip() if column < 2 else data.text())
+            self.textEdit.setPlainText(data.toolTip() if column == 0 else data.text())
 
     def change_server(self, checked):
         if checked:
@@ -259,7 +262,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ip, port = get_ip_port(socket_num)
             tip = f"IP: {ip} Port: {port}"
         self.tableWidget.item(packet_index, 0).setToolTip(tip)
-        self.tableWidget.item(packet_index, 1).setToolTip(tip)
+        self.tableWidget.item(packet_index, 1).setToolTip(str(socket_num))
         self.tableWidget.item(packet_index, 2).setToolTip(str(cmd_id))
         self.tableWidget.item(packet_index, 3).setToolTip(cmd_analyse)
         self.tableWidget.item(packet_index, 4).setToolTip(data)
@@ -271,10 +274,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         global packet_index
         packet_index = 0
         self.init_table_size()
-
-    def show_dialog(self):
-        if not self.send_dialog.isVisible():
-            self.send_dialog.show()
 
     def enable_lamu_button(self, enable):
         self.lamuGrowButton.setEnabled(enable)
@@ -498,17 +497,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         mmg_type, mmg_times = fight_type, 0
         send_lines([
             "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
-            f"0000000000000020080000000000000000{get_hex(user_id)}",  # 拉取基础信息
+            f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
             "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
         ])
         if fight_type != 3:
-            run_later(lambda: self.mmg_enter_game(fight_type))
+            run_later(lambda: self.mmg_start_run(fight_type))
         else:
             if len(mmg_friends) == 0:
                 QMessageBox.information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
             self.timer("好友查询").start()
 
-    def mmg_enter_game(self, fight_type):
+    def mmg_start_run(self, fight_type):
         if (fight_type == 1 and mmg_boss_index3 == 0) or (fight_type == 2 and mmg_energy < 10) or (fight_type == 3 and mmg_vigour < 10):
             if fight_type == 3:
                 self.mmg_wish()
@@ -516,45 +515,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         send_lines([
             "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000",  # 获取地图信息
-            "00000000000000019300000000000000000000000100000000"  # 进入游戏
         ])
         self.timer("摩摩怪").start()
-
-    def mmg_query_run(self):
-        if len(mmg_friends) > 0:
-            self.timer("好友查询").stop()
-            self.mmg_query_friends()
-
-    def mmg_query_friends(self):
-        global mmg_query_page_max, mmg_query_page
-        mmg_fight_friends.clear()
-        mmg_friends_state_dict.get(1).clear()
-        mmg_friends_state_dict.get(2).clear()
-        mmg_friends_state_dict.get(3).clear()
-        mmg_friends_state_dict.get(4).clear()
-        mmg_query_page = 0
-        max_size = mmg_query_size_max
-        max_page = mmg_friends_num // max_size
-        last_size = mmg_friends_num % max_size
-        mmg_query_page_max = max_page + (last_size > 0)
-        lines = []
-        for page in range(max_page):
-            friends = mmg_friends[page * max_size:(page + 1) * max_size]
-            ids = "".join([get_hex(friend[0]) for friend in friends])
-            lines.append(f"00000000000000201A0000000000000000{get_hex(max_size)}{ids}")
-        if last_size > 0:
-            friends = mmg_friends[-last_size:]
-            ids = "".join([get_hex(friend[0]) for friend in friends])
-            lines.append(f"00000000000000201A0000000000000000{get_hex(last_size)}{ids}")
-        send_lines(lines)
-
-    def mmg_wish(self):
-        send_lines_backstage([
-            *[f"0000000000000020170000000000000000{get_hex(friend_id)}" for friend_id in mmg_friends_state_dict.get(1)],  # 祝福
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000002" for friend_id in mmg_friends_state_dict.get(2)],  # 呼唤
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000003" for friend_id in mmg_friends_state_dict.get(3)],  # 抱抱
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000004" for friend_id in mmg_friends_state_dict.get(4)]  # 解救
-        ])
 
     def mmg_run(self):
         match mmg_type:
@@ -588,19 +550,60 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         self.mmg_stop()
 
     def mmg_fight(self, level_id, fight_type):
-        global mmg_times
-        send_lines_address(("123.206.131.63", 3001), [
-            f"0000008101000075310000000000000000{mmg_game_id}",
-            f"000000212000007724000000000000000000000004{get_hex(fight_type)}{get_hex(level_id)}00000000",
-            "000000152000007724000000000000000000000040",
-            "000000152000007724000000000000000000000080"
-        ], [83, 165, 45, 79])
-        run_later(lambda: send_lines([
-            "0000000000000020140000000000000000",  # 校验能否翻牌
-            "000000000000002015000000000000000000000000",  # 翻牌
-            f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础属性
-            "000000000000000194000000000000000000"  # 离开游戏
-        ]))
+        send_lines([
+            "00000000000000019300000000000000000000000100000000"  # 进入游戏
+        ])
+
+        def fight():
+            send_lines_to_server(("123.206.131.63", 3001), [
+                f"0000008101000075310000000000000000{mmg_game_id}",  # 进入游戏
+                f"000000212000007724000000000000000000000004{get_hex(fight_type)}{get_hex(level_id)}00000000",  # 开始挑战
+                "000000152000007724000000000000000000000040",  # 开始战斗
+                "000000152000007724000000000000000000000080"  # 快速战斗
+            ], [3, 1, 1, 2])  # 摩摩怪服务器操作
+            run_later(lambda: send_lines([
+                "0000000000000020140000000000000000",  # 校验能否翻牌
+                "000000000000002015000000000000000000000000",  # 翻牌
+                "000000000000000194000000000000000000"  # 离开游戏
+            ]))
+
+        run_later(fight)
+
+    def mmg_wish(self):
+        send_lines_back([
+            *[f"0000000000000020170000000000000000{get_hex(friend_id)}" for friend_id in mmg_friends_state_dict.get(1)],  # 祝福
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000002" for friend_id in mmg_friends_state_dict.get(2)],  # 呼唤
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000003" for friend_id in mmg_friends_state_dict.get(3)],  # 抱抱
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000004" for friend_id in mmg_friends_state_dict.get(4)]  # 解救
+        ])
+
+    def mmg_query_run(self):
+        if len(mmg_friends) > 0:
+            self.timer("好友查询").stop()
+            self.mmg_query_friends()
+
+    def mmg_query_friends(self):
+        global mmg_query_page_max, mmg_query_page
+        mmg_fight_friends.clear()
+        mmg_friends_state_dict.get(1).clear()
+        mmg_friends_state_dict.get(2).clear()
+        mmg_friends_state_dict.get(3).clear()
+        mmg_friends_state_dict.get(4).clear()
+        mmg_query_page = 0
+        max_size = mmg_query_size_max
+        max_page = mmg_friends_num // max_size
+        last_size = mmg_friends_num % max_size
+        mmg_query_page_max = max_page + (last_size > 0)
+        lines = []
+        for page in range(max_page):
+            friends = mmg_friends[page * max_size:(page + 1) * max_size]
+            ids = "".join([get_hex(friend[0]) for friend in friends])
+            lines.append(f"00000000000000201A0000000000000000{get_hex(max_size)}{ids}")
+        if last_size > 0:
+            friends = mmg_friends[-last_size:]
+            ids = "".join([get_hex(friend[0]) for friend in friends])
+            lines.append(f"00000000000000201A0000000000000000{get_hex(last_size)}{ids}")
+        send_lines(lines)
 
     def mmg_stop(self):
         self.enable_mmg_button(True)
@@ -640,7 +643,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     fight_times = remain_times
         is_reward = is_fight_wjsy or fight_times >= 20  # 是否领取每日任务奖励
-        send_lines_backstage(
+        send_lines_back(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能
             ]
@@ -701,7 +704,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             need_times = (double_start_energy - 60) // 10  # 保留经验之路体力后的可挑战次数
             remain_times = mlcs_energy // 10  # 当前体力可挑战次数
             fight_times = min(need_times, remain_times)
-            send_lines_backstage(
+            send_lines_back(
                 [
                     f"000000000000002EE70000000000000000{get_hex(get_level_id("希望之光5"))}",
                     *["000000000000002EF000000000000000000000F000F000F000F000F000F000F0"] * 5,
@@ -720,7 +723,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             )
         else:
             fight_times = (mlcs_energy - mlcs_exp_times * 20) // 10
-            send_lines_backstage(
+            send_lines_back(
                 [
                     f"000000000000002EE70000000000000000{get_hex(get_level_id("经验之路"))}",
                     *["000000000000002EF000000000000000000000F000F000F000F000F000F000F0"] * 5,
@@ -763,7 +766,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if last_size > 0:
             elf_ids = "".join(elves[-last_size:])
             lines.append(f"000000000000002F020000000000000000{get_hex(last_size)}{elf_ids}")
-        send_lines_backstage(lines)
+        send_lines_back(lines)
 
     def ct_sell_run(self):
         send_lines([
@@ -834,34 +837,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 run_later(lambda: send_lines(lines), 2000)  # 首次做菜时，等待2秒动画，否则显示有问题
             else:
                 send_lines(lines)  # 后续设置菜状态时，不用等待动画
-
-
-class SendDialog(QWidget, Ui_Dialog):
-    def __init__(self):
-        super().__init__()
-        self.setupUi(self)
-        self.sendButton.clicked.connect(self.send)
-        self.clearButton.clicked.connect(self.clear)
-
-    def send(self):
-        if is_valid_ip(self.ipLineEdit.text()):
-            ip = self.ipLineEdit.text()
-        else:
-            QMessageBox.warning(self, "错误", "IP 格式错误！")
-            return
-        if self.portLineEdit.text().isdigit():
-            port = int(self.portLineEdit.text())
-        else:
-            QMessageBox.warning(self, "错误", "Port 格式错误，应为数字！")
-            return
-        lines = self.textEdit.toPlainText().split('\n')
-        if ip == login_ip and port == login_port:
-            send_lines(lines)
-        else:
-            send_lines_address((ip, port), lines)
-
-    def clear(self):
-        self.textEdit.clear()
 
 
 class SendThread(QThread):
@@ -1133,41 +1108,53 @@ def get_remote_info(socket_num: int):
         return 0
 
 
-def send_lines_address(address: tuple, lines: list, recv_size: list = None):
-    need_recv = recv_size is not None
+def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
+    need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
-        try:
-            s.connect(address)
-            for index, data in enumerate(lines):
-                s.send(Packet.parse_data(data))
-                if need_recv:
-                    s.recv(recv_size[index])
-        except Exception:
-            QMessageBox.warning(window.send_dialog, "错误", "连接服务器错误，请检查 IP 和 Port 是否正确！")
+        s.connect(address)
+        for data in lines:
+            s.send(Packet.parse_data(data))
+            if need_wait_recv:
+                for i in range(wait_recv_nums.pop(0)):
+                    packet = Packet(s.recv(17))
+                    s.recv(packet.length - 17)
 
 
-def send_lines_backstage(lines: list, interval: int = Interval.NORMAL):
+def send_lines_back(lines: list, interval: int = Interval.NORMAL):
     if not window.send_thread.isRunning():
         window.send_thread.set_data(lines, interval)
         window.send_thread.start()
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
-    for data in lines:
-        if len(data) < 17:
-            if 0 < len(data) < 5:
-                if (delay := int(data)) > 0:
-                    sleep(delay / 1000)
-            continue
-        packet = Packet(data)
-        with lock:
-            packet.encrypt()
-        send(login_socket_num, packet.data(), packet.length)
-        packet.decrypt()
-        if show_send:
-            show_data(packet, "S ==>")
-        if interval > 0:
-            sleep(interval / 1000)
+    if not window.socketCheckBox.isChecked():
+        for data in lines:
+            if len(data) < 17:
+                if 0 < len(data) < 5:
+                    if (delay := int(data)) > 0:
+                        sleep(delay / 1000)
+                continue
+            packet = Packet(data)
+            with lock:
+                packet.encrypt()
+            send(login_socket_num, packet.data(), packet.length)
+            packet.decrypt()
+            if show_send:
+                show_data(packet, "S ==>")
+            if interval > 0:
+                sleep(interval / 1000)
+    else:
+        socket_num = window.socketLineEdit.text()
+        if socket_num.isdigit():
+            socket_num = int(socket_num)
+            try:
+                with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
+                    for data in lines:
+                        if len(data) < 17:
+                            continue
+                        s.send(Packet.parse_data(data))
+            except Exception:
+                return
 
 
 def send(socket_num: int, buff: bytes, length: int):
@@ -1306,7 +1293,7 @@ def process_recv_packet(socket_num, buff, length):
                             if mmg_query_page == mmg_query_page_max:  # 查询完毕
                                 # 将师徒放在最前面，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
                                 mmg_fight_friends.sort(key=lambda item: item[1], reverse=True)
-                                window.mmg_enter_game(3)
+                                window.mmg_start_run(3)
                         if packet.cmd_id == 12004:  # 魔灵用户信息
                             mlcs_energy = get_int(packet.body[13:], 2)  # 剩余体力值
                             mlcs_fight_elves_dict.clear()
@@ -1398,11 +1385,24 @@ def process_recv_packet(socket_num, buff, length):
                 break
     # 其他包
     else:
-        if show_recv and cipher.startswith((b'\x00\x00', b'\x3C\x70', b'\x3C\x3F')):
-            show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
-        if length == len(recv_buff):
-            # 刚好取完所有包
-            recv_buff.clear()
+        if cipher.startswith(b'\x00\x00'):  # 摩尔包
+            while True:
+                if len(recv_buff) >= 4:
+                    packet_len = get_int(recv_buff)
+                    if packet_len <= len(recv_buff):
+                        # 不是断包
+                        cipher = recv_buff[:packet_len]
+                        if show_recv:
+                            show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
+                        recv_buff = recv_buff[packet_len:]
+                    else:
+                        break
+                else:
+                    break
+        elif cipher.startswith((b'\x3C\x70', b'\x3C\x3F')):  # 其他包
+            if show_recv:
+                show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
+            recv_buff = recv_buff[length:]
 
 
 if __name__ == '__main__':
