@@ -492,31 +492,29 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.timer("拉姆").stop()
 
     def mmg_start(self, fight_type):
-        global mmg_type, mmg_times
-        self.enable_mmg_button(False)
-        mmg_type, mmg_times = fight_type, 0
-        send_lines([
-            "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
-            f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
-            "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
-        ])
-        if fight_type != 3:
-            run_later(lambda: self.mmg_start_run(fight_type))
-        else:
-            if len(mmg_friends) == 0:
-                QMessageBox.information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
-            self.timer("好友查询").start()
+        def start():  # 开始执行
+            send_lines([
+                "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000",  # 获取地图信息
+            ])
+            self.timer("摩摩怪").start()
 
-    def mmg_start_run(self, fight_type):
-        if (fight_type == 1 and mmg_boss_index3 == 0) or (fight_type == 2 and mmg_energy < 10) or (fight_type == 3 and mmg_vigour < 10):
-            if fight_type == 3:
-                self.mmg_wish()
-            self.enable_mmg_button(True)
-            return
-        send_lines([
-            "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000",  # 获取地图信息
-        ])
-        self.timer("摩摩怪").start()
+        if fight_type == 4:  # 查询好友完毕
+            start()
+        else:
+            global mmg_type, mmg_times
+            self.enable_mmg_button(False)
+            mmg_type, mmg_times = fight_type, 0
+            send_lines([
+                "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
+                f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
+                "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
+            ])
+            if fight_type < 3:
+                run_later(start)
+            else:
+                if len(mmg_friends) == 0:
+                    QMessageBox.information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
+                self.timer("好友查询").start()
 
     def mmg_run(self):
         match mmg_type:
@@ -555,17 +553,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
         def fight():
-            send_lines_to_server(("123.206.131.63", 3001), [
+            is_no_error = send_lines_to_server(("123.206.131.63", 3001), [
                 f"0000008101000075310000000000000000{mmg_game_id}",  # 进入游戏
                 f"000000212000007724000000000000000000000004{get_hex(fight_type)}{get_hex(level_id)}00000000",  # 开始挑战
                 "000000152000007724000000000000000000000040",  # 开始战斗
                 "000000152000007724000000000000000000000080"  # 快速战斗
             ], [3, 1, 1, 2])  # 摩摩怪服务器操作
-            run_later(lambda: send_lines([
-                "0000000000000020140000000000000000",  # 校验能否翻牌
-                "000000000000002015000000000000000000000000",  # 翻牌
-                "000000000000000194000000000000000000"  # 离开游戏
-            ]))
+            if is_no_error:
+                run_later(lambda: send_lines([
+                    "0000000000000020140000000000000000",  # 校验能否翻牌
+                    "000000000000002015000000000000000000000000",  # 翻牌
+                    "000000000000000194000000000000000000"  # 离开游戏
+                ]))
 
         run_later(fight)
 
@@ -920,8 +919,12 @@ class Packet:
     def __init__(self, packet):
         if isinstance(packet, str):
             packet = bytes.fromhex(packet)
-        self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack("!IBIII", packet[:17])
-        self.body = packet[17:]
+        if len(packet) >= 17:
+            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack("!IBIII", packet[:17])
+            self.body = packet[17:]
+        else:
+            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = 0, 0, 0, 0, 0
+            self.body = bytes()
 
     def data(self):
         head = pack("!IBIII", self.length, self.serial_num, self.cmd_id, self.user_id, self.version)
@@ -1116,7 +1119,10 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
             if need_wait_recv:
                 for i in range(wait_recv_nums.pop(0)):
                     packet = Packet(s.recv(17))
+                    if packet.version != 0:
+                        return False
                     s.recv(packet.length - 17)
+    return True
 
 
 def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
@@ -1304,7 +1310,7 @@ def process_recv_packet(socket_num, buff, length):
                             if mmg_query_page == mmg_query_page_max:  # 查询完毕
                                 # 将师徒放在最前面，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
                                 mmg_fight_friends.sort(key=lambda item: item[1], reverse=True)
-                                window.mmg_start_run(3)
+                                window.mmg_start(4)
                         if packet.cmd_id == 12004:  # 魔灵用户信息
                             mlcs_energy = get_int(packet.body[13:], 2)  # 剩余体力值
                             mlcs_fight_elves_dict.clear()
