@@ -26,7 +26,7 @@ jobs:
         run: |
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
           echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
-          echo "MONTH=$(Get-Date -Format "MM")" >> $env:GITHUB_ENV
+          echo "WEEK=$(Get-Date -uformat %V)" >> $env:GITHUB_ENV
           echo "VERSION=${{ fromJson(steps.version.outputs.content).version }}" >> $env:GITHUB_ENV
           echo "DESCRIPTION<<EOF" >> $env:GITHUB_ENV
           echo "${{ fromJson(steps.version.outputs.content).description }}" >> $env:GITHUB_ENV
@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.NUITKA_PATH }}
-          key: ${{ runner.os }}-nuitka-${{ env.MONTH }}
+          key: ${{ runner.os }}-nuitka-${{ env.WEEK }}
           restore-keys: ${{ runner.os }}-nuitka-
       - name: 开始编译
         run: |
