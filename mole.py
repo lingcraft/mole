@@ -8,7 +8,6 @@ from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
 from dict import *
 from datetime import datetime
-from ipaddress import IPv4Address
 from time import sleep
 from enum import IntEnum
 from configparser import ConfigParser
@@ -867,10 +866,11 @@ class UpdateThread(QThread):
             try:
                 response = get(url, timeout=(3, 5))
                 response.raise_for_status()
+            except:
+                continue
+            else:
                 version, description = response.json().values()
                 break
-            except Exception:
-                continue
         if len(version) > 0:
             if version <= window.version:
                 self.result.emit(1, "当前版本已是最新！", version)
@@ -1086,29 +1086,25 @@ def get_name(buff: bytes):
     return buff[:16].rstrip(b'\x00').decode()
 
 
-def is_valid_ip(ip):
-    try:
-        IPv4Address(ip)
-        return True
-    except Exception:
-        return False
-
-
 def get_ip_port(socket_num: int):
-    with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
-        ip, port = s.getpeername()
-    return ip, port
+    try:
+        with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
+            ip, port = s.getpeername()
+    except:
+        return None, None
+    else:
+        return ip, port
 
 
 def get_remote_info(socket_num: int):
     ip, port = get_ip_port(socket_num)
-    if ip == "123.206.131.236":
+    if ip is None or ip != "123.206.131.236":
+        return 0
+    else:
         if port in [1965, 1865, 1201, 1239]:
             return 2
         else:
             return 1
-    else:
-        return 0
 
 
 def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
@@ -1123,8 +1119,8 @@ def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
                     s.send(Packet.parse_data(data))
                     if interval > 0:
                         sleep(interval / 1000)
-        except Exception:
-            return
+        except:
+            pass
 
 
 def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
@@ -1173,7 +1169,7 @@ def process_send_packet(socket_num, buff, length):
     sock_type = get_remote_info(socket_num)
     cipher = ffi.buffer(buff, length)[:]
     # 摩尔主服务器包
-    if sock_type and cipher.startswith(b'\x00\x00') and len(cipher) > 17:
+    if sock_type > 0 and cipher.startswith(b'\x00\x00') and len(cipher) > 17:
         packet = Packet(cipher)
         if packet.cmd_id == 201:  # 登录包
             login_socket_num = socket_num
