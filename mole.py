@@ -875,7 +875,7 @@ class UpdateThread(QThread):
                 break
         if len(version) > 0:
             if version <= window.version:
-                self.result.emit(1, "当前版本已是最新！", version)
+                self.result.emit(1, f"当前版本 v{version} 已是最新！", version)
             else:
                 self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
         else:
