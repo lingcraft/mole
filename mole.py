@@ -125,6 +125,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.menubar.addAction("检查更新", self.check_update)
         self.menubar.addAction(QIcon(path("github.ico")), "关于", self.open_github)
         self.send_thread = SendThread()
+        self.send_ex_thread = SendExThread()
         self.update_thread = UpdateThread(self.update_result)
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
@@ -201,7 +202,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def send(self):
         # 使用后台发送，防止添加自定义延迟后阻塞界面
-        send_lines_back(self.textEdit.toPlainText().split('\n'), Interval.NONE)
+        send_lines_back_ex(self.textEdit.toPlainText().split('\n'), Interval.NONE)
 
     def send_clear(self):
         self.textEdit.clear()
@@ -839,13 +840,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
 
 class SendThread(QThread):
-    def __init__(self):
-        super().__init__()
-
     def set_data(self, lines: list, interval: int):
         self.lines = lines
         self.interval = interval
 
+    def run(self):
+        send_lines(self.lines, self.interval)
+
+
+class SendExThread(SendThread):
     def run(self):
         if not window.socketCheckBox.isChecked():
             send_lines(self.lines, self.interval)
@@ -1086,6 +1089,64 @@ def get_name(buff: bytes):
     return buff[:16].rstrip(b'\x00').decode()
 
 
+def send_lines(lines: list, interval: int = Interval.NONE):
+    for data in lines:
+        if len(data) < 17:
+            if 0 < len(data) < 5:
+                if (delay := int(data)) > 0:
+                    sleep(delay / 1000)
+            continue
+        packet = Packet(data)
+        with lock:
+            packet.encrypt()
+        send(login_socket_num, packet.data(), packet.length)
+        packet.decrypt()
+        if show_send:
+            show_data(packet, "S ==>")
+        if interval > 0:
+            sleep(interval / 1000)
+
+
+def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
+    need_wait_recv = wait_recv_nums is not None
+    with socket(AF_INET, SOCK_STREAM) as s:
+        s.connect(address)
+        for data in lines:
+            s.send(Packet.parse_data(data))
+            if need_wait_recv:
+                for i in range(wait_recv_nums.pop(0)):
+                    packet = Packet(s.recv(17))
+                    s.recv(packet.length - 17)
+
+
+def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
+    socket_num = window.socketLineEdit.text()
+    if socket_num.isdigit():
+        socket_num = int(socket_num)
+        try:
+            with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
+                for data in lines:
+                    if len(data) < 17:
+                        continue
+                    s.send(Packet.parse_data(data))
+                    if interval > 0:
+                        sleep(interval / 1000)
+        except:
+            pass
+
+
+def send_lines_back(lines: list, interval: int = Interval.NORMAL):
+    if not window.send_thread.isRunning():
+        window.send_thread.set_data(lines, interval)
+        window.send_thread.start()
+
+
+def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
+    if not window.send_ex_thread.isRunning():
+        window.send_ex_thread.set_data(lines, interval)
+        window.send_ex_thread.start()
+
+
 def get_ip_port(socket_num: int):
     try:
         with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
@@ -1105,58 +1166,6 @@ def get_remote_info(socket_num: int):
             return 2
         else:
             return 1
-
-
-def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
-    socket_num = window.socketLineEdit.text()
-    if socket_num.isdigit():
-        socket_num = int(socket_num)
-        try:
-            with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
-                for data in lines:
-                    if len(data) < 17:
-                        continue
-                    s.send(Packet.parse_data(data))
-                    if interval > 0:
-                        sleep(interval / 1000)
-        except:
-            pass
-
-
-def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
-    need_wait_recv = wait_recv_nums is not None
-    with socket(AF_INET, SOCK_STREAM) as s:
-        s.connect(address)
-        for data in lines:
-            s.send(Packet.parse_data(data))
-            if need_wait_recv:
-                for i in range(wait_recv_nums.pop(0)):
-                    packet = Packet(s.recv(17))
-                    s.recv(packet.length - 17)
-
-
-def send_lines_back(lines: list, interval: int = Interval.NORMAL):
-    if not window.send_thread.isRunning():
-        window.send_thread.set_data(lines, interval)
-        window.send_thread.start()
-
-
-def send_lines(lines: list, interval: int = Interval.NONE):
-    for data in lines:
-        if len(data) < 17:
-            if 0 < len(data) < 5:
-                if (delay := int(data)) > 0:
-                    sleep(delay / 1000)
-            continue
-        packet = Packet(data)
-        with lock:
-            packet.encrypt()
-        send(login_socket_num, packet.data(), packet.length)
-        packet.decrypt()
-        if show_send:
-            show_data(packet, "S ==>")
-        if interval > 0:
-            sleep(interval / 1000)
 
 
 def send(socket_num: int, buff: bytes, length: int):
