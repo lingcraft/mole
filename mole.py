@@ -36,11 +36,11 @@ lamu_max_skill_success, lamu_last_skill_success = True, True  # 最大技能拿�
 lamu_pick_result_dict = {}  # 拉姆拿取物品结果
 super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
 # 摩摩怪
-mmg_energy, mmg_vigour, mmg_game_id = 0, 0, ""  # 能量、活力、游戏ID
+mmg_energy, mmg_vigour, mmg_level, mmg_game_id = 0, 0, 0, ""  # 能量、活力、游戏ID
 mmg_type, mmg_times = 0, 0  # 摩摩怪挑战类型、执行次数
 mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times = 0, 0, 0  # 超级Boss、超拉Boss、限时Boss的可挑战次数
 mmg_boss_index1, mmg_boss_index2, mmg_boss_index3 = 0, 0, 0  # 3种Boss挑战次数索引
-mmg_friends, mmg_friends_dict, mmg_students, mmg_fight_friends = [], {}, [], []  # 好友、好友字典（米米号：等级）、师徒、可挑战好友
+mmg_friends, mmg_friends_dict, mmg_students_dict, mmg_fight_friends = [], {}, {}, []  # 好友、好友字典（米米号：等级）、师徒、可挑战好友
 mmg_friends_state_dict = {1: [], 2: [], 3: [], 4: []}  # 4种状态的好友字典
 mmg_friends_num, mmg_query_size_max, mmg_query_page_max, mmg_query_page = 0, 14, 0, 0  # 好友数、最大可查询好友数、最大查询页码、查询页码
 # 魔灵传说
@@ -147,7 +147,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1000), ""),
+            "摩摩怪": (RunTimer(self.mmg_run, 1300), ""),
             "好友查询": (RunTimer(self.mmg_query_run, 500), ""),
             "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
@@ -529,6 +529,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         self.mmg_fight(level_id, 1)
                     case n if mmg_boss_index1 <= n < mmg_boss_index2:
                         level_id = get_level_id("怪味糖蓝龙")
+                        if 1 <= mmg_level < 11:
+                            level_id -= 2
+                        elif 11 <= mmg_level < 21:
+                            level_id -= 1
                         self.mmg_fight(level_id, 1)
                     case n if mmg_boss_index2 <= n < mmg_boss_index3:
                         level_id = get_level_id("飞沙蝎")
@@ -1161,6 +1165,14 @@ def send_lines_back(lines: list, interval: int = Interval.NORMAL):
         window.send_thread.start()
 
 
+def is_not_running(timer: str):
+    return not window.timer(timer).isActive()
+
+
+def is_not_sending():
+    return not window.send_thread.isRunning()
+
+
 def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
     if not window.send_ex_thread.isRunning():
         window.send_ex_thread.set_data(lines, interval)
@@ -1222,7 +1234,7 @@ def process_send_packet(socket_num, buff, length):
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buff, length):
     global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
-        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_times, mmg_friends, mmg_friends_num, mmg_friends_dict, \
+        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_times, mmg_friends, mmg_friends_num, mmg_friends_dict, \
         mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, mmg_boss_index3, \
         mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
     cipher = ffi.buffer(buff, length)[:]
@@ -1260,48 +1272,48 @@ def process_recv_packet(socket_num, buff, length):
                                 lamu_max_skill_success = True
                             window.lamu_collect_result()
                             lamu_times += 1
-                        if packet.cmd_id == 8200:  # 获取摩摩怪能量和活力值
-                            if not window.timer("摩摩怪").isActive():
-                                mmg_energy = get_int(packet.body[40:])
-                                mmg_vigour = get_int(packet.body[48:])
-                        if packet.cmd_id == 8224:  # 获取摩摩怪Boss已挑战次数
-                            if not window.timer("摩摩怪").isActive():
-                                mmg_super_boss_times = 10 - get_int(packet.body)
-                                mmg_lamu_boss_times = 10 - get_int(packet.body[4:])
-                                if datetime.now().hour == 13:
-                                    mmg_limit_boss_times = 10 - get_int(packet.body[8:])
-                                else:
-                                    mmg_limit_boss_times = 0
-                                mmg_boss_index1 = mmg_super_boss_times
-                                mmg_boss_index2 = mmg_boss_index1 + mmg_lamu_boss_times
-                                mmg_boss_index3 = mmg_boss_index2 + mmg_limit_boss_times
+                        if packet.cmd_id == 8200 and is_not_running("摩摩怪"):  # 获取摩摩怪能量和活力值
+                            mmg_energy = get_int(packet.body[40:])
+                            mmg_vigour = get_int(packet.body[48:])
+                            mmg_level = get_int(packet.body[12:])
+                        if packet.cmd_id == 8224 and is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
+                            mmg_super_boss_times = 10 - get_int(packet.body)
+                            mmg_lamu_boss_times = 10 - get_int(packet.body[4:])
+                            if datetime.now().hour == 13:
+                                mmg_limit_boss_times = 10 - get_int(packet.body[8:])
+                            else:
+                                mmg_limit_boss_times = 0
+                            mmg_boss_index1 = mmg_super_boss_times
+                            mmg_boss_index2 = mmg_boss_index1 + mmg_lamu_boss_times
+                            mmg_boss_index3 = mmg_boss_index2 + mmg_limit_boss_times
                         if packet.cmd_id == 10007:  # 获取摩摩怪游戏ID
                             mmg_game_id = packet.body[18:130].hex()
                         if packet.cmd_id == 8212:  # 翻牌成功
                             mmg_times += 1
-                        if packet.cmd_id == 8226:  # 获取师徒ID
-                            mmg_students.clear()
+                        if packet.cmd_id == 8226 and is_not_running("摩摩怪"):  # 获取师徒ID
+                            mmg_students_dict.clear()
                             students_num = get_int(packet.body[40:])
                             for i in range(students_num):
                                 student_id = get_int(packet.body[44 + i * 12:])
-                                mmg_students.append(student_id)
+                                mmg_students_dict[student_id] = 100  # 小小
                             teacher_num = get_int(packet.body[12:])
                             if teacher_num > 0:
                                 teacher_id = get_int(packet.body[16:])
-                                mmg_students.append(teacher_id)
-                        if packet.cmd_id == 8208:  # 获取好友ID
+                                mmg_students_dict[teacher_id] = 200  # 大大
+                        if packet.cmd_id == 8208 and is_not_running("摩摩怪"):  # 获取好友ID
                             mmg_friends_dict.clear()
                             friends_num = get_int(packet.body)
                             for i in range(friends_num):
                                 friend_id = get_int(packet.body[4 + i * 12:])
                                 friend_level = get_int(packet.body[12 + i * 12:])
                                 mmg_friends_dict[friend_id] = friend_level
-                            for student_id in mmg_students:
-                                mmg_friends_dict[student_id] = 100
+                            for student_id, student_level in mmg_students_dict.items():
+                                mmg_friends_dict[student_id] = student_level
                             # 师徒放前面，后面好友等级从高到低
                             mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
                             mmg_friends_num = len(mmg_friends)
-                        if packet.cmd_id == 8218 and get_int(packet.body) in [mmg_query_size_max, mmg_friends_num % mmg_query_size_max]:
+                        if packet.cmd_id == 8218 and is_not_running("摩摩怪") \
+                                and get_int(packet.body) in [mmg_query_size_max, mmg_friends_num % mmg_query_size_max]:
                             # 查询好友能否对战
                             query_size = get_int(packet.body)
                             index = 4
@@ -1311,8 +1323,10 @@ def process_recv_packet(socket_num, buff, length):
                                 other_state_num = get_int(packet.body[index + 8:])
                                 if fight_state == 0:  # 未挑战过的
                                     friend_level = mmg_friends_dict[friend_id]
-                                    if friend_level == 100:
-                                        fight_type = 4  # 师徒
+                                    if friend_level == 200:
+                                        fight_type = 5  # 大大
+                                    elif friend_level == 100:
+                                        fight_type = 4  # 小小
                                     else:
                                         fight_type = 0  # 好友
                                     mmg_fight_friends.append((friend_id, fight_type))
@@ -1332,7 +1346,7 @@ def process_recv_packet(socket_num, buff, length):
                                 elf_id = get_int(packet.body[24 + i * 4:])
                                 if elf_id != 0:
                                     mlcs_fight_elves_dict[elf_id] = elf_id
-                        if packet.cmd_id == 12018 and not window.send_thread.isRunning():  # 魔灵背包信息
+                        if packet.cmd_id == 12018 and is_not_sending():  # 魔灵背包信息
                             mlcs_elves_dict.clear()
                             elves_num = get_int(packet.body)
                             for i in range(elves_num):
