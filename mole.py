@@ -66,9 +66,13 @@ node_dict = {
     "子节点": "mole-sub"
 }
 # 版本文件地址
-version_urls = [
-    "https://hk.gh-proxy.com/https://raw.githubusercontent.com/lingcraft/mole/master/version.json",
-    "https://cdn.jsdelivr.net/gh/lingcraft/mole@master/version.json"
+version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
+# 链接加速前缀
+cdn_prefixs = [
+    "https://hk.gh-proxy.com",
+    "https://v6.gh-proxy.com",
+    "https://hub.gitmirror.com",
+    "https://github.cnxiaobai.com"
 ]
 # Hook文件
 ffi = FFI()
@@ -864,7 +868,8 @@ class UpdateThread(QThread):
 
     def run(self):
         version, description = "", ""
-        for url in version_urls:
+        for cdn_prefix in cdn_prefixs:
+            url = f"{cdn_prefix}/{version_url}"
             try:
                 response = get(url, timeout=(3, 5))
                 response.raise_for_status()
@@ -874,8 +879,17 @@ class UpdateThread(QThread):
                 version, description = response.json().values()
                 break
         if len(version) > 0:
-            if version <= window.version:
-                self.result.emit(1, f"当前版本 v{version} 已是最新！", version)
+            new_version = version.split(".")
+            curr_version = window.version.split(".")
+            is_latest = True
+            for i in range(3):
+                new_num = int(new_version[i])
+                curr_num = int(curr_version[i])
+                if curr_num < new_num:
+                    is_latest = False
+                    break
+            if is_latest:
+                self.result.emit(1, f"当前版本 v{window.version} 已是最新！", version)
             else:
                 self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
         else:
