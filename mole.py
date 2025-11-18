@@ -147,7 +147,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1300), ""),
+            "摩摩怪": (RunTimer(self.mmg_run, 1200), ""),
             "好友查询": (RunTimer(self.mmg_query_run, 500), ""),
             "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
