@@ -1015,7 +1015,7 @@ def show_data(packet: Packet, data_type: str, socket_num: int = None):
             window_defined = True
 
 
-def run_later(func, delay: int = 300):
+def run_later(func, delay: int = 350):
     QTimer.singleShot(delay, func)
 
 
