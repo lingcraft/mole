@@ -275,11 +275,6 @@
          <string>沉睡奥丁</string>
         </property>
        </item>
-       <item>
-        <property name="text">
-         <string>莎士摩亚</string>
-        </property>
-       </item>
       </widget>
      </widget>
      <widget class="QGroupBox" name="groupBox1">

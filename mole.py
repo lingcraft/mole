@@ -636,20 +636,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
         is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
         remain_times = ysqs_energy // 5  # 当前体力可挑战次数
-        if can_fight_wjsy:  # 战力达标
+        fight_times = remain_times
+        if can_fight_wjsy:  # 无尽深渊战力达标
             if hour < 21:
                 fight_times = 40 * is_fight_wjsy
-            else:  # 已过无尽深渊开放时间
-                fight_times = remain_times
+        elif can_fight_ssmy:  # 莎士摩亚战力达标
+            if hour < 21:
+                fight_times = 10 * is_fight_ssmy
         else:  # 战力未达标
-            if self.ysqsLevelBox.currentText() == "莎士摩亚":  # 挑战类副本
-                fight_times = min(40, remain_times) * is_fight_ssmy
-            else:  # 探索类副本
-                if ysqs_attack == 0:  # 无卡牌挑战
-                    fight_times = remain_times * 2
-                else:
-                    fight_times = remain_times
-        is_reward = is_fight_wjsy or fight_times >= 20  # 是否领取每日任务奖励
+            if ysqs_attack == 0:  # 无卡牌挑战
+                fight_times = remain_times * 2
+        is_reward = is_fight_wjsy or is_fight_ssmy or fight_times >= 20  # 是否领取每日任务奖励
         send_lines_back(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能
@@ -663,7 +660,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 40 * is_fight_wjsy
+            ] * 40 * is_fight_ssmy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
