@@ -498,7 +498,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def mmg_start(self, fight_type):
         def start():  # 开始执行
             send_lines([
-                "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000",  # 获取地图信息
+                "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000"  # 获取地图信息
             ])
             self.timer("摩摩怪").start()
 
@@ -574,7 +574,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     "000000000000000194000000000000000000"  # 离开游戏
                 ]))
 
-        run_later(fight)
+        run_later(fight, 400)
 
     def mmg_wish(self):
         send_lines_back([
@@ -1012,7 +1012,7 @@ def show_data(packet: Packet, data_type: str, socket_num: int = None):
             window_defined = True
 
 
-def run_later(func, delay: int = 350):
+def run_later(func, delay: int = 300):
     QTimer.singleShot(delay, func)
 
 
