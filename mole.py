@@ -660,7 +660,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 40 * is_fight_ssmy
+            ] * 35 * is_fight_ssmy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
@@ -669,7 +669,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
                 f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 20 * is_fight_wjsy
+            ] * 15 * is_fight_ssmy
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}",
