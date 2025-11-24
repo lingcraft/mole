@@ -1259,9 +1259,9 @@ def process_recv_packet(socket_num, buff, length):
                             lamu_name = get_name(packet.body[24:])
                             lamu_value = get_int(packet.body[79:])
                             lamu_level = get_lamu_level(lamu_value)
-                        if packet.cmd_id == 204:  # 获取超拉信息
+                        if packet.cmd_id == 204 and get_int(packet.body) == user_id:  # 获取超拉信息
+                            super_lamu_level = get_int(packet.body[92:])
                             super_lamu_value = get_int(packet.body[100:])
-                            super_lamu_level = get_super_lamu_level(super_lamu_value)
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
                                 lamu_last_skill_success = True
