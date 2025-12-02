@@ -375,9 +375,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def lamu_learn(self):
         send_lines([
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000100000001",  # 学习火系技能
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000200000001",  # 学习水系技能
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}0000000300000001"  # 学习木系技能
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000001{get_hex(lamu_last_skill_level)}",  # 学习火系技能
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000002{get_hex(lamu_last_skill_level)}",  # 学习水系技能
+            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000003{get_hex(lamu_last_skill_level)}"  # 学习木系技能
         ])
 
     def lamu_feed(self):
@@ -430,12 +430,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lamu_max_item_level, lamu_last_item_level, lamu_max_type_index, lamu_last_type_index, lamu_max_item_index, \
             lamu_last_item_index, limit_data
         self.enable_lamu_button(False)
+        lamu_max_skill_level = get_max_skill_level(lamu_level)
+        lamu_last_skill_level = get_last_skill_level(lamu_level)
         self.lamu_gift()
         self.lamu_learn()
         self.lamu_feed()
         lamu_times = 0
-        lamu_max_skill_level = get_max_skill_level(lamu_level)
-        lamu_last_skill_level = get_last_skill_level(lamu_level)
         lamu_max_skill_success, lamu_last_skill_success = True, True
         lamu_max_item_level, lamu_last_item_level = lamu_max_skill_level, lamu_last_skill_level
         lamu_max_type_index, lamu_last_type_index = 0, 0
