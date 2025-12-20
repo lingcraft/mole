@@ -311,7 +311,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>110</x>
+         <x>109</x>
          <y>20</y>
          <width>90</width>
          <height>31</height>
@@ -327,9 +327,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>210</x>
+         <x>207</x>
          <y>23</y>
-         <width>80</width>
+         <width>86</width>
          <height>25</height>
         </rect>
        </property>
@@ -358,6 +358,26 @@
        </item>
        <item>
         <property name="text">
+         <string>蛮荒小林疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>蛮荒深处疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>爱萨木阵疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>爱萨栖地疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>树洞密室</string>
         </property>
        </item>
@@ -374,6 +394,26 @@
        <item>
         <property name="text">
          <string>灵奇树根</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>树洞密室疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>树洞深处疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>灵奇洞穴疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>灵奇树根疯狂</string>
         </property>
        </item>
        <item>
@@ -398,6 +438,26 @@
        </item>
        <item>
         <property name="text">
+         <string>神秘洞穴疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>碧水岩石疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>毛头之家疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>碧水洞疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>幻影莲池</string>
         </property>
        </item>
@@ -416,6 +476,26 @@
          <string>呐奇树洞</string>
         </property>
        </item>
+       <item>
+        <property name="text">
+         <string>幻影莲池疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>萤火之地疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>碧波深处疯狂</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>呐奇树洞疯狂</string>
+        </property>
+       </item>
       </widget>
       <widget class="QPushButton" name="mmgPVEButton">
        <property name="enabled">
@@ -423,7 +503,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>300</x>
+         <x>302</x>
          <y>20</y>
          <width>90</width>
          <height>31</height>
