@@ -497,6 +497,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def mmg_start(self, fight_type):
         def start():  # 开始执行
+            global mmg_energy
+            if self.mmgLevelBox.currentText().endswith("疯狂"):
+                mmg_energy /= 2
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000"  # 获取地图信息
             ])
