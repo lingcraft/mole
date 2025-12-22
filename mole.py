@@ -36,7 +36,7 @@ lamu_max_skill_success, lamu_last_skill_success = True, True  # 最大技能拿�
 lamu_pick_result_dict = {}  # 拉姆拿取物品结果
 super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
 # 摩摩怪
-mmg_energy, mmg_vigour, mmg_level, mmg_game_id = 0, 0, 0, ""  # 能量、活力、游戏ID
+mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_game_id = 0, 0, 0, 0, ""  # 能量、活力、等级、摩摩挑战卡、游戏ID
 mmg_type, mmg_times = 0, 0  # 摩摩怪挑战类型、执行次数
 mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times = 0, 0, 0  # 超级Boss、超拉Boss、限时Boss的可挑战次数
 mmg_boss_index1, mmg_boss_index2, mmg_boss_index3 = 0, 0, 0  # 3种Boss挑战次数索引
@@ -495,9 +495,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lamu_show_result()
         self.timer("拉姆").stop()
 
-    def mmg_start(self, fight_type):
+    def mmg_start(self, fight_type=0):
         def start():  # 开始执行
-            global mmg_energy
+            global mmg_energy, mmg_type
             if self.mmgLevelBox.currentText().endswith("疯狂"):
                 mmg_energy /= 2
             send_lines([
@@ -505,7 +505,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ])
             self.timer("摩摩怪").start()
 
-        if fight_type == 4:  # 查询好友完毕
+        if fight_type == 0:  # 查询好友完毕
             start()
         else:
             global mmg_type, mmg_times
@@ -514,6 +514,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             send_lines([
                 "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
                 f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
+                "0000000000000020090000000000000000",  # 获取背包信息
                 "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
             ])
             if fight_type < 3:
@@ -526,22 +527,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def mmg_run(self):
         match mmg_type:
             case 1:  # 挑战Boss
-                match mmg_times:
-                    case n if n < mmg_boss_index1:
-                        level_id = get_level_id(self.mmgBossBox.currentText())
-                        self.mmg_fight(level_id, 1)
-                    case n if mmg_boss_index1 <= n < mmg_boss_index2:
-                        level_id = get_level_id("怪味糖蓝龙")
-                        if 1 <= mmg_level < 11:
-                            level_id -= 2
-                        elif 11 <= mmg_level < 21:
-                            level_id -= 1
-                        self.mmg_fight(level_id, 1)
-                    case n if mmg_boss_index2 <= n < mmg_boss_index3:
-                        level_id = get_level_id("飞沙蝎")
-                        self.mmg_fight(level_id, 1)
-                    case _:
-                        self.mmg_stop()
+                if self.mmgBossBox.currentText() == "独角萨摩":
+                    match mmg_times:
+                        case n if n < mmg_card:
+                            level_id = get_level_id("独角萨摩", mmg_level)
+                            self.mmg_fight(level_id, 1)
+                        case _:
+                            self.mmg_stop()
+                else:
+                    match mmg_times:
+                        case n if n < mmg_boss_index1:
+                            level_id = get_level_id(self.mmgBossBox.currentText())
+                            self.mmg_fight(level_id, 1)
+                        case n if mmg_boss_index1 <= n < mmg_boss_index2:
+                            level_id = get_level_id("怪味糖蓝龙", mmg_level)
+                            self.mmg_fight(level_id, 1)
+                        case n if mmg_boss_index2 <= n < mmg_boss_index3:
+                            level_id = get_level_id("飞沙蝎")
+                            self.mmg_fight(level_id, 1)
+                        case _:
+                            self.mmg_stop()
             case 2:  # 挑战副本
                 match mmg_times:
                     case n if n < mmg_energy // 10:
@@ -1234,9 +1239,9 @@ def process_send_packet(socket_num, buff, length):
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buff, length):
     global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
-        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_times, mmg_friends, mmg_friends_num, mmg_friends_dict, \
-        mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, mmg_boss_index3, \
-        mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
+        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
+        mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
+        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
     cipher = ffi.buffer(buff, length)[:]
     recv_buff.extend(cipher)
     # 摩尔主服务器包
@@ -1276,6 +1281,13 @@ def process_recv_packet(socket_num, buff, length):
                             mmg_energy = get_int(packet.body[40:])
                             mmg_vigour = get_int(packet.body[48:])
                             mmg_level = get_int(packet.body[12:])
+                        if packet.cmd_id == 8201 and is_not_running("摩摩怪"):  # 获取摩摩挑战卡数量
+                            mmg_card = 0
+                            for i in range(len(packet.body) // 4):
+                                item_id = get_int(packet.body[i * 4:])
+                                if item_id == 0x13DA23:
+                                    mmg_card = get_int(packet.body[(i + 1) * 4:])
+                                    break
                         if packet.cmd_id == 8224 and is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
                             mmg_super_boss_times = 10 - get_int(packet.body)
                             mmg_lamu_boss_times = 10 - get_int(packet.body[4:])
@@ -1338,7 +1350,7 @@ def process_recv_packet(socket_num, buff, length):
                             if mmg_query_page == mmg_query_page_max:  # 查询完毕
                                 # 将师徒放在最前面，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
                                 mmg_fight_friends.sort(key=lambda item: item[1], reverse=True)
-                                window.mmg_start(4)
+                                window.mmg_start()
                         if packet.cmd_id == 12004:  # 魔灵用户信息
                             mlcs_energy = get_int(packet.body[13:], 2)  # 剩余体力值
                             mlcs_fight_elves_dict.clear()

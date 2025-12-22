@@ -185,6 +185,7 @@ class Ui_MainWindow(object):
         self.mmgBossBox.addItem("")
         self.mmgBossBox.addItem("")
         self.mmgBossBox.addItem("")
+        self.mmgBossBox.addItem("")
         self.mmgBossBox.setObjectName(u"mmgBossBox")
         self.mmgBossBox.setEnabled(False)
         self.mmgBossBox.setGeometry(QRect(10, 23, 90, 25))
@@ -330,6 +331,7 @@ class Ui_MainWindow(object):
         self.mmgBossBox.setItemText(1, QCoreApplication.translate("MainWindow", u"\u5446\u5446\u725b\u5934\u4eba", None))
         self.mmgBossBox.setItemText(2, QCoreApplication.translate("MainWindow", u"\u5730\u72f1\u795e\u72ac", None))
         self.mmgBossBox.setItemText(3, QCoreApplication.translate("MainWindow", u"\u6697\u591c\u7cbe\u7075", None))
+        self.mmgBossBox.setItemText(4, QCoreApplication.translate("MainWindow", u"\u72ec\u89d2\u8428\u6469", None))
 
         self.groupBox2.setTitle(QCoreApplication.translate("MainWindow", u"\u62c9\u59c6\u53d8\u8eab\u503c", None))
         self.lamuGrowButton.setText(QCoreApplication.translate("MainWindow", u"\u4e00\u952e\u83b7\u53d6", None))

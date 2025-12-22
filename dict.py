@@ -2,8 +2,13 @@ def analyse(cmd_id):
     return cmd_dict.get(cmd_id, "未知")
 
 
-def get_level_id(level_name):
-    return level_dict.get(level_name)
+def get_level_id(level_name, level=40):
+    if 1 <= level < 11:
+        return level_dict.get(level_name) - 2
+    elif 11 <= level < 21:
+        return level_dict.get(level_name) - 1
+    else:
+        return level_dict.get(level_name)
 
 
 def get_dish_info(type_id):
@@ -50,6 +55,7 @@ level_dict = {
     "飞沙蝎": 0x1C,
     "怪味糖蓝龙": 0x1F,
     "萨尔冥王": 0x2B,
+    "独角萨摩": 0x22,
     # 元素骑士
     "无尽深渊": 0x7,
     "莎士摩亚": 0x9,

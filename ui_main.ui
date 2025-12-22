@@ -548,6 +548,11 @@
          <string>暗夜精灵</string>
         </property>
        </item>
+       <item>
+        <property name="text">
+         <string>独角萨摩</string>
+        </property>
+       </item>
       </widget>
      </widget>
      <widget class="QGroupBox" name="groupBox2">
