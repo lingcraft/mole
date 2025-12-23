@@ -1,5 +1,5 @@
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl
-from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow, QPushButton
+from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
 from PySide6.QtGui import QFont, QIcon, QDesktopServices
 from ui_main import Ui_MainWindow
 from struct import pack, unpack
