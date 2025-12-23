@@ -337,7 +337,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:  # 启动
                 if start_func is not None:
                     start_func()
-                else:
+                if button.isEnabled():
                     button.setText(stop_text)
                 timer.start()
         else:  # 创建新timer并启动
@@ -345,7 +345,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.timer_pool[name] = timer, button.text(), button
             if start_func is not None:
                 start_func()
-            else:
+            if button.isEnabled():
                 button.setText(stop_text)
             timer.start()
 
@@ -658,9 +658,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ysqs_run(self):
         hour = datetime.now().hour
         can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
-        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy  # 是否挑战莎士摩亚
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
         is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
+        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
         remain_times = ysqs_energy // 5  # 当前体力可挑战次数
         fight_times = remain_times
         if can_fight_wjsy:  # 无尽深渊战力达标
