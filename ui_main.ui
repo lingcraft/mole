@@ -225,9 +225,9 @@
      <widget class="QGroupBox" name="groupBox3">
       <property name="geometry">
        <rect>
-        <x>110</x>
+        <x>108</x>
         <y>64</y>
-        <width>190</width>
+        <width>202</width>
         <height>61</height>
        </rect>
       </property>
@@ -240,7 +240,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>100</x>
+         <x>112</x>
          <y>20</y>
          <width>80</width>
          <height>31</height>
@@ -256,9 +256,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>10</x>
+         <x>11</x>
          <y>23</y>
-         <width>80</width>
+         <width>90</width>
          <height>25</height>
         </rect>
        </property>
@@ -272,7 +272,7 @@
        </item>
        <item>
         <property name="text">
-         <string>沉睡奥丁</string>
+         <string>沉睡的奥丁</string>
         </property>
        </item>
       </widget>
@@ -560,7 +560,7 @@
        <rect>
         <x>-1</x>
         <y>64</y>
-        <width>100</width>
+        <width>110</width>
         <height>61</height>
        </rect>
       </property>
@@ -575,7 +575,7 @@
         <rect>
          <x>10</x>
          <y>20</y>
-         <width>80</width>
+         <width>90</width>
          <height>31</height>
         </rect>
        </property>
@@ -587,7 +587,7 @@
      <widget class="QGroupBox" name="groupBox4">
       <property name="geometry">
        <rect>
-        <x>310</x>
+        <x>309</x>
         <y>64</y>
         <width>190</width>
         <height>61</height>
@@ -634,10 +634,10 @@
      <attribute name="title">
       <string>第2页</string>
      </attribute>
-     <widget class="QGroupBox" name="groupBox6">
+     <widget class="QGroupBox" name="groupBox7">
       <property name="geometry">
        <rect>
-        <x>110</x>
+        <x>199</x>
         <y>2</y>
         <width>300</width>
         <height>61</height>
@@ -721,6 +721,35 @@
        </property>
        <property name="text">
         <string>一键刷取</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox6">
+      <property name="geometry">
+       <rect>
+        <x>98</x>
+        <y>2</y>
+        <width>102</width>
+        <height>61</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>缤纷七彩宝盒</string>
+      </property>
+      <widget class="QPushButton" name="bhOpenButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>11</x>
+         <y>20</y>
+         <width>80</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>一键开启</string>
        </property>
       </widget>
      </widget>

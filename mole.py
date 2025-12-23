@@ -1,5 +1,5 @@
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl
-from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
+from PySide6.QtWidgets import QApplication, QWidget, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow, QPushButton
 from PySide6.QtGui import QFont, QIcon, QDesktopServices
 from ui_main import Ui_MainWindow
 from struct import pack, unpack
@@ -23,6 +23,7 @@ user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、
 recv_buff = bytearray()  # 接收封包的数据缓冲区
 show_send, show_recv = True, True  # 显示send包、recv包
 lock = Lock()  # 发送锁
+is_show_msg = False  # 是否已显示消息
 # 拉姆
 is_get_lamu_info = True  # 是否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
@@ -145,11 +146,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, 1, self.sendLoopButton))
         self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, 200, self.lamuGrowButton, self.lamu_start))
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
+        self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, 50, self.bhOpenButton, self.bh_start))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1500), ""),
-            "好友查询": (RunTimer(self.mmg_query_run, 500), ""),
-            "餐厅收菜": tuple(RunTimer() for _ in range(7))
+            "摩摩怪": (RunTimer(self.mmg_run, 1500),),
+            "好友查询": (RunTimer(self.mmg_query_run, 500),),
+            "餐厅收菜": tuple(RunTimer() for _ in range(7)),
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
@@ -174,6 +176,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def timers(self, name):
         return self.timer_pool.get(name)
+
+    def stop_timer(self, name):
+        if (timer := self.timer(name)).isActive():
+            timer.stop()
 
     def url(self):
         return f"{server_dict.get(self.server)}/Client.swf".replace("$node", node_dict.get(self.node))
@@ -305,24 +311,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ctHarvestButton.setEnabled(enable)
         self.ctDishBox.setEnabled(enable)
 
+    def enable_bh_button(self, enable):
+        self.bhOpenButton.setEnabled(enable)
+
     def enable_all_buttons(self, enable):
         self.enable_lamu_button(enable)
         self.enable_mmg_button(enable)
         self.enable_ddd_button(enable)
         self.enable_ysqs_button(enable)
         self.enable_mlcs_button(enable)
+        self.enable_bh_button(enable)
         if not enable:  # 刷新游戏后的操作
             mmg_friends.clear()
             self.enable_ct_button(False)
-            if self.timer("拉姆").isActive():
-                self.timer("拉姆").stop()
-            if self.timer("摩摩怪").isActive():
-                self.timer("摩摩怪").stop()
+            self.stop_timer("拉姆")
+            self.stop_timer("摩摩怪")
 
     # 简单的多次任务
-    def start_task(self, name, func, interval, button=None, start_func=None, button_stop_text="停止"):
+    def start_task(self, name, func, interval, button=None, start_func=None, stop_text="停止"):
         if name in self.timer_pool:
-            timer, text = self.timer_pool[name]
+            timer, text, button = self.timer_pool.get(name)
             if timer.isActive():  # 停止
                 button.setText(text)
                 timer.stop()
@@ -330,16 +338,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if start_func is not None:
                     start_func()
                 else:
-                    button.setText(button_stop_text)
+                    button.setText(stop_text)
                 timer.start()
         else:  # 创建新timer并启动
             timer = RunTimer(func, interval)
-            self.timer_pool[name] = timer, button.text()
+            self.timer_pool[name] = timer, button.text(), button
             if start_func is not None:
                 start_func()
             else:
-                button.setText(button_stop_text)
+                button.setText(stop_text)
             timer.start()
+
+    def stop_task(self, name):
+        if name in self.timer_pool:
+            timer, text, button = self.timer_pool.get(name)
+            if timer.isActive():  # 停止
+                button.setText(text)
+                timer.stop()
+
+    def info(self, title, msg, buttons=QMessageBox.StandardButton.Ok):
+        return QMessageBox.information(self, title, msg, buttons)
 
     def check_update(self):
         if not self.update_thread.isRunning():
@@ -348,9 +366,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_result(self, res, msg, version):
         match res:
             case 1:
-                QMessageBox.information(self, "提示", msg)
+                self.info("提示", msg)
             case 2:
-                button = QMessageBox.information(self, "提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+                button = self.info("提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
                 if button == QMessageBox.StandardButton.Ok:
                     QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
             case 3:
@@ -421,9 +439,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for key, value in lamu_pick_result_dict.items():
                 text += f"{key}：{value}，"
             text = text[:-1]
-            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
+            self.info("一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
         else:
-            QMessageBox.information(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
+            self.info("一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
 
     def lamu_start(self):
         global lamu_times, lamu_max_skill_success, lamu_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
@@ -521,7 +539,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 run_later(start)
             else:
                 if len(mmg_friends) == 0:
-                    QMessageBox.information(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
+                    self.info("提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
                 self.timer("好友查询").start()
 
     def mmg_run(self):
@@ -801,7 +819,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ct_harvest_run(self):
         if len(ct_cooking_dishes_dict) == 0:
             self.ctHarvestButton.setText("自动收菜")
-            QMessageBox.information(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
+            self.info("提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
         interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
@@ -849,6 +867,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 run_later(lambda: send_lines(lines), 2000)  # 首次做菜时，等待2秒动画，否则显示有问题
             else:
                 send_lines(lines)  # 后续设置菜状态时，不用等待动画
+
+    def bh_start(self):
+        global is_show_msg
+        is_show_msg = False
+
+    def bh_run(self):
+        send_lines_back([
+            "0000000000000022F9000000000000000000003E95"
+        ])
 
 
 class SendThread(QThread):
@@ -1241,7 +1268,7 @@ def process_recv_packet(socket_num, buff, length):
     global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
-        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy
+        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg
     cipher = ffi.buffer(buff, length)[:]
     recv_buff.extend(cipher)
     # 摩尔主服务器包
@@ -1430,6 +1457,15 @@ def process_recv_packet(socket_num, buff, length):
                                 }
                                 window.ctDishBox.addItem(dish_info.get("名称"))
                                 window.enable_ct_button(True)
+                        if packet.cmd_id == 8953:  # 开启七彩缤纷宝盒
+                            item_id = get_int(packet.body)
+                            if item_id == 0x31CE:  # 火龙珠
+                                window.stop_task("缤纷七彩宝盒")
+                                window.info("缤纷七彩宝盒", "恭喜你获得火龙珠")
+                            elif item_id == 0 and not is_show_msg:
+                                is_show_msg = True
+                                window.stop_task("缤纷七彩宝盒")
+                                window.info("缤纷七彩宝盒", f"宝盒已开完，暂未获得火龙珠")
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
