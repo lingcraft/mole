@@ -1,4 +1,4 @@
-pyside6 >= 6.10.0
-cffi >= 2.0.0
-nuitka >= 2.8.4
-requests >= 2.32.5
+pyside6 ~= 6.10.1
+cffi ~= 2.0.0
+nuitka ~= 2.8.9
+requests ~= 2.32.5
