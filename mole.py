@@ -463,7 +463,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         refresh_time = datetime(now.year, now.month, now.day, 3)
         limit_data = lamu_limit_item_dict.get(user_id)
         if limit_data is None:
-            limit_data = {"数据": {}, "时间": now}
+            limit_data = {"数据": {"火": {}, "水": {}, "木": {}}, "时间": now}
             lamu_limit_item_dict[user_id] = limit_data
         elif limit_data.get("时间") < refresh_time <= now:
             limit_data.get("数据").clear()
@@ -472,7 +472,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_get_item(self, skill_level, item_level, type_index, item_index):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
-        while item_id in limit_data.get("数据"):
+        while item_id in limit_data.get("数据").get(skill_type):
             type_index += 1
             if type_index >= len(lamu_skill_types):  # 技能类型都用过了
                 item_index += 1
@@ -483,20 +483,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                         item_index = 0
                         type_index = 0
                     else:  # 全部等级物品都拿过了
-                        return None, None
+                        return None, None, None
             self.lamu_set_vars(item_level, type_index, item_index)
             skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
             item_id = items[item_index][1]
-        return item_id, skill_id
+        return item_id, skill_id, skill_type
 
     def lamu_run(self):
         skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
-        item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
+        item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
             if not skill_success:  # 上次技能拿取失败
-                limit_data.get("数据")[item_id] = item_id
+                limit_data.get("数据").get(skill_type)[item_id] = item_id
                 limit_data["时间"] = datetime.now()
-                item_id, skill_id = self.lamu_get_item(skill_level, item_level, type_index, item_index)
+                item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
             if item_id is None:
                 self.lamu_stop()
                 return
