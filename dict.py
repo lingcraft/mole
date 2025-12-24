@@ -3,12 +3,14 @@ def analyse(cmd_id):
 
 
 def get_level_id(level_name, level=40):
+    if level_name.endswith("疯"):
+        level_name += "狂"
+    level_id = level_dict.get(level_name)
     if 1 <= level < 11:
-        return level_dict.get(level_name) - 2
+        level_id -= 2
     elif 11 <= level < 21:
-        return level_dict.get(level_name) - 1
-    else:
-        return level_dict.get(level_name)
+        level_id -= 1
+    return level_id
 
 
 def get_dish_info(type_id):

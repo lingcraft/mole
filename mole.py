@@ -516,7 +516,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def mmg_start(self, fight_type=0):
         def start():  # 开始执行
             global mmg_energy, mmg_type
-            if self.mmgLevelBox.currentText().endswith("疯狂"):
+            if "疯" in self.mmgLevelBox.currentText():
                 mmg_energy /= 2
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000"  # 获取地图信息
@@ -1171,7 +1171,10 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
                     packet = Packet(s.recv(17))
                     if packet.version != 0:
                         return False
-                    s.recv(packet.length - 17)
+                    try:
+                        s.recv(packet.length - 17)
+                    except:
+                        return False
     return True
 
 
