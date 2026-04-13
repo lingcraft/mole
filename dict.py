@@ -6,10 +6,11 @@ def get_level_id(level_name, level=40):
     if level_name.endswith("疯"):
         level_name += "狂"
     level_id = level_dict.get(level_name)
-    if 1 <= level < 11:
-        level_id -= 2
-    elif 11 <= level < 21:
-        level_id -= 1
+    if level_name in ["怪味糖蓝龙", "独角萨摩"]:
+        if 1 <= level < 11:
+            level_id -= 2
+        elif 11 <= level < 21:
+            level_id -= 1
     return level_id
 
 
@@ -55,9 +56,9 @@ level_dict = {
     "地狱神犬": 0x1A,
     "暗夜精灵": 0x1B,
     "飞沙蝎": 0x1C,
-    "怪味糖蓝龙": 0x1F,
+    "怪味糖蓝龙": 0x1F, # 有等级区别
     "萨尔冥王": 0x2B,
-    "独角萨摩": 0x22,
+    "独角萨摩": 0x22, # 有等级区别
     # 元素骑士
     "无尽深渊": 0x7,
     "莎士摩亚": 0x9,
