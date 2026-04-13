@@ -102,9 +102,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 界面额外设置
         self.config = ConfigParser()
         if config.exists():  # 读取配置
-            self.config.read(config)
-            self.server = self.config["Settings"].get("server", "官服")
-            self.node = self.config["Settings"].get("node", "主节点")
+            try:
+                self.config.read(config)
+                self.server = self.config["Settings"].get("server", "官服")
+                self.node = self.config["Settings"].get("node", "主节点")
+            except:
+                config.unlink()
+                self.server = "官服"
+                self.node = "主节点"
         else:
             self.server = "官服"
             self.node = "主节点"
