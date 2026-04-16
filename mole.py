@@ -72,7 +72,6 @@ version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.j
 cdn_prefixs = [
     "https://hk.gh-proxy.com",
     "https://v6.gh-proxy.com",
-    "https://hub.gitmirror.com",
     "https://github.cnxiaobai.com"
 ]
 # Hook文件
