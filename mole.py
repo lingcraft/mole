@@ -559,13 +559,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     match mmg_times:
                         case n if n < mmg_boss_index1:
-                            level_id = get_level_id(self.mmgBossBox.currentText())
+                            level_id = get_level_id("飞沙蝎")
                             self.mmg_fight(level_id, 1)
                         case n if mmg_boss_index1 <= n < mmg_boss_index2:
-                            level_id = get_level_id("怪味糖蓝龙", mmg_level)
+                            level_id = get_level_id(self.mmgBossBox.currentText())
                             self.mmg_fight(level_id, 1)
                         case n if mmg_boss_index2 <= n < mmg_boss_index3:
-                            level_id = get_level_id("飞沙蝎")
+                            level_id = get_level_id("怪味糖蓝龙", mmg_level)
                             self.mmg_fight(level_id, 1)
                         case _:
                             self.mmg_stop()
@@ -1329,9 +1329,9 @@ def process_recv_packet(socket_num, buff, length):
                                 mmg_limit_boss_times = 10 - get_int(packet.body[8:])
                             else:
                                 mmg_limit_boss_times = 0
-                            mmg_boss_index1 = mmg_super_boss_times
-                            mmg_boss_index2 = mmg_boss_index1 + mmg_lamu_boss_times
-                            mmg_boss_index3 = mmg_boss_index2 + mmg_limit_boss_times
+                            mmg_boss_index1 = mmg_limit_boss_times
+                            mmg_boss_index2 = mmg_boss_index1 + mmg_super_boss_times
+                            mmg_boss_index3 = mmg_boss_index2 + mmg_lamu_boss_times
                         if packet.cmd_id == 10007:  # 获取摩摩怪游戏ID
                             mmg_game_id = packet.body[18:130].hex()
                         if packet.cmd_id == 8212:  # 翻牌成功
