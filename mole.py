@@ -253,6 +253,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.check_menu()
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, "http://gf.61.com/Client.swf")
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
+        self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.enable_all_buttons(False)
 
     def add_data(self, data_type, socket_num, cmd_id, cmd_analyse, data):
