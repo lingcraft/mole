@@ -1,3 +1,4 @@
 [submodule "hook"]
 	path = hook
 	url = git@github.com:lingcraft/mole-hook.git
+	branch = master
