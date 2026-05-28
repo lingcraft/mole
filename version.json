@@ -1,4 +1,4 @@
 {
-    "version": "1.3.8",
-    "description": "- 优化：摩摩怪副本默认关卡选项修改\n- 优化：\"ui转py\"外部工具优化，将界面代码中的\"\\uxxxx\"编码直接显示为对应中文"
+    "version": "1.4.0",
+    "description": "- 新增：程序加载内置 Flash 组件，不再依赖系统的 Flash ActiveX 插件"
 }

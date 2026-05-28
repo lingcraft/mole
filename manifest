@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <file name="Flash.ocx">
+    <comClass
+        clsid="{D27CDB6E-AE6D-11cf-96B8-444553540000}"
+        threadingModel="Apartment"
+        progid="ShockwaveFlash.ShockwaveFlash"
+        description="Shockwave Flash" />
+    <typelib
+        tlbid="{D27CDB6E-AE6D-11cf-96B8-444553540000}"
+        version="1.0"
+        helpdir="" />
+  </file>
+</assembly>

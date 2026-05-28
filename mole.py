@@ -82,6 +82,7 @@ typedef void (*RecvCallBack)(ULONG64, PCHAR, INT);
 void SetSendCallBack(SendCallBack);
 void SetRecvCallBack(RecvCallBack);
 int WINAPI Send(ULONG64, PCHAR, INT);
+void LoadFlash();
 """)
 config = Path(getenv("appdata")) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
@@ -1510,6 +1511,7 @@ if __name__ == '__main__':
     hook = ffi.dlopen("hook.dll")
     hook.SetSendCallBack(process_send_packet)
     hook.SetRecvCallBack(process_recv_packet)
+    hook.LoadFlash()
     app = QApplication([])
     window = MainWindow()
     window.show()
