@@ -102,13 +102,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 界面额外设置
         self.config = ConfigParser()
         if config.exists():  # 读取配置
-            try:
-                self.config.read(config)
-                self.server = self.config["Settings"].get("server", "官服")
-                self.node = self.config["Settings"].get("node", "主节点")
-            except:
-                config.unlink()
+            self.config.read(config, encoding="utf-8")
+            self.server = self.config.get("Settings", "server", fallback="官服")
+            self.node = self.config.get("Settings", "node", fallback="主节点")
+            if self.server not in server_dict:
                 self.server = "官服"
+            if self.node not in node_dict:
                 self.node = "主节点"
         else:
             self.server = "官服"
@@ -166,13 +165,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
 
     def closeEvent(self, event):
-        self.config["Settings"] = {
-            "server": self.server,
-            "node": self.node
-        }
+        if not self.config.has_section("Settings"):
+            self.config.add_section("Settings")
+        self.config.set("Settings", "server", self.server)
+        self.config.set("Settings", "node", self.node)
         if not config.parent.exists():
             config.parent.mkdir()
-        with open(config, "w") as file:
+        with open(config, "w", encoding="utf-8") as file:
             self.config.write(file)
         super(MainWindow, self).closeEvent(event)
 

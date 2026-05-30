@@ -1,4 +1,4 @@
 {
-    "version": "1.4.1",
-    "description": "- 修复：Flash 完全卸载后主程序显示“未加载影片”的问题修复，增加 Flash 关键注册表补全（通过 Total Uninstall 进行注册表快照对比并逐条测试得出），若系统存在有效 Flash 则不修改注册表"
+    "version": "1.4.2",
+    "description": "- 优化：配置文件改为 UTF-8 编码，提升兼容性\n- 修复：当配置文件中缺少 Section 时读取失败的问题"
 }
