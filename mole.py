@@ -86,6 +86,7 @@ void LoadFlash();
 """)
 config = Path(getenv("appdata")) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
+log = base_dir / "hook.log"
 window_defined = False
 
 
@@ -173,6 +174,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             config.parent.mkdir()
         with open(config, "w", encoding="utf-8") as file:
             self.config.write(file)
+        if log.exists():
+            log.unlink()
         super(MainWindow, self).closeEvent(event)
 
     def timer(self, name):
