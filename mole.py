@@ -58,13 +58,15 @@ server_dict = {
     "骑士版": "http://$node.61player.com/moleverse/20090626",
     "圣诞版": "http://$node.61player.com/moleverse/20111225",
     "万圣版": "http://$node.61player.com/moleverse/20190815",
+    "新春版": "http://$node.61player.com/moleverse/20120128",
     "火神版": "http://$node.61player.com/moleverse/2025hsb",
     "桃源版": "http://$node.61player.com/moleverse/taoyuan",
 }
 # 平行服节点
 node_dict = {
     "主节点": "mole",
-    "子节点": "mole-sub"
+    "亚洲节点": "mole-asia",
+    "备用节点": "mole-sub"
 }
 # 版本文件地址
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
@@ -250,7 +252,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             action.setChecked(action.text() == self.server)
         for action in self.nodeMenu.actions():
             action.setChecked(action.text() == self.node)
-        self.nodeAction2.setEnabled(self.server != "官服")
+            action.setEnabled(action.text() == "主节点" or self.server != "官服")
 
     def refresh(self):
         self.check_menu()

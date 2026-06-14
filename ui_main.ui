@@ -779,6 +779,7 @@
     <addaction name="serverAction5"/>
     <addaction name="serverAction6"/>
     <addaction name="serverAction7"/>
+    <addaction name="serverAction8"/>
    </widget>
    <widget class="QMenu" name="nodeMenu">
     <property name="title">
@@ -786,6 +787,7 @@
     </property>
     <addaction name="nodeAction1"/>
     <addaction name="nodeAction2"/>
+    <addaction name="nodeAction3"/>
    </widget>
    <addaction name="serverMenu"/>
    <addaction name="nodeMenu"/>
@@ -838,10 +840,18 @@
     <bool>true</bool>
    </property>
    <property name="text">
-    <string>火神版</string>
+    <string>新春版</string>
    </property>
   </action>
   <action name="serverAction7">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>火神版</string>
+   </property>
+  </action>
+  <action name="serverAction8">
    <property name="checkable">
     <bool>true</bool>
    </property>
@@ -868,7 +878,18 @@
     <bool>false</bool>
    </property>
    <property name="text">
-    <string>子节点</string>
+    <string>亚洲节点</string>
+   </property>
+  </action>
+  <action name="nodeAction3">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>备用节点</string>
    </property>
   </action>
  </widget>

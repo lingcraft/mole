@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'ui_main.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.10.1
+## Created by: Qt User Interface Compiler version 6.11.1
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -51,6 +51,9 @@ class Ui_MainWindow(object):
         self.serverAction7 = QAction(MainWindow)
         self.serverAction7.setObjectName(u"serverAction7")
         self.serverAction7.setCheckable(True)
+        self.serverAction8 = QAction(MainWindow)
+        self.serverAction8.setObjectName(u"serverAction8")
+        self.serverAction8.setCheckable(True)
         self.nodeAction1 = QAction(MainWindow)
         self.nodeAction1.setObjectName(u"nodeAction1")
         self.nodeAction1.setCheckable(True)
@@ -59,6 +62,10 @@ class Ui_MainWindow(object):
         self.nodeAction2.setObjectName(u"nodeAction2")
         self.nodeAction2.setCheckable(True)
         self.nodeAction2.setEnabled(False)
+        self.nodeAction3 = QAction(MainWindow)
+        self.nodeAction3.setObjectName(u"nodeAction3")
+        self.nodeAction3.setCheckable(True)
+        self.nodeAction3.setEnabled(False)
         self.centralWidget = QWidget(MainWindow)
         self.centralWidget.setObjectName(u"centralWidget")
         self.groupBox = QGroupBox(self.centralWidget)
@@ -261,8 +268,10 @@ class Ui_MainWindow(object):
         self.serverMenu.addAction(self.serverAction5)
         self.serverMenu.addAction(self.serverAction6)
         self.serverMenu.addAction(self.serverAction7)
+        self.serverMenu.addAction(self.serverAction8)
         self.nodeMenu.addAction(self.nodeAction1)
         self.nodeMenu.addAction(self.nodeAction2)
+        self.nodeMenu.addAction(self.nodeAction3)
 
         self.retranslateUi(MainWindow)
 
@@ -279,10 +288,12 @@ class Ui_MainWindow(object):
         self.serverAction3.setText(QCoreApplication.translate("MainWindow", u"骑士版", None))
         self.serverAction4.setText(QCoreApplication.translate("MainWindow", u"圣诞版", None))
         self.serverAction5.setText(QCoreApplication.translate("MainWindow", u"万圣版", None))
-        self.serverAction6.setText(QCoreApplication.translate("MainWindow", u"火神版", None))
-        self.serverAction7.setText(QCoreApplication.translate("MainWindow", u"桃源版", None))
+        self.serverAction6.setText(QCoreApplication.translate("MainWindow", u"新春版", None))
+        self.serverAction7.setText(QCoreApplication.translate("MainWindow", u"火神版", None))
+        self.serverAction8.setText(QCoreApplication.translate("MainWindow", u"桃源版", None))
         self.nodeAction1.setText(QCoreApplication.translate("MainWindow", u"主节点", None))
-        self.nodeAction2.setText(QCoreApplication.translate("MainWindow", u"子节点", None))
+        self.nodeAction2.setText(QCoreApplication.translate("MainWindow", u"亚洲节点", None))
+        self.nodeAction3.setText(QCoreApplication.translate("MainWindow", u"备用节点", None))
         self.groupBox.setTitle("")
         self.sendClearButton.setText(QCoreApplication.translate("MainWindow", u"清空", None))
         self.sendLoopButton.setText(QCoreApplication.translate("MainWindow", u"循环发送", None))
