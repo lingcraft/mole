@@ -2,7 +2,7 @@ from PySide6.QtCore import QTimer, QThread, Signal, QUrl
 from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
 from PySide6.QtGui import QFont, QIcon, QDesktopServices
 from ui_main import Ui_MainWindow
-from struct import pack, unpack
+from struct import pack, unpack_from
 from threading import Lock
 from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
@@ -15,6 +15,7 @@ from os import getenv
 from pathlib import Path
 from json import load
 from requests import get
+from bisect import bisect_right
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -27,6 +28,7 @@ is_show_msg = False  # 是否已显示消息
 # 拉姆
 is_get_lamu_info = True  # 是否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
+lamu_thresholds = [40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700]  # 拉姆变身值阈值
 lamu_skill_types = ["火", "水", "木"]  # 拉姆技能类型
 lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
 lamu_last_item_level, lamu_max_item_level = 0, 0  # 拿取的物品等级
@@ -49,6 +51,7 @@ mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞
 mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
+ysqs_cards_dict, ysqs_material_cards_dict = {}, {}  # 元素可升级卡牌、材料卡牌
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
 # 游戏版本
@@ -147,6 +150,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.socketCheckBox.stateChanged.connect(self.change_set_socket)
         self.clearButton.clicked.connect(self.clear_table)
         self.ysqsFightButton.clicked.connect(self.ysqs_start)
+        self.ysqsUpgradeButton.clicked.connect(self.ysqs_upgrade_start)
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
         # 多次运行功能
@@ -311,6 +315,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def enable_ysqs_button(self, enable):
         self.ysqsFightButton.setEnabled(enable)
         self.ysqsLevelBox.setEnabled(enable)
+        self.ysqsUpgradeButton.setEnabled(enable)
+        self.ysqsCardBox.setEnabled(enable)
 
     def enable_mlcs_button(self, enable):
         self.mlcsFightButton.setEnabled(enable)
@@ -718,6 +724,31 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ] * is_reward
         )
 
+    def ysqs_upgrade_start(self):
+        send_lines([
+            "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
+        ])
+        run_later(self.ysqs_upgrade_run)
+
+    def ysqs_upgrade_run(self):
+        card_data = self.ysqsCardBox.currentData()
+        selected_card_id = card_data.get("ID")
+        ysqs_material_cards_dict.pop(selected_card_id, None)
+        required_exp = card_data.get("需要经验")
+        material_num = 0
+        material_ids = ""
+        for card_id, card_exp in ysqs_material_cards_dict.items():
+            material_num += 1
+            material_ids += get_hex(card_id)
+            required_exp -= card_exp
+            if required_exp <= 0:
+                break
+        if material_num > 0:
+            send_lines([
+                f"00000000000000231B0000000000000000{get_hex(selected_card_id)}{get_hex(material_num)}{material_ids}"
+            ])
+
+
     def mlcs_start(self):
         send_lines([
             "000000000000002B20000000000000000000000001",  # 膜拜等级排行
@@ -980,8 +1011,8 @@ class Packet:
         if isinstance(packet, str):
             packet = bytes.fromhex(packet)
         if len(packet) >= 17:
-            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack("!IBIII", packet[:17])
-            self.body = packet[17:]
+            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
+            self.body = memoryview(packet)[17:]
         else:
             self.length, self.serial_num, self.cmd_id, self.user_id, self.version = 0, 0, 0, 0, 0
             self.body = bytes()
@@ -1062,29 +1093,7 @@ def run_later(func, delay: int = 350):
 
 
 def get_lamu_level(value: int):
-    match value:
-        case n if n < 40:
-            return 1
-        case n if 40 <= n < 180:
-            return 2
-        case n if 180 <= n < 660:
-            return 3
-        case n if 660 <= n < 1340:
-            return 4
-        case n if 1340 <= n < 2660:
-            return 5
-        case n if 2660 <= n < 4280:
-            return 6
-        case n if 4280 <= n < 6840:
-            return 7
-        case n if 6840 <= n < 9800:
-            return 8
-        case n if 9800 <= n < 14000:
-            return 9
-        case n if 14000 <= n < 18700:
-            return 10
-        case _:
-            return 11
+    return bisect_right(lamu_thresholds, value) + 1
 
 
 def get_max_skill_level(level: int):
@@ -1110,46 +1119,34 @@ def get_skill_id(skill_level: int, skill_type):
             return 1
 
 
-def get_super_lamu_level(value: int):
-    match value:
-        case n if n < 311:
-            return 1
-        case n if 311 <= n < 776:
-            return 2
-        case n if 776 <= n < 1706:
-            return 3
-        case n if 1706 <= n < 3566:
-            return 4
-        case n if 3566 <= n < 5426:
-            return 5
-        case n if 5426 <= n < 7286:
-            return 6
-        case n if 7286 <= n < 9146:
-            return 7
-        case _:
-            return 8
+def get_card_max_exp(star):
+    return 4484 if star > 6 else 120 * star ** 2 + 28 * star - 4
 
 
-def get_int(buff: bytes, bytes_num: int = 4):
+def get_card_exp(star):
+    return 28 if star > 6 else 5 * star - 2
+
+
+def get_int(buff: bytes | memoryview, offset: int = 0, bytes_num: int = 4):
     match bytes_num:
         case 4:
-            return unpack("!I", buff[:4])[0]
+            return unpack_from("!I", buff, offset)[0]
         case 2:
-            return unpack("!H", buff[:2])[0]
+            return unpack_from("!H", buff, offset)[0]
         case 1:
-            return unpack("!B", buff[:1])[0]
+            return unpack_from("!B", buff, offset)[0]
         case 8:
-            return unpack("!Q", buff[:8])[0]
+            return unpack_from("!Q", buff, offset)[0]
         case _:
-            return unpack("!I", buff[:4])[0]
+            return unpack_from("!I", buff, offset)[0]
 
 
 def get_hex(data: int, bytes_num: int = 4):
     return f"{data:0{bytes_num * 2}X}"
 
 
-def get_name(buff: bytes):
-    return buff[:16].rstrip(b'\x00').decode()
+def get_name(buff: bytes | memoryview, offset: int = 0):
+    return unpack_from("16s", buff, offset)[0].rstrip(b'\x00').decode()
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
@@ -1177,7 +1174,7 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
         for data in lines:
             s.send(Packet.parse_data(data))
             if need_wait_recv:
-                for i in range(wait_recv_nums.pop(0)):
+                for _ in range(wait_recv_nums.pop(0)):
                     packet = Packet(s.recv(17))
                     if packet.version != 0:
                         return False
@@ -1281,7 +1278,8 @@ def process_recv_packet(socket_num, buff, length):
     global recv_buff, is_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, lamu_last_skill_success, lamu_max_skill_success, \
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
-        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg
+        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
+        ysqs_material_cards_dict
     cipher = ffi.buffer(buff, length)[:]
     recv_buff.extend(cipher)
     # 摩尔主服务器包
@@ -1302,14 +1300,14 @@ def process_recv_packet(socket_num, buff, length):
                             is_get_lamu_info = False
                             lamu_id = get_int(packet.body)
                             window.lamu_get_info()
-                        if packet.cmd_id == 212 and get_int(packet.body[4:]) == 1:  # 获取拉姆信息
-                            lamu_id = get_int(packet.body[8:])
-                            lamu_name = get_name(packet.body[24:])
-                            lamu_value = get_int(packet.body[79:])
+                        if packet.cmd_id == 212 and get_int(packet.body, 4) == 1:  # 获取拉姆信息
+                            lamu_id = get_int(packet.body, 8)
+                            lamu_name = get_name(packet.body, 24)
+                            lamu_value = get_int(packet.body, 79)
                             lamu_level = get_lamu_level(lamu_value)
                         if packet.cmd_id == 204 and get_int(packet.body) == user_id:  # 获取超拉信息
-                            super_lamu_level = get_int(packet.body[92:])
-                            super_lamu_value = get_int(packet.body[100:])
+                            super_lamu_level = get_int(packet.body, 92)
+                            super_lamu_value = get_int(packet.body, 100)
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
                                 lamu_last_skill_success = True
@@ -1318,21 +1316,23 @@ def process_recv_packet(socket_num, buff, length):
                             window.lamu_collect_result()
                             lamu_times += 1
                         if packet.cmd_id == 8200 and is_not_running("摩摩怪"):  # 获取摩摩怪能量和活力值
-                            mmg_energy = get_int(packet.body[40:])
-                            mmg_vigour = get_int(packet.body[48:])
-                            mmg_level = get_int(packet.body[12:])
+                            mmg_energy = get_int(packet.body, 40)
+                            mmg_vigour = get_int(packet.body, 48)
+                            mmg_level = get_int(packet.body, 12)
                         if packet.cmd_id == 8201 and is_not_running("摩摩怪"):  # 获取摩摩挑战卡数量
                             mmg_card = 0
-                            for i in range(len(packet.body) // 4):
-                                item_id = get_int(packet.body[i * 4:])
+                            items_num = len(packet.body) // 4
+                            size = 1 * 4
+                            for page in range(items_num):
+                                item_id = get_int(packet.body, page * size)
                                 if item_id == 0x13DA23:
-                                    mmg_card = get_int(packet.body[(i + 1) * 4:])
+                                    mmg_card = get_int(packet.body, page * size + 4)
                                     break
                         if packet.cmd_id == 8224 and is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
                             mmg_super_boss_times = 10 - get_int(packet.body)
-                            mmg_lamu_boss_times = 10 - get_int(packet.body[4:])
+                            mmg_lamu_boss_times = 10 - get_int(packet.body, 4)
                             if datetime.now().hour == 13:
-                                mmg_limit_boss_times = 10 - get_int(packet.body[8:])
+                                mmg_limit_boss_times = 10 - get_int(packet.body, 8)
                             else:
                                 mmg_limit_boss_times = 0
                             mmg_boss_index1 = mmg_limit_boss_times
@@ -1344,20 +1344,24 @@ def process_recv_packet(socket_num, buff, length):
                             mmg_times += 1
                         if packet.cmd_id == 8226 and is_not_running("摩摩怪"):  # 获取师徒ID
                             mmg_students_dict.clear()
-                            students_num = get_int(packet.body[40:])
-                            for i in range(students_num):
-                                student_id = get_int(packet.body[44 + i * 12:])
+                            students_num = get_int(packet.body, 40)
+                            start = 44
+                            size = 3 * 4
+                            for page in range(students_num):
+                                student_id = get_int(packet.body, start + page * size)
                                 mmg_students_dict[student_id] = 100  # 小小
-                            teacher_num = get_int(packet.body[12:])
+                            teacher_num = get_int(packet.body, 12)
                             if teacher_num > 0:
-                                teacher_id = get_int(packet.body[16:])
+                                teacher_id = get_int(packet.body, 16)
                                 mmg_students_dict[teacher_id] = 200  # 大大
                         if packet.cmd_id == 8208 and is_not_running("摩摩怪"):  # 获取好友ID
                             mmg_friends_dict.clear()
                             friends_num = get_int(packet.body)
-                            for i in range(friends_num):
-                                friend_id = get_int(packet.body[4 + i * 12:])
-                                friend_level = get_int(packet.body[12 + i * 12:])
+                            start = 4
+                            size = 3 * 4
+                            for page in range(friends_num):
+                                friend_id = get_int(packet.body, start + page * size)
+                                friend_level = get_int(packet.body, start + page * size + 8)
                                 mmg_friends_dict[friend_id] = friend_level
                             for student_id, student_level in mmg_students_dict.items():
                                 mmg_friends_dict[student_id] = student_level
@@ -1368,11 +1372,13 @@ def process_recv_packet(socket_num, buff, length):
                                 and get_int(packet.body) in [mmg_query_size_max, mmg_friends_num % mmg_query_size_max]:
                             # 查询好友能否对战
                             query_size = get_int(packet.body)
-                            index = 4
-                            for i in range(query_size):
-                                friend_id = get_int(packet.body[index:])
-                                fight_state = get_int(packet.body[index + 4:])
-                                other_state_num = get_int(packet.body[index + 8:])
+                            start = 4
+                            size1 = 3 * 4
+                            size2 = 1 * 4
+                            for _ in range(query_size):
+                                friend_id = get_int(packet.body, start)
+                                fight_state = get_int(packet.body, start + 4)
+                                other_state_num = get_int(packet.body, start + 8)
                                 if fight_state == 0:  # 未挑战过的
                                     friend_level = mmg_friends_dict[friend_id]
                                     if friend_level == 200:
@@ -1382,55 +1388,96 @@ def process_recv_packet(socket_num, buff, length):
                                     else:
                                         fight_type = 0  # 好友
                                     mmg_fight_friends.append((friend_id, fight_type))
-                                for j in range(other_state_num):
-                                    state = get_int(packet.body[index + 12 + j * 4:])
+                                for page in range(other_state_num):
+                                    state = get_int(packet.body, start + size1 + page * size2)
                                     mmg_friends_state_dict[state].append(friend_id)
-                                index += 12 + other_state_num * 4
+                                start += size1 + other_state_num * size2
                             mmg_query_page += 1
                             if mmg_query_page == mmg_query_page_max:  # 查询完毕
                                 # 将师徒放在最前面，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
                                 mmg_fight_friends.sort(key=lambda item: item[1], reverse=True)
                                 window.mmg_start()
                         if packet.cmd_id == 12004:  # 魔灵用户信息
-                            mlcs_energy = get_int(packet.body[13:], 2)  # 剩余体力值
+                            mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
                             mlcs_fight_elves_dict.clear()
-                            for i in range(15):  # 出战魔灵信息
-                                elf_id = get_int(packet.body[24 + i * 4:])
+                            start = 24
+                            size = 1 * 4
+                            for page in range(15):  # 出战魔灵信息
+                                elf_id = get_int(packet.body, start + page * size)
                                 if elf_id != 0:
                                     mlcs_fight_elves_dict[elf_id] = elf_id
                         if packet.cmd_id == 12018 and is_not_sending():  # 魔灵背包信息
                             mlcs_elves_dict.clear()
                             elves_num = get_int(packet.body)
-                            for i in range(elves_num):
-                                elf_id = get_int(packet.body[4 + i * 28:])
-                                elf_type = get_int(packet.body[4 + i * 28 + 4:])
-                                elf_level = get_int(packet.body[4 + i * 28 + 9:], 1)
-                                if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:  # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
+                            start = 4
+                            size = 7 * 4
+                            for page in range(elves_num):
+                                elf_id = get_int(packet.body, start + page * size)
+                                elf_type = get_int(packet.body, start + page * size + 4)
+                                elf_level = get_int(packet.body, start + page * size + 9, 1)
+                                # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
+                                if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:
                                     mlcs_elves_dict[elf_id] = elf_id
                         if packet.cmd_id == 11009:  # 魔灵竞技场信息
                             info_type = get_int(packet.body)
                             if info_type == 5:  # 竞技场信息
-                                remain_times = 10 - get_int(packet.body[4:])  # 剩余挑战次数
-                                purchase_times = get_int(packet.body[8:])  # 金豆购买挑战次数
+                                remain_times = 10 - get_int(packet.body, 4)  # 剩余挑战次数
+                                purchase_times = get_int(packet.body, 8)  # 金豆购买挑战次数
                                 mlcs_arena_times = remain_times + purchase_times
                             elif info_type == 1:  # 经验之路信息
-                                mlcs_exp_times = 3 - get_int(packet.body[4:])  # 剩余挑战次数
+                                mlcs_exp_times = 3 - get_int(packet.body, 4)  # 剩余挑战次数
                         if packet.cmd_id == 8990:  # 元素骑士信息
-                            ysqs_energy = get_int(packet.body[28:])
-                            ysqs_attack = get_int(packet.body[44:])
-                            ysqs_max_floor = get_int(packet.body[68:])
+                            ysqs_cards_dict.clear()
+                            ysqs_material_cards_dict.clear()
+                            window.ysqsCardBox.clear()
+                            ysqs_energy = get_int(packet.body, 28)
+                            ysqs_attack = get_int(packet.body, 44)
+                            ysqs_max_floor = get_int(packet.body, 68)
+                            cards_num = get_int(packet.body, 76)
+                            start = 80
+                            size = 4 * 4
+                            for page in range(cards_num):
+                                card_id = get_int(packet.body, start + page * size)  # 卡牌ID
+                                card_type = get_int(packet.body, start + page * size + 4)  # 卡牌类型
+                                card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
+                                card_state = get_int(packet.body, start + page * size + 12) > 0  # 卡牌出战状态
+                                card_info = get_card_info(card_type)
+                                card_star = card_info.get("星级")
+                                max_exp = get_card_max_exp(card_star)
+                                if card_exp < max_exp:
+                                    ysqs_cards_dict[card_id] = {
+                                        "ID": card_id, "种类": card_type, "名称": card_info.get("名称"), "星级": card_star, "需要经验": max_exp - card_exp
+                                    }
+                                # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
+                                if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
+                                    ysqs_material_cards_dict[card_id] = get_card_exp(card_star)
+                            ysqs_cards_dict = dict(
+                                sorted(
+                                    ysqs_cards_dict.items(),
+                                    key=lambda x: (
+                                        x[1].get("星级"),
+                                        x[1].get("种类"),
+                                        x[1].get("经验")
+                                    ),
+                                    reverse=True
+                                )
+                            )
+                            for card_id, card_data in ysqs_cards_dict.items():
+                                window.ysqsCardBox.addItem(card_data.get("名称"), userData=card_data)
                         if packet.cmd_id == 1014:  # 餐厅信息
                             ct_cooked_dishes_dict.clear()
                             ct_cooking_dishes_dict.clear()
                             window.ctDishBox.clear()
-                            dishes_num = get_int(packet.body[68:])
-                            for i in range(dishes_num):
-                                dish_pos = get_int(packet.body[72 + i * 24:])
-                                dish_type = get_int(packet.body[72 + i * 24 + 4:])
-                                dish_id = get_int(packet.body[72 + i * 24 + 8:])
-                                dish_num = get_int(packet.body[72 + i * 24 + 12:])
-                                dish_step = get_int(packet.body[72 + i * 24 + 16:])
-                                dish_time = get_int(packet.body[72 + i * 24 + 20:])
+                            dishes_num = get_int(packet.body, 68)
+                            start = 72
+                            size = 6 * 4
+                            for page in range(dishes_num):
+                                dish_pos = get_int(packet.body, start + page * size)  # 菜位置
+                                dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
+                                dish_id = get_int(packet.body, start + page * size + 8)  # 菜ID
+                                dish_num = get_int(packet.body, start + page * size + 12)  # 菜数量
+                                dish_step = get_int(packet.body, start + page * size + 16)  # 菜步骤
+                                dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
                                 dish_info = get_dish_info(dish_type)
                                 if dish_step == 6:  # 已熟菜信息
                                     ct_cooked_dishes_dict[dish_info.get("名称")] = {
@@ -1450,9 +1497,9 @@ def process_recv_packet(socket_num, buff, length):
                             window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
                         if packet.cmd_id == 1017:  # 餐厅做菜信息
                             dish_type = get_int(packet.body)
-                            dish_id = get_int(packet.body[4:])
-                            dish_pos = get_int(packet.body[8:])
-                            dish_step = get_int(packet.body[12:])
+                            dish_id = get_int(packet.body, 4)
+                            dish_pos = get_int(packet.body, 8)
+                            dish_step = get_int(packet.body, 12)
                             if dish_step < 3:
                                 window.ct_cook_after(dish_id, dish_type, dish_step)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
@@ -1461,8 +1508,8 @@ def process_recv_packet(socket_num, buff, length):
                                 }
                         if packet.cmd_id == 1021:  # 餐厅收菜信息
                             dish_type = get_int(packet.body)
-                            dish_id = get_int(packet.body[4:])
-                            dish_pos = get_int(packet.body[12:])
+                            dish_id = get_int(packet.body, 4)
+                            dish_pos = get_int(packet.body, 12)
                             dish_info = get_dish_info(dish_type)
                             if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
                                 ct_cooked_dishes_dict[dish_info.get("名称")] = {
