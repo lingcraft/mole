@@ -732,9 +732,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_upgrade_run(self):
         card_data = self.ysqsCardBox.currentData()
-        selected_card_id = card_data.get("ID")
-        ysqs_material_cards_dict.pop(selected_card_id, None)
-        required_exp = card_data.get("需要经验")
+        ysqs_material_cards_dict.pop(card_data.get("ID"), None)
+        required_exp = get_card_max_exp(card_data.get("星级")) - card_data.get("经验")
         material_num = 0
         material_ids = ""
         for card_id, card_exp in ysqs_material_cards_dict.items():
@@ -745,7 +744,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 break
         if material_num > 0:
             send_lines([
-                f"00000000000000231B0000000000000000{get_hex(selected_card_id)}{get_hex(material_num)}{material_ids}"
+                f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(material_num)}{material_ids}"
             ])
 
 
@@ -1443,10 +1442,9 @@ def process_recv_packet(socket_num, buff, length):
                                 card_state = get_int(packet.body, start + page * size + 12) > 0  # 卡牌出战状态
                                 card_info = get_card_info(card_type)
                                 card_star = card_info.get("星级")
-                                max_exp = get_card_max_exp(card_star)
-                                if card_exp < max_exp:
+                                if card_exp < get_card_max_exp(card_star):
                                     ysqs_cards_dict[card_id] = {
-                                        "ID": card_id, "种类": card_type, "名称": card_info.get("名称"), "星级": card_star, "需要经验": max_exp - card_exp
+                                        "ID": card_id, "种类": card_type, "名称": card_info.get("名称"), "星级": card_star, "经验": card_exp
                                     }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
