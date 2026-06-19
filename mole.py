@@ -753,7 +753,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(max_size)}{ids}")
         if last_size > 0:
             cards = material_ids[-last_size:]
-            ids = "".join([get_hex(mid) for mid in cards])
+            ids = "".join([get_hex(card_id) for card_id in cards])
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(last_size)}{ids}")
         send_lines(lines)
 
