@@ -16,6 +16,7 @@ from pathlib import Path
 from json import load
 from requests import get
 from bisect import bisect_right
+from math import floor, sqrt
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -1134,11 +1135,21 @@ def get_skill_id(skill_level: int, skill_type):
 
 
 def get_card_max_exp(star):
-    return 4484 if star > 6 else 120 * star ** 2 + 28 * star - 4
+    # n星卡牌经验上限
+    star = min(star, 6)
+    return 120 * star ** 2 + 28 * star - 4
 
 
-def get_card_exp(star):
-    return 28 if star > 6 else 5 * star - 2
+def get_card_provided_exp(star):
+    # n星1级卡牌提供的经验值
+    star = min(star, 6)
+    return 5 * star - 2
+
+def get_card_level(star, exp):
+    # n星卡牌根据总经验计算等级
+    star = min(star, 6)
+    base = 2 * star + 5
+    return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
 
 
 def get_int(buff: bytes | memoryview, offset: int = 0, bytes_num: int = 4):
@@ -1456,13 +1467,14 @@ def process_recv_packet(socket_num, buff, length):
                                 card_state = get_int(packet.body, start + page * size + 12) > 0  # 卡牌出战状态
                                 card_info = get_card_info(card_type)
                                 card_star = card_info.get("星级")
+                                card_level = get_card_level(card_star, card_exp)
                                 if card_exp < get_card_max_exp(card_star):
                                     ysqs_cards_dict[card_id] = {
-                                        "ID": card_id, "种类": card_type, "名称": card_info.get("名称"), "星级": card_star, "经验": card_exp
+                                        "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} {card_level}", "星级": card_star, "经验": card_exp
                                     }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
-                                    ysqs_material_cards_dict[card_id] = get_card_exp(card_star)
+                                    ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
                             ysqs_cards_dict = dict(
                                 sorted(
                                     ysqs_cards_dict.items(),
