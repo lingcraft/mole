@@ -1470,7 +1470,7 @@ def process_recv_packet(socket_num, buff, length):
                                 card_level = get_card_level(card_star, card_exp)
                                 if card_exp < get_card_max_exp(card_star):
                                     ysqs_cards_dict[card_id] = {
-                                        "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} {card_level}", "星级": card_star, "经验": card_exp
+                                        "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
                                     }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
