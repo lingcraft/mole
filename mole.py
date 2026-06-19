@@ -734,18 +734,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         card_data = self.ysqsCardBox.currentData()
         ysqs_material_cards_dict.pop(card_data.get("ID"), None)
         required_exp = get_card_max_exp(card_data.get("星级")) - card_data.get("经验")
-        material_num = 0
-        material_ids = ""
+        # 计算需要的材料卡牌
+        material_ids = []
         for card_id, card_exp in ysqs_material_cards_dict.items():
-            material_num += 1
-            material_ids += get_hex(card_id)
+            material_ids.append(card_id)
             required_exp -= card_exp
             if required_exp <= 0:
                 break
-        if material_num > 0:
-            send_lines([
-                f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(material_num)}{material_ids}"
-            ])
+        # 分包处理，每个包最多30张材料
+        max_size = 30
+        material_num = len(material_ids)
+        max_page = material_num // max_size
+        last_size = material_num % max_size
+        lines = []
+        for page in range(max_page):
+            cards = material_ids[page * max_size: (page + 1) * max_size]
+            ids = "".join([get_hex(card_id) for card_id in cards])
+            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(max_size)}{ids}")
+        if last_size > 0:
+            cards = material_ids[-last_size:]
+            ids = "".join([get_hex(mid) for mid in cards])
+            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(last_size)}{ids}")
+        send_lines(lines)
 
 
     def mlcs_start(self):
