@@ -12,15 +12,14 @@ from PySide6.QtAxContainer import QAxWidget
 from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
     QMetaObject, QObject, QPoint, QRect,
     QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
-    QCursor, QFont, QFontDatabase, QGradient,
-    QIcon, QImage, QKeySequence, QLinearGradient,
-    QPainter, QPalette, QPixmap, QRadialGradient,
-    QTransform)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
 from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QGroupBox,
-    QHeaderView, QLineEdit, QMainWindow, QMenu,
-    QMenuBar, QPlainTextEdit, QPushButton, QSizePolicy,
-    QTabWidget, QTableWidget, QTableWidgetItem, QWidget)
+    QHeaderView, QLineEdit, QMainWindow, QMenuBar,
+    QPlainTextEdit, QPushButton, QSizePolicy, QTabWidget,
+    QTableWidget, QTableWidgetItem, QWidget)
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -29,43 +28,6 @@ class Ui_MainWindow(object):
         MainWindow.resize(1480, 580)
         MainWindow.setMinimumSize(QSize(1480, 580))
         MainWindow.setMaximumSize(QSize(1480, 580))
-        self.serverAction1 = QAction(MainWindow)
-        self.serverAction1.setObjectName(u"serverAction1")
-        self.serverAction1.setCheckable(True)
-        self.serverAction1.setChecked(True)
-        self.serverAction2 = QAction(MainWindow)
-        self.serverAction2.setObjectName(u"serverAction2")
-        self.serverAction2.setCheckable(True)
-        self.serverAction3 = QAction(MainWindow)
-        self.serverAction3.setObjectName(u"serverAction3")
-        self.serverAction3.setCheckable(True)
-        self.serverAction4 = QAction(MainWindow)
-        self.serverAction4.setObjectName(u"serverAction4")
-        self.serverAction4.setCheckable(True)
-        self.serverAction5 = QAction(MainWindow)
-        self.serverAction5.setObjectName(u"serverAction5")
-        self.serverAction5.setCheckable(True)
-        self.serverAction6 = QAction(MainWindow)
-        self.serverAction6.setObjectName(u"serverAction6")
-        self.serverAction6.setCheckable(True)
-        self.serverAction7 = QAction(MainWindow)
-        self.serverAction7.setObjectName(u"serverAction7")
-        self.serverAction7.setCheckable(True)
-        self.serverAction8 = QAction(MainWindow)
-        self.serverAction8.setObjectName(u"serverAction8")
-        self.serverAction8.setCheckable(True)
-        self.nodeAction1 = QAction(MainWindow)
-        self.nodeAction1.setObjectName(u"nodeAction1")
-        self.nodeAction1.setCheckable(True)
-        self.nodeAction1.setChecked(True)
-        self.nodeAction2 = QAction(MainWindow)
-        self.nodeAction2.setObjectName(u"nodeAction2")
-        self.nodeAction2.setCheckable(True)
-        self.nodeAction2.setEnabled(False)
-        self.nodeAction3 = QAction(MainWindow)
-        self.nodeAction3.setObjectName(u"nodeAction3")
-        self.nodeAction3.setCheckable(True)
-        self.nodeAction3.setEnabled(False)
         self.centralWidget = QWidget(MainWindow)
         self.centralWidget.setObjectName(u"centralWidget")
         self.groupBox = QGroupBox(self.centralWidget)
@@ -262,29 +224,12 @@ class Ui_MainWindow(object):
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
         self.menubar.setGeometry(QRect(0, 0, 1480, 21))
-        self.serverMenu = QMenu(self.menubar)
-        self.serverMenu.setObjectName(u"serverMenu")
-        self.nodeMenu = QMenu(self.menubar)
-        self.nodeMenu.setObjectName(u"nodeMenu")
         MainWindow.setMenuBar(self.menubar)
-
-        self.menubar.addAction(self.serverMenu.menuAction())
-        self.menubar.addAction(self.nodeMenu.menuAction())
-        self.serverMenu.addAction(self.serverAction1)
-        self.serverMenu.addAction(self.serverAction2)
-        self.serverMenu.addAction(self.serverAction3)
-        self.serverMenu.addAction(self.serverAction4)
-        self.serverMenu.addAction(self.serverAction5)
-        self.serverMenu.addAction(self.serverAction6)
-        self.serverMenu.addAction(self.serverAction7)
-        self.serverMenu.addAction(self.serverAction8)
-        self.nodeMenu.addAction(self.nodeAction1)
-        self.nodeMenu.addAction(self.nodeAction2)
-        self.nodeMenu.addAction(self.nodeAction3)
 
         self.retranslateUi(MainWindow)
 
         self.tabWidget.setCurrentIndex(0)
+        self.mmgLevelBox.setCurrentIndex(27)
 
 
         QMetaObject.connectSlotsByName(MainWindow)
@@ -292,17 +237,6 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"摩尔庄园", None))
-        self.serverAction1.setText(QCoreApplication.translate("MainWindow", u"官服", None))
-        self.serverAction2.setText(QCoreApplication.translate("MainWindow", u"平行服", None))
-        self.serverAction3.setText(QCoreApplication.translate("MainWindow", u"骑士版", None))
-        self.serverAction4.setText(QCoreApplication.translate("MainWindow", u"圣诞版", None))
-        self.serverAction5.setText(QCoreApplication.translate("MainWindow", u"万圣版", None))
-        self.serverAction6.setText(QCoreApplication.translate("MainWindow", u"新春版", None))
-        self.serverAction7.setText(QCoreApplication.translate("MainWindow", u"火神版", None))
-        self.serverAction8.setText(QCoreApplication.translate("MainWindow", u"桃源版", None))
-        self.nodeAction1.setText(QCoreApplication.translate("MainWindow", u"主节点", None))
-        self.nodeAction2.setText(QCoreApplication.translate("MainWindow", u"亚洲节点", None))
-        self.nodeAction3.setText(QCoreApplication.translate("MainWindow", u"备用节点", None))
         self.groupBox.setTitle("")
         self.sendClearButton.setText(QCoreApplication.translate("MainWindow", u"清空", None))
         self.sendLoopButton.setText(QCoreApplication.translate("MainWindow", u"循环发送", None))
@@ -354,7 +288,6 @@ class Ui_MainWindow(object):
         self.mmgLevelBox.setItemText(30, QCoreApplication.translate("MainWindow", u"碧波深处疯", None))
         self.mmgLevelBox.setItemText(31, QCoreApplication.translate("MainWindow", u"呐奇树洞疯", None))
 
-        self.mmgLevelBox.setCurrentText(QCoreApplication.translate("MainWindow", u"呐奇树洞", None))
         self.mmgPVEButton.setText(QCoreApplication.translate("MainWindow", u"一键挑战副本", None))
         self.mmgBossBox.setItemText(0, QCoreApplication.translate("MainWindow", u"萨尔冥王", None))
         self.mmgBossBox.setItemText(1, QCoreApplication.translate("MainWindow", u"呆呆牛头人", None))
@@ -376,7 +309,5 @@ class Ui_MainWindow(object):
         self.mlcsFightButton.setText(QCoreApplication.translate("MainWindow", u"一键挑战", None))
         self.mlcsSellButton.setText(QCoreApplication.translate("MainWindow", u"一键出售", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab2), QCoreApplication.translate("MainWindow", u"第2页", None))
-        self.serverMenu.setTitle(QCoreApplication.translate("MainWindow", u"切换版本", None))
-        self.nodeMenu.setTitle(QCoreApplication.translate("MainWindow", u"切换节点", None))
     # retranslateUi
 

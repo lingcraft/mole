@@ -1,6 +1,6 @@
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl
 from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
-from PySide6.QtGui import QFont, QIcon, QDesktopServices
+from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
 from struct import pack, unpack_from
 from threading import Lock
@@ -58,19 +58,20 @@ ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶�
 # 游戏版本
 server_dict = {
     "官服": "http://mole.61.com",
-    "平行服": "http://$node.61player.com",
-    "骑士版": "http://$node.61player.com/moleverse/20090626",
-    "圣诞版": "http://$node.61player.com/moleverse/20111225",
-    "万圣版": "http://$node.61player.com/moleverse/20190815",
-    "新春版": "http://$node.61player.com/moleverse/20120128",
-    "火神版": "http://$node.61player.com/moleverse/2025hsb",
-    "桃源版": "http://$node.61player.com/moleverse/taoyuan",
+    "平行服": "http://$node",
+    "骑士版": "http://$node/moleverse/20090626",
+    "圣诞版": "http://$node/moleverse/20111225",
+    "万圣版": "http://$node/moleverse/20190815",
+    "新春版": "http://$node/moleverse/20120128",
+    "火神版": "http://$node/moleverse/2025hsb",
+    "桃源版": "http://$node/moleverse/taoyuan",
 }
 # 平行服节点
 node_dict = {
-    "主节点": "mole",
-    "亚洲节点": "mole-asia",
-    "备用节点": "mole-sub"
+    "主节点": "mole.61player.com",
+    "备用节点": "mole-sub.61player.com",
+    "亚洲节点": "mole-asia.61player.com",
+    "国内节点": "175.178.55.57"
 }
 # 版本文件地址
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
@@ -107,8 +108,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 界面基础设置
         self.setupUi(self)
         # 界面额外设置
+        # 读取配置
         self.config = ConfigParser()
-        if config.exists():  # 读取配置
+        if config.exists():
             self.config.read(config, encoding="utf-8")
             self.server = self.config.get("Settings", "server", fallback="官服")
             self.node = self.config.get("Settings", "node", fallback="主节点")
@@ -121,7 +123,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.node = "主节点"
         with open(path("version.json"), "r", encoding="utf-8") as file:  # 获取版本
             self.version = load(file).get("version")
-        self.check_menu()
+        # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
@@ -133,13 +135,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.init_table_size()
         self.tableWidget.setHorizontalHeaderLabels(["类型", "通信号", "命令号", "解析", "封包数据"])
         self.tableWidget.currentCellChanged.connect(self.change_row)
-        for action in self.serverMenu.actions():  # 切换版本
+        # 界面菜单栏设置
+        self.serverMenu = self.menubar.addMenu("切换版本")
+        for server in server_dict:
+            action = QAction(server, self, checkable=True)
             action.triggered.connect(self.change_server)
-        for action in self.nodeMenu.actions():  # 切换节点
+            self.serverMenu.addAction(action)
+        self.nodeMenu = self.menubar.addMenu("切换节点")
+        for node in node_dict:
+            action = QAction(node, self, checkable=True)
             action.triggered.connect(self.change_node)
+            self.nodeMenu.addAction(action)
         self.menubar.addAction("刷新游戏", self.refresh)
         self.menubar.addAction("检查更新", self.check_update)
         self.menubar.addAction(QIcon(path("github.ico")), "关于", self.open_github)
+        self.check_menu()  # 节点勾选
+        # 线程初始化
         self.send_thread = SendThread()
         self.send_ex_thread = SendExThread()
         self.update_thread = UpdateThread(self.update_result)
@@ -196,7 +207,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             timer.stop()
 
     def url(self):
-        return f"{server_dict.get(self.server)}/Client.swf".replace("$node", node_dict.get(self.node))
+        return f"{server_dict.get(self.server, "").replace("$node", node_dict.get(self.node, ""))}/Client.swf"
 
     def init_table_size(self):
         self.row_len = 2  # 行数位数
@@ -238,9 +249,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def change_server(self, checked):
         if checked:
+            last_server = self.server
             self.server = self.sender().text()
             if self.server == "官服":
                 self.node = "主节点"
+            elif last_server == "官服":
+                self.node = "国内节点"
             self.refresh()
         else:
             self.sender().setChecked(True)
@@ -261,7 +275,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.check_menu()
-        self.axWidget.dynamicCall("LoadMovie(long, string)", 0, "http://gf.61.com/Client.swf")
+        self.axWidget.dynamicCall("LoadMovie(long, string)", 0, server_dict.get("官服"))
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.enable_all_buttons(False)

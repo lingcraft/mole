@@ -365,8 +365,8 @@
          <height>25</height>
         </rect>
        </property>
-       <property name="currentText">
-        <string>呐奇树洞</string>
+       <property name="currentIndex">
+        <number>27</number>
        </property>
        <property name="duplicatesEnabled">
         <bool>false</bool>
@@ -800,130 +800,7 @@
      <height>21</height>
     </rect>
    </property>
-   <widget class="QMenu" name="serverMenu">
-    <property name="title">
-     <string>切换版本</string>
-    </property>
-    <addaction name="serverAction1"/>
-    <addaction name="serverAction2"/>
-    <addaction name="serverAction3"/>
-    <addaction name="serverAction4"/>
-    <addaction name="serverAction5"/>
-    <addaction name="serverAction6"/>
-    <addaction name="serverAction7"/>
-    <addaction name="serverAction8"/>
-   </widget>
-   <widget class="QMenu" name="nodeMenu">
-    <property name="title">
-     <string>切换节点</string>
-    </property>
-    <addaction name="nodeAction1"/>
-    <addaction name="nodeAction2"/>
-    <addaction name="nodeAction3"/>
-   </widget>
-   <addaction name="serverMenu"/>
-   <addaction name="nodeMenu"/>
   </widget>
-  <action name="serverAction1">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>官服</string>
-   </property>
-  </action>
-  <action name="serverAction2">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>平行服</string>
-   </property>
-  </action>
-  <action name="serverAction3">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>骑士版</string>
-   </property>
-  </action>
-  <action name="serverAction4">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>圣诞版</string>
-   </property>
-  </action>
-  <action name="serverAction5">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>万圣版</string>
-   </property>
-  </action>
-  <action name="serverAction6">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>新春版</string>
-   </property>
-  </action>
-  <action name="serverAction7">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>火神版</string>
-   </property>
-  </action>
-  <action name="serverAction8">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>桃源版</string>
-   </property>
-  </action>
-  <action name="nodeAction1">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>主节点</string>
-   </property>
-  </action>
-  <action name="nodeAction2">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="text">
-    <string>亚洲节点</string>
-   </property>
-  </action>
-  <action name="nodeAction3">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="text">
-    <string>备用节点</string>
-   </property>
-  </action>
  </widget>
  <customwidgets>
   <customwidget>
