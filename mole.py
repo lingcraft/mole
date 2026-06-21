@@ -986,12 +986,12 @@ class UpdateThread(QThread):
         for cdn_prefix in cdn_prefixs:
             url = f"{cdn_prefix}/{version_url}"
             try:
-                response = get(url, timeout=(3, 5))
-                response.raise_for_status()
+                res = get(url, timeout=(3, 5))
+                res.raise_for_status()
             except:
                 continue
             else:
-                version, description = response.json().values()
+                version, description = res.json().values()
                 break
         if len(version) > 0:
             new_version = version.split(".")
