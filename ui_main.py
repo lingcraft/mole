@@ -354,7 +354,7 @@ class Ui_MainWindow(object):
         self.mmgLevelBox.setItemText(30, QCoreApplication.translate("MainWindow", u"碧波深处疯", None))
         self.mmgLevelBox.setItemText(31, QCoreApplication.translate("MainWindow", u"呐奇树洞疯", None))
 
-        self.mmgLevelBox.setCurrentText(QCoreApplication.translate("MainWindow", u"蛮荒小林", None))
+        self.mmgLevelBox.setCurrentText(QCoreApplication.translate("MainWindow", u"呐奇树洞", None))
         self.mmgPVEButton.setText(QCoreApplication.translate("MainWindow", u"一键挑战副本", None))
         self.mmgBossBox.setItemText(0, QCoreApplication.translate("MainWindow", u"萨尔冥王", None))
         self.mmgBossBox.setItemText(1, QCoreApplication.translate("MainWindow", u"呆呆牛头人", None))
