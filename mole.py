@@ -1367,7 +1367,7 @@ def process_recv_packet(socket_num, buff, length):
                             mmg_game_id = packet.body[18:130].hex()
                         if packet.cmd_id == 8212:  # 翻牌成功
                             mmg_times += 1
-                        if packet.cmd_id == 8226 and is_not_running("摩摩怪"):  # 获取师徒ID
+                        if packet.cmd_id == 8226:  # 获取师徒ID
                             mmg_students_dict.clear()
                             students_num = get_int(packet.body, 40)
                             start = 44
@@ -1379,7 +1379,7 @@ def process_recv_packet(socket_num, buff, length):
                             if teacher_num > 0:
                                 teacher_id = get_int(packet.body, 16)
                                 mmg_students_dict[teacher_id] = 200  # 大大
-                        if packet.cmd_id == 8208 and is_not_running("摩摩怪"):  # 获取好友ID
+                        if packet.cmd_id == 8208:  # 获取好友ID
                             mmg_friends_dict.clear()
                             friends_num = get_int(packet.body)
                             start = 4
