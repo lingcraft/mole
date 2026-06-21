@@ -53,7 +53,6 @@ mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
 ysqs_cards_dict, ysqs_material_cards_dict = {}, {}  # 元素可升级卡牌、材料卡牌
-is_upgrade_start = False
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
 # 游戏版本
@@ -547,12 +546,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             global mmg_type, mmg_times
             self.enable_mmg_button(False)
             mmg_type, mmg_times = fight_type, 0
-            send_lines([
-                "0000000000000020200000000000000000" * (fight_type == 1),  # 查询Boss已挑战次数
-                f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
-                "0000000000000020090000000000000000",  # 获取背包信息
-                "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
-            ])
+            send_lines(
+                [
+                    "0000000000000020200000000000000000"  # 查询Boss已挑战次数
+                ] * (fight_type == 1)
+                +
+                [
+                    f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
+                    "0000000000000020090000000000000000",  # 获取背包信息
+                    "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
+                ]
+            )
             if fight_type < 3:
                 run_later(start)
             else:
@@ -675,10 +679,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_run(self):
         hour = datetime.now().hour
+        has_energy = ysqs_energy > 0  # 是否有体力
         can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
-        is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
-        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
+        is_fight_wjsy = has_energy and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
+        is_fight_ssmy = has_energy and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
         remain_times = ysqs_energy // 5  # 当前体力可挑战次数
         fight_times = remain_times
         if can_fight_wjsy:  # 无尽深渊战力达标
@@ -724,19 +729,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "000000000000002331000000000000000000000000",  # 每日任务奖励1
                 "000000000000002331000000000000000000000001"  # 每日任务奖励2
             ] * is_reward
+            +
+            [
+                "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
+            ] * has_energy
         )
 
     def ysqs_upgrade_start(self):
-        global is_upgrade_start
-        is_upgrade_start = True
         send_lines([
             "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
         ])
         run_later(self.ysqs_upgrade_run)
 
     def ysqs_upgrade_run(self):
-        global is_upgrade_start
-        card_data = self.ysqsCardBox.currentData()
+        card_data = ysqs_cards_dict.get(self.ysqsCardBox.currentData())
         ysqs_material_cards_dict.pop(card_data.get("ID"), None)
         required_exp = get_card_max_exp(card_data.get("星级")) - card_data.get("经验")
         # 计算需要的材料卡牌
@@ -761,7 +767,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ids = "".join([get_hex(card_id) for card_id in cards])
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(last_size)}{ids}")
         send_lines(lines)
-        is_upgrade_start = False
+        if lines:
+            send_lines([
+                "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
+            ])
 
 
     def mlcs_start(self):
@@ -1486,10 +1495,17 @@ def process_recv_packet(socket_num, buff, length):
                                     reverse=True
                                 )
                             )
-                            if not is_upgrade_start:
-                                window.ysqsCardBox.clear()
-                                for card_id, card_data in ysqs_cards_dict.items():
-                                    window.ysqsCardBox.addItem(card_data.get("名称"), userData=card_data)
+                            # 更新数据并重新选中之前的卡牌
+                            window.ysqsCardBox.blockSignals(True)
+                            old_card_id = window.ysqsCardBox.currentData()
+                            window.ysqsCardBox.clear()
+                            for card_id, card_data in ysqs_cards_dict.items():
+                                window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
+                            if old_card_id is not None:
+                                index = window.ysqsCardBox.findData(old_card_id)
+                                if index != -1:
+                                    window.ysqsCardBox.setCurrentIndex(index)
+                            window.ysqsCardBox.blockSignals(False)
                         if packet.cmd_id == 1014:  # 餐厅信息
                             ct_cooked_dishes_dict.clear()
                             ct_cooking_dishes_dict.clear()
