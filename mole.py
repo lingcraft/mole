@@ -1490,10 +1490,9 @@ def process_recv_packet(socket_num, buff, length):
                                 card_info = get_card_info(card_type)
                                 card_star = card_info.get("星级")
                                 card_level = get_card_level(card_star, card_exp)
-                                if card_exp < get_card_max_exp(card_star):
-                                    ysqs_cards_dict[card_id] = {
-                                        "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
-                                    }
+                                ysqs_cards_dict[card_id] = {
+                                    "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
+                                }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
                                     ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
@@ -1513,7 +1512,9 @@ def process_recv_packet(socket_num, buff, length):
                             old_card_id = window.ysqsCardBox.currentData()
                             window.ysqsCardBox.clear()
                             for card_id, card_data in ysqs_cards_dict.items():
-                                window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
+                                # 只显示非满级的卡牌
+                                if card_data.get("经验") < get_card_max_exp(card_data.get("星级")):
+                                    window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
                             if old_card_id is not None:
                                 index = window.ysqsCardBox.findData(old_card_id)
                                 if index != -1:
