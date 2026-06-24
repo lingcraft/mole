@@ -2,7 +2,7 @@ from PySide6.QtCore import QTimer, QThread, Signal, QUrl
 from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
 from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
-from struct import pack, unpack_from
+from struct import pack, pack_into, unpack_from
 from threading import Lock
 from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
@@ -1050,7 +1050,7 @@ class Packet:
             packet = bytes.fromhex(packet)
         if len(packet) >= 17:
             self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
-            self.body = memoryview(packet)[17:]
+            self.body = packet[17:]
         else:
             self.length, self.serial_num, self.cmd_id, self.user_id, self.version = 0, 0, 0, 0, 0
             self.body = bytes()
@@ -1063,7 +1063,7 @@ class Packet:
     def parse_data(data: str):
         packet = bytearray.fromhex(data)
         if packet.startswith(b'\x00\x00'):
-            packet[9:13] = pack("!I", user_id)
+            pack_into("!I", packet, 9, user_id)
         return packet
 
     def get_serial_num(self):
@@ -1075,11 +1075,10 @@ class Packet:
             serial_num = 65
         else:
             crc = 0
-            for i in range(len(self.body)):
-                crc ^= self.body[i]
+            for byte in self.body:
+                crc ^= byte
             # 计算发送包序列号
-            serial_num = (serial_num - int(serial_num / 7) + 147 + (
-                    self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
+            serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
         self.serial_num = serial_num
 
     def encrypt(self):
@@ -1175,7 +1174,7 @@ def get_card_level(star, exp):
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
 
 
-def get_int(buff: bytes | memoryview, offset: int = 0, bytes_num: int = 4):
+def get_int(buff: bytes, offset: int = 0, bytes_num: int = 4):
     match bytes_num:
         case 4:
             return unpack_from("!I", buff, offset)[0]
@@ -1193,7 +1192,7 @@ def get_hex(data: int, bytes_num: int = 4):
     return f"{data:0{bytes_num * 2}X}"
 
 
-def get_name(buff: bytes | memoryview, offset: int = 0):
+def get_name(buff: bytes, offset: int = 0):
     return unpack_from("16s", buff, offset)[0].rstrip(b'\x00').decode()
 
 
