@@ -1062,7 +1062,7 @@ class Packet:
     @staticmethod
     def parse_data(data: str):
         packet = bytearray.fromhex(data)
-        if packet.startswith(b'\x00\x00'):
+        if packet.startswith(b"\x00\x00"):
             pack_into("!I", packet, 9, user_id)
         return packet
 
@@ -1193,7 +1193,7 @@ def get_hex(data: int, bytes_num: int = 4):
 
 
 def get_name(buff: bytes, offset: int = 0):
-    return unpack_from("16s", buff, offset)[0].rstrip(b'\x00').decode()
+    return unpack_from("16s", buff, offset)[0].rstrip(b"\x00").decode()
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
@@ -1299,7 +1299,7 @@ def process_send_packet(socket_num, buff, length):
     sock_type = get_remote_info(socket_num)
     cipher = ffi.buffer(buff, length)[:]
     # 摩尔主服务器包
-    if sock_type > 0 and cipher.startswith(b'\x00\x00') and len(cipher) > 17:
+    if sock_type > 0 and cipher.startswith(b"\x00\x00") and len(cipher) > 17:
         packet = Packet(cipher)
         if packet.cmd_id == 201:  # 登录包
             login_socket_num = socket_num
@@ -1315,7 +1315,7 @@ def process_send_packet(socket_num, buff, length):
                 packet.encrypt()
             return send(socket_num, packet.data(), length)
     # 其他包
-    if is_show_send and cipher.startswith((b'\x00\x00', b'\x3C\x70', b'\x3C\x3F')):
+    if is_show_send and cipher.startswith((b"\x00\x00", b"\x3C\x70", b"\x3C\x3F")):
         show_data(Packet(cipher), "S ==>", socket_num)  # 界面添加send数据
     return send(socket_num, cipher, length)
 
@@ -1593,7 +1593,7 @@ def process_recv_packet(socket_num, buff, length):
                 break
     # 其他包
     else:
-        if cipher.startswith(b'\x00\x00'):  # 摩尔包
+        if cipher.startswith(b"\x00\x00"):  # 摩尔包
             while True:
                 if len(recv_buff) >= 4:
                     packet_len = get_int(recv_buff)
@@ -1607,7 +1607,7 @@ def process_recv_packet(socket_num, buff, length):
                         break
                 else:
                     break
-        elif cipher.startswith((b'\x3C\x70', b'\x3C\x3F')):  # 其他包
+        elif cipher.startswith((b"\x3C\x70", b"\x3C\x3F")):  # 其他包
             if is_show_recv:
                 show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
             recv_buff = recv_buff[length:]
