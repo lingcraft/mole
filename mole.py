@@ -22,7 +22,7 @@ from math import floor, sqrt
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
 user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
-recv_buff = bytearray()  # 接收封包的数据缓冲区
+recv_buf = bytearray()  # 接收封包的数据缓冲区
 is_show_send, is_show_recv = True, True  # 显示send包、recv包
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否已显示消息
@@ -1081,8 +1081,9 @@ class Packet:
             serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
         self.serial_num = serial_num
 
-    def encrypt(self):
-        self.get_serial_num()
+    def encrypt(self, is_get_serial_num=True):
+        if is_get_serial_num:
+            self.get_serial_num()
         res = bytearray(len(self.body) + 1)
         key_index = 0
         for index in range(len(self.body)):
@@ -1289,18 +1290,18 @@ def get_remote_info(socket_num: int):
             return 1
 
 
-def send(socket_num: int, buff: bytes, length: int):
-    return hook.Send(socket_num, ffi.from_buffer(buff), length)
+def send(socket_num, buf, length):
+    return hook.Send(socket_num, ffi.from_buffer(buf), length)
 
 
 @ffi.callback("int(ULONG64, PCHAR, INT)")
-def process_send_packet(socket_num, buff, length):
+def process_send_packet(socket_num, buf, length):
     global login_socket_num, login_ip, login_port, user_id, can_get_lamu_info
     sock_type = get_remote_info(socket_num)
-    cipher = ffi.buffer(buff, length)[:]
+    raw_buf = ffi.buffer(buf, length)
     # 摩尔主服务器包
-    if sock_type > 0 and cipher.startswith(b"\x00\x00") and len(cipher) > 17:
-        packet = Packet(cipher)
+    if sock_type > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
+        packet = Packet(raw_buf)
         if packet.cmd_id == 201:  # 登录包
             login_socket_num = socket_num
             login_ip, login_port = get_ip_port(socket_num)
@@ -1315,29 +1316,28 @@ def process_send_packet(socket_num, buff, length):
                 packet.encrypt()
             return send(socket_num, packet.data(), length)
     # 其他包
-    if is_show_send and cipher.startswith((b"\x00\x00", b"\x3C\x70", b"\x3C\x3F")):
-        show_data(Packet(cipher), "S ==>", socket_num)  # 界面添加send数据
-    return send(socket_num, cipher, length)
+    if is_show_send and raw_buf[:2] in (b"\x00\x00", b"\x3C\x70", b"\x3C\x3F"):
+        show_data(Packet(raw_buf), "S ==>", socket_num)  # 界面添加send数据
+    return send(socket_num, raw_buf, length)
 
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
-def process_recv_packet(socket_num, buff, length):
-    global recv_buff, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
+def process_recv_packet(socket_num, buf, length):
+    global recv_buf, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
         ysqs_material_cards_dict
-    cipher = ffi.buffer(buff, length)[:]
-    recv_buff.extend(cipher)
+    raw_buf = ffi.buffer(buf, length)
+    recv_buf.extend(raw_buf)
     # 摩尔主服务器包
     if socket_num == login_socket_num:
         while True:
-            if len(recv_buff) >= 4:
-                packet_len = get_int(recv_buff)
-                if packet_len <= len(recv_buff):
+            if len(recv_buf) >= 4:
+                packet_len = get_int(recv_buf)
+                if len(recv_buf) >= packet_len:
                     # 不是断包
-                    cipher = recv_buff[:packet_len]
-                    recv_buff = recv_buff[packet_len:]
+                    cipher = recv_buf[:packet_len]
                     packet = Packet(cipher)
                     packet.decrypt()
                     if is_show_recv:
@@ -1588,30 +1588,32 @@ def process_recv_packet(socket_num, buff, length):
                                 is_last_skill_success = False
                             else:
                                 is_max_skill_success = False
+                    # 处理后面的包
+                    recv_buf = recv_buf[packet_len:]
                 else:
                     break
             else:
                 break
     # 其他包
     else:
-        if cipher.startswith(b"\x00\x00"):  # 摩尔包
+        if raw_buf[:2] == b"\x00\x00":  # 摩尔包
             while True:
-                if len(recv_buff) >= 4:
-                    packet_len = get_int(recv_buff)
-                    if packet_len <= len(recv_buff):
+                if len(recv_buf) >= 4:
+                    packet_len = get_int(recv_buf)
+                    if len(recv_buf) >= packet_len:
                         # 不是断包
-                        cipher = recv_buff[:packet_len]
+                        cipher = recv_buf[:packet_len]
                         if is_show_recv:
                             show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
-                        recv_buff = recv_buff[packet_len:]
+                        recv_buf = recv_buf[packet_len:]
                     else:
                         break
                 else:
                     break
-        elif cipher.startswith((b"\x3C\x70", b"\x3C\x3F")):  # 其他包
+        elif raw_buf[:2] in (b"\x3C\x70", b"\x3C\x3F"):  # 其他包
             if is_show_recv:
-                show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
-            recv_buff = recv_buff[length:]
+                show_data(Packet(raw_buf), "R <==", socket_num)  # 界面添加recv数据
+            recv_buf = recv_buf[length:]
 
 
 if __name__ == '__main__':
