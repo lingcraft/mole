@@ -23,7 +23,7 @@ secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
 user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
-is_show_send, is_show_recv = True, True  # 显示send包、recv包
+is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包、recv包、写回recv包
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否已显示消息
 # 拉姆
@@ -1189,6 +1189,20 @@ def get_int(buff: bytes, offset: int = 0, bytes_num: int = 4):
             return unpack_from("!I", buff, offset)[0]
 
 
+def set_int(buff: bytes, value: int, offset: int = 0, bytes_num: int = 4):
+    match bytes_num:
+        case 4:
+            pack_into("!I", buff, offset, value)
+        case 2:
+            pack_into("!H", buff, offset, value)
+        case 1:
+            pack_into("!B", buff, offset, value)
+        case 8:
+            pack_into("!Q", buff, offset, value)
+        case _:
+            pack_into("!I", buff, offset, value)
+
+
 def get_hex(data: int, bytes_num: int = 4):
     return f"{data:0{bytes_num * 2}X}"
 
@@ -1330,6 +1344,7 @@ def process_recv_packet(socket_num, buf, length):
         ysqs_material_cards_dict
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
+    buf_index = 0
     # 摩尔主服务器包
     if socket_num == login_socket_num:
         while True:
@@ -1589,7 +1604,10 @@ def process_recv_packet(socket_num, buf, length):
                             else:
                                 is_max_skill_success = False
                     # 处理后面的包
+                    if is_write_recv:
+                        raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
                     recv_buf = recv_buf[packet_len:]
+                    buf_index += packet_len
                 else:
                     break
             else:
