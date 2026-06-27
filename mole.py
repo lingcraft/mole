@@ -401,7 +401,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_result(self, res, msg, version):
         match res:
             case 1:
-                info(self,"提示", msg)
+                info(self, "提示", msg)
             case 2:
                 button = info(self, "提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
                 if button == QMessageBox.StandardButton.Ok:
@@ -474,9 +474,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for key, value in lamu_pick_result_dict.items():
                 text += f"{key}：{value}，"
             text = text[:-1]
-            self.info("一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
+            info(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
         else:
-            self.info("一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
+            info(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
 
     def lamu_start(self):
         global lamu_times, is_max_skill_success, is_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
@@ -579,7 +579,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 run_later(start)
             else:
                 if len(mmg_friends) == 0:
-                    self.info("提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
+                    info(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
                 self.timer("好友查询").start()
 
     def mmg_run(self):
@@ -909,7 +909,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ct_harvest_run(self):
         if len(ct_cooking_dishes_dict) == 0:
             self.ctHarvestButton.setText("自动收菜")
-            self.info("提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
+            info(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
         need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
         interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
