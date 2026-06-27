@@ -784,11 +784,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cards = material_ids[-last_size:]
             ids = "".join([get_hex(card_id) for card_id in cards])
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(last_size)}{ids}")
-        send_lines(lines)
         if lines:
-            send_lines([
-                "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
-            ])
+            lines.append("00000000000000231E000000000000000000000000")  # 获取元素骑士信息
+        send_lines(lines)
 
     def ysqs_advance_start(self):
         self.advance_dialog.set_card_id(self.ysqsCardBox.currentData())
@@ -796,7 +794,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_equip_cards(self):
         send_lines([
-            f"00000000000000231F0000000000000000{get_hex(card_id)}00000000" for card_id in ysqs_equipped_cards  # 装备卡牌
+            *[f"00000000000000231F0000000000000000{get_hex(card_id)}00000000" for card_id in ysqs_equipped_cards],  # 装备卡牌
+            "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
         ])
 
     def mlcs_start(self):
@@ -1011,8 +1010,8 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
         self.target_card_name = self.listWidget.currentItem().text()
         self.accept()
         send_lines([
-            *[f"00000000000000231F000000000000000000000000{get_hex(card_id)}" for card_id in ysqs_equipped_cards],  # 卸载已装备卡牌
-            f"00000000000000231C0000000000000000{get_hex(self.card_id)}{get_hex(get_card_type(self.target_card_name))}"
+            *[f"00000000000000231F000000000000000000000000{get_hex(card_id)}" for card_id in ysqs_equipped_cards],  # 卸载卡牌
+            f"00000000000000231C0000000000000000{get_hex(self.card_id)}{get_hex(get_card_type(self.target_card_name))}"  # 进阶卡牌
         ])
 
 
@@ -1604,7 +1603,7 @@ def process_recv_packet(socket_num, buf, length):
                                 if index != -1:
                                     window.ysqsCardBox.setCurrentIndex(index)
                             window.ysqsCardBox.blockSignals(False)
-                        if packet.cmd_id == 8988 and can_get_advance_result: # 元素骑士进阶信息
+                        if packet.cmd_id == 8988 and can_get_advance_result:  # 元素骑士进阶信息
                             can_get_advance_result = False
                             window.ysqs_equip_cards()
                             card_name = window.advance_dialog.card_name
