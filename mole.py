@@ -1,7 +1,8 @@
-from PySide6.QtCore import QTimer, QThread, Signal, QUrl
-from PySide6.QtWidgets import QApplication, QHeaderView, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow
+from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt
+from PySide6.QtWidgets import QApplication, QHeaderView, QListWidgetItem, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow, QDialog
 from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
+from ui_advance import Ui_AdvanceDialog
 from struct import pack, pack_into, unpack_from
 from threading import Lock
 from cffi import FFI
@@ -17,6 +18,7 @@ from json import load
 from requests import get
 from bisect import bisect_right
 from math import floor, sqrt
+from pypinyin import lazy_pinyin, Style
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -25,9 +27,9 @@ user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包、recv包、写回recv包
 lock = Lock()  # 发送锁
-is_show_msg = False  # 是否已显示消息
+is_show_msg = False  # 是否显示过消息
 # 拉姆
-can_get_lamu_info = True  # 是否获取拉姆信息
+can_get_lamu_info = True  # 能否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
 lamu_thresholds = [40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700]  # 拉姆变身值阈值
 lamu_skill_types = ["火", "水", "木"]  # 拉姆技能类型
@@ -52,7 +54,8 @@ mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞
 mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
-ysqs_cards_dict, ysqs_material_cards_dict = {}, {}  # 元素可升级卡牌、材料卡牌
+ysqs_cards_dict, ysqs_material_cards_dict, ysqs_equipped_cards = {}, {}, []  # 元素可升级卡牌、材料卡牌、已装备卡牌
+can_get_advance_result = False  # 能否获取进阶结果
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
 # 游戏版本
@@ -153,7 +156,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 线程初始化
         self.send_thread = SendThread()
         self.send_ex_thread = SendExThread()
-        self.update_thread = UpdateThread(self.update_result)
+        self.update_thread = UpdateThread()
+        self.update_thread.result.connect(self.update_result)
+        self.advance_dialog = AdvanceDialog()
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
         self.sendClearButton.clicked.connect(self.send_clear)
@@ -163,6 +168,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.clearButton.clicked.connect(self.clear_table)
         self.ysqsFightButton.clicked.connect(self.ysqs_start)
         self.ysqsUpgradeButton.clicked.connect(self.ysqs_upgrade_start)
+        self.ysqsAdvanceButton.clicked.connect(self.ysqs_advance_start)
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
         # 多次运行功能
@@ -329,8 +335,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def enable_ysqs_button(self, enable):
         self.ysqsFightButton.setEnabled(enable)
-        self.ysqsLevelBox.setEnabled(enable)
         self.ysqsUpgradeButton.setEnabled(enable)
+        self.ysqsAdvanceButton.setEnabled(enable)
+        self.ysqsLevelBox.setEnabled(enable)
         self.ysqsCardBox.setEnabled(enable)
 
     def enable_mlcs_button(self, enable):
@@ -387,9 +394,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 button.setText(text)
                 timer.stop()
 
-    def info(self, title, msg, buttons=QMessageBox.StandardButton.Ok):
-        return QMessageBox.information(self, title, msg, buttons)
-
     def check_update(self):
         if not self.update_thread.isRunning():
             self.update_thread.start()
@@ -397,13 +401,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def update_result(self, res, msg, version):
         match res:
             case 1:
-                self.info("提示", msg)
+                info(self,"提示", msg)
             case 2:
-                button = self.info("提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+                button = info(self, "提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
                 if button == QMessageBox.StandardButton.Ok:
                     QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
             case 3:
-                QMessageBox.warning(self, "错误", msg)
+                warn(self, "错误", msg)
 
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
@@ -786,6 +790,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
             ])
 
+    def ysqs_advance_start(self):
+        self.advance_dialog.set_card_id(self.ysqsCardBox.currentData())
+        self.advance_dialog.exec()
+
+    def ysqs_equip_cards(self):
+        send_lines([
+            f"00000000000000231F0000000000000000{get_hex(card_id)}00000000" for card_id in ysqs_equipped_cards  # 装备卡牌
+        ])
 
     def mlcs_start(self):
         send_lines([
@@ -912,8 +924,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
             else:  # 已糊的菜
                 send_lines([
-                    f"0000000000000003FB0000000000000000{get_hex(dish_info.get("种类"))}{get_hex(dish_info.get("ID"))}{get_hex(dish_pos)}",  # 处理糊菜
-                    f"0000000000000003F90000000000000000{get_hex(dish_info.get("种类"))}{get_hex(dish_pos)}"  # 做菜
+                    f"0000000000000003FB0000000000000000{get_hex(dish_info.get("类型"))}{get_hex(dish_info.get("ID"))}{get_hex(dish_pos)}",  # 处理糊菜
+                    f"0000000000000003F90000000000000000{get_hex(dish_info.get("类型"))}{get_hex(dish_pos)}"  # 做菜
                 ])
                 timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, interval * 1000).start()
 
@@ -923,13 +935,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         now = datetime.now()
         if not dish_info.get("跳过收菜"):
             send_lines([
-                f"0000000000000003FD0000000000000000{get_hex(cooked_info.get("种类"))}{get_hex(dish_info.get("ID"))}{get_hex(pos)}{get_hex(cooked_info.get("位置"))}"  # 收菜
+                f"0000000000000003FD0000000000000000{get_hex(cooked_info.get("类型"))}{get_hex(dish_info.get("ID"))}{get_hex(pos)}{get_hex(cooked_info.get("位置"))}"  # 收菜
             ])
         else:
             dish_info["跳过收菜"] = False
         if now.hour >= 6:
             send_lines([
-                f"0000000000000003F90000000000000000{get_hex(dish_info.get("种类"))}{get_hex(pos)}"  # 做菜
+                f"0000000000000003F90000000000000000{get_hex(dish_info.get("类型"))}{get_hex(pos)}"  # 做菜
             ])
         else:
             dish_info["跳过收菜"] = True
@@ -957,6 +969,53 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
 
+class AdvanceDialog(QDialog, Ui_AdvanceDialog):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+        for key in card_advance_dict.keys():
+            item = QListWidgetItem(key)
+            item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.listWidget.addItem(item)
+        self.lineEdit.textChanged.connect(self.on_filter)
+        self.pushButton.clicked.connect(self.advance)
+
+    def on_filter(self, text: str):
+        for i in range(self.listWidget.count()):
+            item = self.listWidget.item(i)
+            item_text = item.text()
+            # 部分匹配
+            if text in item_text:
+                item.setHidden(False)
+                continue
+            # 全拼匹配
+            full_pinyin = "".join(lazy_pinyin(item_text, style=Style.NORMAL))
+            if text in full_pinyin:
+                item.setHidden(False)
+                continue
+            # 首字母匹配
+            first_letters = "".join(lazy_pinyin(item_text, style=Style.FIRST_LETTER))
+            if text in first_letters:
+                item.setHidden(False)
+                continue
+            item.setHidden(True)
+
+    def set_card_id(self, card_id: int):
+        self.card_id = card_id
+        self.card_name = ysqs_cards_dict.get(card_id).get("名称")
+        self.lineEdit.clear()
+
+    def advance(self):
+        global can_get_advance_result
+        can_get_advance_result = True
+        self.target_card_name = self.listWidget.currentItem().text()
+        self.accept()
+        send_lines([
+            *[f"00000000000000231F000000000000000000000000{get_hex(card_id)}" for card_id in ysqs_equipped_cards],  # 卸载已装备卡牌
+            f"00000000000000231C0000000000000000{get_hex(self.card_id)}{get_hex(get_card_type(self.target_card_name))}"
+        ])
+
+
 class SendThread(QThread):
     def set_data(self, lines: list, interval: int):
         self.lines = lines
@@ -977,9 +1036,8 @@ class SendExThread(SendThread):
 class UpdateThread(QThread):
     result = Signal(int, str, str)
 
-    def __init__(self, func):
+    def __init__(self):
         super().__init__()
-        self.result.connect(func)
 
     def run(self):
         version, description = "", ""
@@ -1124,6 +1182,14 @@ def show_data(packet: Packet, data_type: str, socket_num: int = None):
     else:
         if "window" in globals():
             is_window_defined = True
+
+
+def info(parent, title: str, msg: str, buttons=QMessageBox.StandardButton.Ok):
+    return QMessageBox.information(parent, title, msg, buttons)
+
+
+def warn(parent, title: str, msg: str, buttons=QMessageBox.StandardButton.Ok):
+    return QMessageBox.warning(parent, title, msg, buttons)
 
 
 def run_later(func, delay: int = 350):
@@ -1341,7 +1407,7 @@ def process_recv_packet(socket_num, buf, length):
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
-        ysqs_material_cards_dict
+        ysqs_material_cards_dict, can_get_advance_result
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
     buf_index = 0
@@ -1488,9 +1554,10 @@ def process_recv_packet(socket_num, buf, length):
                                 mlcs_arena_times = remain_times + purchase_times
                             elif info_type == 1:  # 经验之路信息
                                 mlcs_exp_times = 3 - get_int(packet.body, 4)  # 剩余挑战次数
-                        if packet.cmd_id == 8990:  # 元素骑士信息
+                        if packet.cmd_id == 8990 and get_int(packet.body) == 0:  # 元素骑士信息
                             ysqs_cards_dict.clear()
                             ysqs_material_cards_dict.clear()
+                            ysqs_equipped_cards.clear()
                             ysqs_energy = get_int(packet.body, 28)
                             ysqs_attack = get_int(packet.body, 44)
                             ysqs_max_floor = get_int(packet.body, 68)
@@ -1501,23 +1568,25 @@ def process_recv_packet(socket_num, buf, length):
                                 card_id = get_int(packet.body, start + page * size)  # 卡牌ID
                                 card_type = get_int(packet.body, start + page * size + 4)  # 卡牌类型
                                 card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
-                                card_state = get_int(packet.body, start + page * size + 12) > 0  # 卡牌出战状态
+                                card_state = get_int(packet.body, start + page * size + 12)  # 卡牌出战状态
                                 card_info = get_card_info(card_type)
                                 card_star = card_info.get("星级")
                                 card_level = get_card_level(card_star, card_exp)
                                 ysqs_cards_dict[card_id] = {
-                                    "ID": card_id, "种类": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
+                                    "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
                                 }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
                                     ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
+                                if card_state > 0: # 已出战卡牌
+                                    ysqs_equipped_cards.append(card_id)
                             ysqs_cards_dict = dict(
                                 sorted(
                                     ysqs_cards_dict.items(),
-                                    key=lambda x: (
-                                        x[1].get("星级"),
-                                        x[1].get("种类"),
-                                        x[1].get("经验")
+                                    key=lambda item: (
+                                        item[1].get("星级"),
+                                        item[1].get("类型"),
+                                        item[1].get("经验")
                                     ),
                                     reverse=True
                                 )
@@ -1535,6 +1604,15 @@ def process_recv_packet(socket_num, buf, length):
                                 if index != -1:
                                     window.ysqsCardBox.setCurrentIndex(index)
                             window.ysqsCardBox.blockSignals(False)
+                        if packet.cmd_id == 8988 and can_get_advance_result: # 元素骑士进阶信息
+                            can_get_advance_result = False
+                            window.ysqs_equip_cards()
+                            card_name = window.advance_dialog.card_name
+                            target_card_name = window.advance_dialog.target_card_name
+                            if get_int(packet.body) == 0:  # 进阶成功
+                                info(window, "成功", f"进阶成功，已将 {card_name} 作为 {target_card_name} 进阶到下一星级")
+                            else:  # 进阶失败
+                                info(window, "失败", f"进阶失败，{target_card_name} 进阶所需材料卡牌不足")
                         if packet.cmd_id == 1014:  # 餐厅信息
                             ct_cooked_dishes_dict.clear()
                             ct_cooking_dishes_dict.clear()
@@ -1551,17 +1629,17 @@ def process_recv_packet(socket_num, buf, length):
                                 dish_info = get_dish_info(dish_type)
                                 if dish_step == 6:  # 已熟菜信息
                                     ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
+                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
                                     }
                                 elif dish_step == 3 and dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:  # 正在做的菜信息
                                     ct_cooking_dishes_dict[dish_pos] = {
-                                        "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
+                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
                                     }
                                 elif dish_step < 3:
                                     window.ct_cook_after(dish_id, dish_type, dish_step, True)
                                     if dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:
                                         ct_cooking_dishes_dict[dish_pos] = {
-                                            "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
+                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
                                         }
                             window.ctDishBox.clear()
                             window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
@@ -1575,7 +1653,7 @@ def process_recv_packet(socket_num, buf, length):
                                 window.ct_cook_after(dish_id, dish_type, dish_step)
                             elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
                                 ct_cooking_dishes_dict[dish_pos] = {
-                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
+                                    "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
                                 }
                         if packet.cmd_id == 1021:  # 餐厅收菜信息
                             dish_type = get_int(packet.body)
@@ -1584,7 +1662,7 @@ def process_recv_packet(socket_num, buf, length):
                             dish_info = get_dish_info(dish_type)
                             if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
                                 ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                    "ID": dish_id, "种类": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
+                                    "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
                                 }
                                 window.ctDishBox.addItem(dish_info.get("名称"))
                                 window.enable_ct_button(True)
@@ -1592,11 +1670,11 @@ def process_recv_packet(socket_num, buf, length):
                             item_id = get_int(packet.body)
                             if item_id == 0x31CE:  # 火龙珠
                                 window.stop_task("缤纷七彩宝盒")
-                                window.info("缤纷七彩宝盒", "恭喜你获得火龙珠")
+                                info(window, "缤纷七彩宝盒", "恭喜你获得火龙珠")
                             elif item_id == 0 and not is_show_msg:
                                 is_show_msg = True
                                 window.stop_task("缤纷七彩宝盒")
-                                window.info("缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
+                                info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
