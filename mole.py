@@ -1240,40 +1240,40 @@ def get_card_level(star, exp):
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
 
 
-def get_int(buff: bytes, offset: int = 0, bytes_num: int = 4):
+def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):
     match bytes_num:
         case 4:
-            return unpack_from("!I", buff, offset)[0]
+            return unpack_from("!I", buf, offset)[0]
         case 2:
-            return unpack_from("!H", buff, offset)[0]
+            return unpack_from("!H", buf, offset)[0]
         case 1:
-            return unpack_from("!B", buff, offset)[0]
+            return unpack_from("!B", buf, offset)[0]
         case 8:
-            return unpack_from("!Q", buff, offset)[0]
+            return unpack_from("!Q", buf, offset)[0]
         case _:
-            return unpack_from("!I", buff, offset)[0]
+            return unpack_from("!I", buf, offset)[0]
 
 
-def set_int(buff: bytes, value: int, offset: int = 0, bytes_num: int = 4):
+def set_int(buf: bytes, value: int, offset: int = 0, bytes_num: int = 4):
     match bytes_num:
         case 4:
-            pack_into("!I", buff, offset, value)
+            pack_into("!I", buf, offset, value)
         case 2:
-            pack_into("!H", buff, offset, value)
+            pack_into("!H", buf, offset, value)
         case 1:
-            pack_into("!B", buff, offset, value)
+            pack_into("!B", buf, offset, value)
         case 8:
-            pack_into("!Q", buff, offset, value)
+            pack_into("!Q", buf, offset, value)
         case _:
-            pack_into("!I", buff, offset, value)
+            pack_into("!I", buf, offset, value)
 
 
 def get_hex(data: int, bytes_num: int = 4):
     return f"{data:0{bytes_num * 2}X}"
 
 
-def get_name(buff: bytes, offset: int = 0):
-    return unpack_from("16s", buff, offset)[0].rstrip(b"\x00").decode()
+def get_name(buf: bytes, offset: int = 0):
+    return unpack_from("16s", buf, offset)[0].rstrip(b"\x00").decode()
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
