@@ -1370,10 +1370,10 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
     need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
         s.connect(address)
-        for data in lines:
+        for index, data in enumerate(lines):
             s.send(Packet.parse_data(data))
             if need_wait_recv:
-                for _ in range(wait_recv_nums.pop(0)):
+                for _ in range(wait_recv_nums[index]):
                     packet = Packet(s.recv(17))
                     if packet.version != 0:
                         return False
