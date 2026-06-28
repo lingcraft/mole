@@ -114,6 +114,8 @@ class Button(IntFlag):
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+    signal = Signal(str, int, int, str, str)
+
     def __init__(self):
         super().__init__()
         # 界面基础设置
@@ -169,6 +171,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_thread = UpdateThread()
         self.update_thread.result.connect(self.update_result)
         self.advance_dialog = AdvanceDialog()
+        self.signal.connect(self.add_data)
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
         self.sendClearButton.clicked.connect(self.send_clear)
@@ -224,19 +227,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def url(self):
         return f"{server_dict.get(self.server, "").replace("$node", node_dict.get(self.node, ""))}/Client.swf"
-
-    def init_table_size(self):
-        self.row_len = 2  # 行数位数
-        self.column_width = 224  # 封包数据列宽
-        self.tableWidget.clearContents()  # 清空内容
-        self.tableWidget.setRowCount(11)
-        self.tableWidget.setColumnCount(5)
-        self.tableWidget.setColumnWidth(0, 45)
-        self.tableWidget.setColumnWidth(1, 45)
-        self.tableWidget.setColumnWidth(2, 45)
-        self.tableWidget.setColumnWidth(3, 100)
-        self.tableWidget.setColumnWidth(4, self.column_width)
-        self.tableWidget.scrollToTop()  # 拖动到顶部
 
     def change_show_send(self, state):
         global is_show_send
@@ -306,6 +296,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.tableWidget.setColumnWidth(4, self.column_width)
         if packet_index >= self.tableWidget.rowCount():
             self.tableWidget.setRowCount(packet_index + 1)
+        self.tableWidget.blockSignals(True)
         self.tableWidget.setItem(packet_index, 0, QTableWidgetItem(data_type))
         self.tableWidget.setItem(packet_index, 1, QTableWidgetItem(str(socket_num)))
         self.tableWidget.setItem(packet_index, 2, QTableWidgetItem(str(cmd_id)))
@@ -321,9 +312,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.item(packet_index, 2).setToolTip(str(cmd_id))
         self.tableWidget.item(packet_index, 3).setToolTip(cmd_analyse)
         self.tableWidget.item(packet_index, 4).setToolTip(data)
+        self.tableWidget.blockSignals(False)
         if packet_index >= 10:  # 已有10条数据后拖动到底部
             self.tableWidget.scrollToBottom()
         packet_index += 1  # 下一条要插入数据的索引
+
+    def init_table_size(self):
+        self.row_len = 2  # 行数位数
+        self.column_width = 224  # 封包数据列宽
+        self.tableWidget.clearContents()  # 清空内容
+        self.tableWidget.setRowCount(11)
+        self.tableWidget.setColumnCount(5)
+        self.tableWidget.setColumnWidth(0, 45)
+        self.tableWidget.setColumnWidth(1, 45)
+        self.tableWidget.setColumnWidth(2, 45)
+        self.tableWidget.setColumnWidth(3, 100)
+        self.tableWidget.setColumnWidth(4, self.column_width)
+        self.tableWidget.scrollToTop()  # 拖动到顶部
 
     def clear_table(self):
         global packet_index
@@ -1231,7 +1236,10 @@ def show_data(packet: Packet, data_type: str, socket_num: int = None):
     if is_window_defined:
         if socket_num is None:
             socket_num = login_socket_num
-        window.add_data(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
+        if QThread.currentThread() is QApplication.instance().thread():
+            window.add_data(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
+        else:
+            window.signal.emit(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
     else:
         if "window" in globals():
             is_window_defined = True
