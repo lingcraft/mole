@@ -1,6 +1,6 @@
 $version = (Get-Content -Path "version.json" -Raw | ConvertFrom-Json).version
-Write-Output "Yes" | nuitka mole.py `
---standalone --jobs=8 --lto=yes --remove-output --windows-console-mode=disable --windows-icon-from-ico=icon.ico --enable-plugin=pyside6 `
+Write-Output "Yes" | nuitka mole.py --standalone --jobs=8 --lto=yes --remove-output `
+--windows-console-mode=disable --windows-icon-from-ico=icon.ico --enable-plugin=pyside6 `
 --copyright="Copyright (C) 2025 lingcraft. All Rights Reserved" `
 --file-description=摩尔抓包工具 `
 --product-name=摩尔抓包工具 `
