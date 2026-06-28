@@ -8,6 +8,7 @@ Write-Output "Yes" | nuitka mole.py `
 --include-data-files=github.ico=github.ico `
 --include-data-files=Flash.ocx=Flash.ocx `
 --include-data-files=manifest=manifest `
+--include-data-files=zh_CN.qm=zh_CN.qm `
 --file-description=摩尔抓包工具 `
 --product-name=摩尔抓包工具 `
 --copyright="Copyright (C) 2025 lingcraft. All Rights Reserved" `

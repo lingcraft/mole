@@ -1,4 +1,4 @@
-from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt
+from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt, QTranslator
 from PySide6.QtWidgets import QApplication, QHeaderView, QListWidgetItem, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow, QDialog
 from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
@@ -7,10 +7,12 @@ from struct import pack, pack_into, unpack_from
 from threading import Lock
 from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
+from collections import Counter
+from copy import deepcopy
 from dict import *
 from datetime import datetime
 from time import sleep
-from enum import IntEnum
+from enum import IntEnum, IntFlag
 from configparser import ConfigParser
 from os import getenv
 from pathlib import Path
@@ -54,8 +56,7 @@ mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞
 mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
-ysqs_cards_dict, ysqs_material_cards_dict, ysqs_equipped_cards = {}, {}, []  # 元素可升级卡牌、材料卡牌、已装备卡牌
-can_get_advance_result = False  # 能否获取进阶结果
+ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
 # 游戏版本
@@ -94,6 +95,7 @@ void SetRecvCallBack(RecvCallBack);
 int WINAPI Send(ULONG64, PCHAR, INT);
 void LoadFlash();
 """)
+# 路径
 config = Path(getenv("appdata")) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
 log = base_dir / "hook.log"
@@ -103,6 +105,12 @@ is_window_defined = False
 class Interval(IntEnum):
     NONE = 0  # 无延迟模式，前台发送，防止界面阻塞
     NORMAL = 25  # 正常模式，后台发送，适用于元素骑士、魔灵传说等需要一定间隔发送的游戏
+
+
+class Button(IntFlag):
+    OK = QMessageBox.StandardButton.Ok
+    CANCEL = QMessageBox.StandardButton.Cancel
+    OK_CANCEL = OK | CANCEL
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
@@ -403,8 +411,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             case 1:
                 info(self, "提示", msg)
             case 2:
-                button = info(self, "提示", msg, QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
-                if button == QMessageBox.StandardButton.Ok:
+                if info(self, "提示", msg, Button.OK_CANCEL) == Button.OK:
                     QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
             case 3:
                 warn(self, "错误", msg)
@@ -792,12 +799,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.advance_dialog.set_card_id(self.ysqsCardBox.currentData())
         self.advance_dialog.exec()
 
-    def ysqs_equip_cards(self):
-        send_lines([
-            *[f"00000000000000231F0000000000000000{get_hex(card_id)}00000000" for card_id in ysqs_equipped_cards],  # 装备卡牌
-            "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
-        ])
-
     def mlcs_start(self):
         send_lines([
             "000000000000002B20000000000000000000000001",  # 膜拜等级排行
@@ -1005,14 +1006,49 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
         self.lineEdit.clear()
 
     def advance(self):
-        global can_get_advance_result
-        can_get_advance_result = True
-        self.target_card_name = self.listWidget.currentItem().text()
-        self.accept()
-        send_lines([
-            *[f"00000000000000231F000000000000000000000000{get_hex(card_id)}" for card_id in ysqs_equipped_cards],  # 卸载卡牌
-            f"00000000000000231C0000000000000000{get_hex(self.card_id)}{get_hex(get_card_type(self.target_card_name))}"  # 进阶卡牌
-        ])
+        card_name = self.listWidget.currentItem().text()
+        self.target_card_name = f"{card_name} Lv.1"
+        card_info = get_card_info(get_card_type(card_name))
+        need_card_types = card_info.get("进阶材料")
+        card_type = card_info.get("上一星级")
+        owned_cards_dict = deepcopy(ysqs_max_level_cards_dict)
+        unequip_cards = []
+        consume_cards = []
+        can_advance = True
+        for need_card_type in need_card_types:
+            if need_card_type in owned_cards_dict:
+                owned_cards = owned_cards_dict.get(need_card_type)
+                card_data = owned_cards.pop(0)
+                if card_data.get("已装备"):
+                    unequip_cards.append(card_data.get("ID"))
+                consume_cards.append(card_data.get("名称"))
+                if not owned_cards:
+                    owned_cards_dict.pop(need_card_type)
+            else:
+                can_advance = False
+                break
+        if can_advance:
+            consume_count = Counter(consume_cards)
+            consume_text = "\n".join(
+                f"{card_name} 共计 {consume_count[card_name]} 张"
+                for card_name in consume_count
+            )
+            if info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 将消耗：\n{consume_text}", Button.OK_CANCEL) == Button.OK:
+                self.accept()
+                send_lines([
+                    *[f"00000000000000231F000000000000000000000000{get_hex(card_id)}" for card_id in unequip_cards],  # 卸载卡牌
+                    f"00000000000000231C0000000000000000{get_hex(self.card_id)}{get_hex(card_type)}",  # 进阶卡牌
+                    "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
+                ])
+                info(window, "成功", f"{self.card_name} 进阶到 {self.target_card_name} 成功")
+        else:
+            need_count = Counter(need_card_types)
+            owned_count = {card_type: len(ysqs_max_level_cards_dict.get(card_type, [])) for card_type in need_count}
+            need_text = "\n".join(
+                f"{get_card_info(card_type).get("名称")} Lv.{get_card_max_level(get_card_info(card_type).get("星级"))} 需要 {need_count[card_type]} 张，拥有 {owned_count[card_type]} 张"
+                for card_type in need_count
+            )
+            info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 材料不足：\n{need_text}")
 
 
 class SendThread(QThread):
@@ -1183,12 +1219,12 @@ def show_data(packet: Packet, data_type: str, socket_num: int = None):
             is_window_defined = True
 
 
-def info(parent, title: str, msg: str, buttons=QMessageBox.StandardButton.Ok):
-    return QMessageBox.information(parent, title, msg, buttons)
+def info(parent, title: str, msg: str, buttons: int = Button.OK):
+    return QMessageBox.information(parent, title, msg, QMessageBox.StandardButton(buttons))
 
 
-def warn(parent, title: str, msg: str, buttons=QMessageBox.StandardButton.Ok):
-    return QMessageBox.warning(parent, title, msg, buttons)
+def warn(parent, title: str, msg: str, buttons: int = Button.OK):
+    return QMessageBox.warning(parent, title, msg, QMessageBox.StandardButton(buttons))
 
 
 def run_later(func, delay: int = 350):
@@ -1226,6 +1262,12 @@ def get_card_max_exp(star):
     # n星卡牌经验上限
     star = min(star, 6)
     return 120 * star ** 2 + 28 * star - 4
+
+
+def get_card_max_level(star):
+    # n星卡牌等级上限
+    star = min(star, 6)
+    return 10 * star
 
 
 def get_card_provided_exp(star):
@@ -1406,7 +1448,7 @@ def process_recv_packet(socket_num, buf, length):
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
-        ysqs_material_cards_dict, can_get_advance_result
+        ysqs_material_cards_dict
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
     buf_index = 0
@@ -1556,7 +1598,6 @@ def process_recv_packet(socket_num, buf, length):
                         if packet.cmd_id == 8990 and get_int(packet.body) == 0:  # 元素骑士信息
                             ysqs_cards_dict.clear()
                             ysqs_material_cards_dict.clear()
-                            ysqs_equipped_cards.clear()
                             ysqs_energy = get_int(packet.body, 28)
                             ysqs_attack = get_int(packet.body, 44)
                             ysqs_max_floor = get_int(packet.body, 68)
@@ -1567,18 +1608,16 @@ def process_recv_packet(socket_num, buf, length):
                                 card_id = get_int(packet.body, start + page * size)  # 卡牌ID
                                 card_type = get_int(packet.body, start + page * size + 4)  # 卡牌类型
                                 card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
-                                card_state = get_int(packet.body, start + page * size + 12)  # 卡牌出战状态
+                                card_is_equip = get_int(packet.body, start + page * size + 12) > 0  # 卡牌是否已装备
                                 card_info = get_card_info(card_type)
                                 card_star = card_info.get("星级")
                                 card_level = get_card_level(card_star, card_exp)
                                 ysqs_cards_dict[card_id] = {
-                                    "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp
+                                    "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp, "已装备": card_is_equip
                                 }
                                 # 6星以下且不是奥丁、洛基，或是6星蛋蛋的0经验卡牌可为升级材料
                                 if (card_star < 6 and card_type not in [0x1962A0, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
                                     ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
-                                if card_state > 0: # 已出战卡牌
-                                    ysqs_equipped_cards.append(card_id)
                             ysqs_cards_dict = dict(
                                 sorted(
                                     ysqs_cards_dict.items(),
@@ -1594,24 +1633,22 @@ def process_recv_packet(socket_num, buf, length):
                             window.ysqsCardBox.blockSignals(True)
                             old_card_id = window.ysqsCardBox.currentData()
                             window.ysqsCardBox.clear()
+                            ysqs_max_level_cards_dict.clear()
                             for card_id, card_data in ysqs_cards_dict.items():
                                 # 只显示非满级的卡牌
                                 if card_data.get("经验") < get_card_max_exp(card_data.get("星级")):
                                     window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
+                                # 满级卡牌信息
+                                else:
+                                    ysqs_max_level_cards_dict.setdefault(card_data.get("类型"), []).append(card_data)
+                            # 未出战的排前面
+                            for card_list in ysqs_max_level_cards_dict.values():
+                                card_list.sort(key=lambda item: item.get("已装备"))
                             if old_card_id is not None:
                                 index = window.ysqsCardBox.findData(old_card_id)
                                 if index != -1:
                                     window.ysqsCardBox.setCurrentIndex(index)
                             window.ysqsCardBox.blockSignals(False)
-                        if packet.cmd_id == 8988 and can_get_advance_result:  # 元素骑士进阶信息
-                            can_get_advance_result = False
-                            window.ysqs_equip_cards()
-                            card_name = window.advance_dialog.card_name
-                            target_card_name = window.advance_dialog.target_card_name
-                            if get_int(packet.body) == 0:  # 进阶成功
-                                info(window, "成功", f"进阶成功，已将 {card_name} 作为 {target_card_name} 进阶到下一星级")
-                            else:  # 进阶失败
-                                info(window, "失败", f"进阶失败，{target_card_name} 进阶所需材料卡牌不足")
                         if packet.cmd_id == 1014:  # 餐厅信息
                             ct_cooked_dishes_dict.clear()
                             ct_cooking_dishes_dict.clear()
@@ -1717,6 +1754,9 @@ if __name__ == '__main__':
     hook.SetRecvCallBack(process_recv_packet)
     hook.LoadFlash()
     app = QApplication([])
+    trans = QTranslator()
+    trans.load(path("zh_CN.qm"))
+    app.installTranslator(trans)
     window = MainWindow()
     window.show()
     app.exec()

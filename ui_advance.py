@@ -61,7 +61,7 @@ class Ui_AdvanceDialog(object):
         sizePolicy1.setVerticalStretch(0)
         sizePolicy1.setHeightForWidth(self.pushButton.sizePolicy().hasHeightForWidth())
         self.pushButton.setSizePolicy(sizePolicy1)
-        self.pushButton.setMinimumSize(QSize(0, 30))
+        self.pushButton.setMinimumSize(QSize(0, 25))
         self.pushButton.setStyleSheet(u"QPushButton {\n"
 "    margin: -1px;\n"
 "}")
@@ -80,7 +80,7 @@ class Ui_AdvanceDialog(object):
     # setupUi
 
     def retranslateUi(self, AdvanceDialog):
-        AdvanceDialog.setWindowTitle(QCoreApplication.translate("AdvanceDialog", u"卡牌", None))
-        self.pushButton.setText(QCoreApplication.translate("AdvanceDialog", u"确认", None))
+        AdvanceDialog.setWindowTitle(QCoreApplication.translate("AdvanceDialog", u"目标卡牌", None))
+        self.pushButton.setText(QCoreApplication.translate("AdvanceDialog", u"进阶", None))
     # retranslateUi
 
