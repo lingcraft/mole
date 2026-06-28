@@ -65,8 +65,13 @@ jobs:
         with:
           name: mole
           path: D:/Downloads/*.exe
+      - name: 查询标签
+        id: recheck
+        uses: action-pack/tag-exists@v1
+        with:
+          tag: v${{ env.VERSION }}
       - name: 创建标签
-        if: steps.check.outputs.exists == 'false'
+        if: steps.recheck.outputs.exists == 'false'
         run: |
           git tag v${{ env.VERSION }}
           git push origin v${{ env.VERSION }}
