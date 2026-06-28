@@ -234,6 +234,7 @@ class Ui_MainWindow(object):
 
         self.tabWidget.setCurrentIndex(0)
         self.mmgLevelBox.setCurrentIndex(27)
+        self.mmgBossBox.setCurrentIndex(3)
 
 
         QMetaObject.connectSlotsByName(MainWindow)
@@ -294,10 +295,10 @@ class Ui_MainWindow(object):
         self.mmgLevelBox.setItemText(31, QCoreApplication.translate("MainWindow", u"呐奇树洞疯", None))
 
         self.mmgPVEButton.setText(QCoreApplication.translate("MainWindow", u"一键挑战副本", None))
-        self.mmgBossBox.setItemText(0, QCoreApplication.translate("MainWindow", u"萨尔冥王", None))
-        self.mmgBossBox.setItemText(1, QCoreApplication.translate("MainWindow", u"呆呆牛头人", None))
-        self.mmgBossBox.setItemText(2, QCoreApplication.translate("MainWindow", u"地狱神犬", None))
-        self.mmgBossBox.setItemText(3, QCoreApplication.translate("MainWindow", u"暗夜精灵", None))
+        self.mmgBossBox.setItemText(0, QCoreApplication.translate("MainWindow", u"呆呆牛头人", None))
+        self.mmgBossBox.setItemText(1, QCoreApplication.translate("MainWindow", u"地狱神犬", None))
+        self.mmgBossBox.setItemText(2, QCoreApplication.translate("MainWindow", u"暗夜精灵", None))
+        self.mmgBossBox.setItemText(3, QCoreApplication.translate("MainWindow", u"萨尔冥王", None))
         self.mmgBossBox.setItemText(4, QCoreApplication.translate("MainWindow", u"独角萨摩", None))
 
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab1), QCoreApplication.translate("MainWindow", u"第1页", None))

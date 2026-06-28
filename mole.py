@@ -164,6 +164,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 线程初始化
         self.send_thread = SendThread()
         self.send_ex_thread = SendExThread()
+        self.send_to_server_thread = SendToServerThread()
+        self.send_to_server_thread.result.connect(self.mmg_get_reward)
         self.update_thread = UpdateThread()
         self.update_thread.result.connect(self.update_result)
         self.advance_dialog = AdvanceDialog()
@@ -622,7 +624,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             case 3:  # 挑战好友
                 match mmg_times:
                     case n if n < mmg_vigour // 10 and len(mmg_fight_friends) > 0:
-                        level_id, fight_type = mmg_fight_friends.pop(0)
+                        level_id, fight_type = mmg_fight_friends.pop()
                         self.mmg_fight(level_id, fight_type)
                     case _:
                         self.mmg_wish()
@@ -633,21 +635,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "00000000000000019300000000000000000000000100000000"  # 进入游戏
         ])
 
-        def fight():
-            is_no_error = send_lines_to_server(("123.206.131.63", 3001), [
+        run_later(lambda: send_lines_to_server_back(
+            ("123.206.131.63", 3001),
+            [
                 f"0000008101000075310000000000000000{mmg_game_id}",  # 进入游戏
                 f"000000212000007724000000000000000000000004{get_hex(fight_type)}{get_hex(level_id)}00000000",  # 开始挑战
                 "000000152000007724000000000000000000000040",  # 开始战斗
                 "000000152000007724000000000000000000000080"  # 快速战斗
-            ], [3, 1, 1, 2])  # 摩摩怪服务器操作
-            if is_no_error:
-                run_later(lambda: send_lines([
-                    "0000000000000020140000000000000000",  # 校验能否翻牌
-                    "000000000000002015000000000000000000000000",  # 翻牌
-                    "000000000000000194000000000000000000"  # 离开游戏
-                ]))
+            ],
+            [3, 1, 1, 2]
+        ), 400)
 
-        run_later(fight, 400)
+    def mmg_get_reward(self, is_success):
+        if is_success:
+            run_later(lambda: send_lines([
+                "0000000000000020140000000000000000",  # 校验能否翻牌
+                "000000000000002015000000000000000000000000",  # 翻牌
+                "000000000000000194000000000000000000"  # 离开游戏
+            ]))
 
     def mmg_wish(self):
         send_lines_back([
@@ -1018,7 +1023,7 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
         for need_card_type in need_card_types:
             if need_card_type in owned_cards_dict:
                 owned_cards = owned_cards_dict.get(need_card_type)
-                card_data = owned_cards.pop(0)
+                card_data = owned_cards.pop()
                 if card_data.get("已装备"):
                     unequip_cards.append(card_data.get("ID"))
                 consume_cards.append(card_data.get("名称"))
@@ -1066,6 +1071,19 @@ class SendExThread(SendThread):
             send_lines(self.lines, self.interval)
         else:
             send_lines_to_socket(self.lines, self.interval)
+
+
+class SendToServerThread(QThread):
+    result = Signal(bool)
+
+    def set_data(self, address: tuple, lines: list, wait_recv_nums: list):
+        self.address = address
+        self.lines = lines
+        self.wait_recv_nums = wait_recv_nums
+
+    def run(self):
+        is_success = send_lines_to_server(self.address, self.lines, self.wait_recv_nums)
+        self.result.emit(is_success)
 
 
 class UpdateThread(QThread):
@@ -1336,6 +1354,18 @@ def send_lines(lines: list, interval: int = Interval.NONE):
             sleep(interval / 1000)
 
 
+def send_lines_back(lines: list, interval: int = Interval.NORMAL):
+    if not window.send_thread.isRunning():
+        window.send_thread.set_data(lines, interval)
+        window.send_thread.start()
+
+
+def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
+    if not window.send_ex_thread.isRunning():
+        window.send_ex_thread.set_data(lines, interval)
+        window.send_ex_thread.start()
+
+
 def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
     need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
@@ -1354,6 +1384,12 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
     return True
 
 
+def send_lines_to_server_back(address: tuple, lines: list, wait_recv_nums: list = None):
+    if not window.send_to_server_thread.isRunning():
+        window.send_to_server_thread.set_data(address, lines, wait_recv_nums)
+        window.send_to_server_thread.start()
+
+
 def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
     socket_num = window.socketLineEdit.text()
     if socket_num.isdigit():
@@ -1370,24 +1406,12 @@ def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
             pass
 
 
-def send_lines_back(lines: list, interval: int = Interval.NORMAL):
-    if not window.send_thread.isRunning():
-        window.send_thread.set_data(lines, interval)
-        window.send_thread.start()
-
-
 def is_not_running(timer: str):
     return not window.timer(timer).isActive()
 
 
 def is_not_sending():
     return not window.send_thread.isRunning()
-
-
-def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
-    if not window.send_ex_thread.isRunning():
-        window.send_ex_thread.set_data(lines, interval)
-        window.send_ex_thread.start()
 
 
 def get_ip_port(socket_num: int):
@@ -1563,8 +1587,8 @@ def process_recv_packet(socket_num, buf, length):
                                 start += size1 + other_state_num * size2
                             mmg_query_page += 1
                             if mmg_query_page == mmg_query_page_max:  # 查询完毕
-                                # 将师徒放在最前面，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
-                                mmg_fight_friends.sort(key=lambda item: item[1], reverse=True)
+                                # 将师徒放后面先pop，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
+                                mmg_fight_friends.sort(key=lambda item: item[1])
                                 window.mmg_start()
                         if packet.cmd_id == 12004:  # 魔灵用户信息
                             mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
@@ -1641,9 +1665,9 @@ def process_recv_packet(socket_num, buf, length):
                                 # 满级卡牌信息
                                 else:
                                     ysqs_max_level_cards_dict.setdefault(card_data.get("类型"), []).append(card_data)
-                            # 未出战的排前面
+                            # 未装备卡牌放后面先pop
                             for card_list in ysqs_max_level_cards_dict.values():
-                                card_list.sort(key=lambda item: item.get("已装备"))
+                                card_list.sort(key=lambda item: item.get("已装备"), reverse=True)
                             if old_card_id is not None:
                                 index = window.ysqsCardBox.findData(old_card_id)
                                 if index != -1:
