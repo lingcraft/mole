@@ -66,6 +66,7 @@ jobs:
           name: mole
           path: D:/Downloads/*.exe
       - name: 查询标签
+        if: steps.check.outputs.exists == 'false'
         id: recheck
         uses: action-pack/tag-exists@v1
         with:
