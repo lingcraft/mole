@@ -1,4 +1,4 @@
 {
-    "version": "1.7.6",
-    "description": "- 优化：元素骑士5星汉青也默认不作为卡牌升级材料"
+    "version": "1.7.7",
+    "description": "- 修复：修复增加pypinyin库之后，打包后的单文件运行无反应的问题"
 }
