@@ -81,8 +81,7 @@ node_dict = {
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
 # 链接加速前缀
 cdn_prefixs = [
-    "https://hk.gh-proxy.com",
-    "https://v6.gh-proxy.com",
+    "https://v6.gh-proxy.org",
     "https://github.cnxiaobai.com"
 ]
 # Hook文件
