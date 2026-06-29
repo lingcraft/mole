@@ -421,7 +421,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if info(self, "提示", msg, Button.OK_CANCEL) == Button.OK:
                     QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
             case 3:
-                warn(self, "错误", msg)
+                if info(self, "提示", msg, Button.OK_CANCEL) == Button.OK:
+                    QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases"))
 
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
@@ -1094,9 +1095,6 @@ class SendToServerThread(QThread):
 class UpdateThread(QThread):
     result = Signal(int, str, str)
 
-    def __init__(self):
-        super().__init__()
-
     def run(self):
         version, description = "", ""
         for cdn_prefix in cdn_prefixs:
@@ -1115,7 +1113,7 @@ class UpdateThread(QThread):
             else:
                 self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
         else:
-            self.result.emit(3, "检查失败，请检查网络连接！", version)
+            self.result.emit(3, "检查更新失败，是否前往下载页？", version)
 
 
 class RunTimer(QTimer):
