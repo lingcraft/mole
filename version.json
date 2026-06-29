@@ -1,4 +1,4 @@
 {
-    "version": "1.7.8",
-    "description": "- 优化：增加元素骑士的点亮图鉴的封包解析，blockSignals 位置调整"
+    "version": "1.7.9",
+    "description": "- 优化：元素骑士相关封包解析更新"
 }
