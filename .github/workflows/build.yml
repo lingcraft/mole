@@ -13,22 +13,24 @@ jobs:
     steps:
       - name: 拉取代码
         uses: actions/checkout@v5
-      - name: 获取版本
+      - name: 设置环境变量
         id: version
         shell: python
         run: |
+          from datetime import datetime
           from os import environ
           from tomllib import load
           with open("pyproject.toml", "rb") as file:
               project = load(file).get("project")
+          nuitka_path = environ.get("LOCALAPPDATA") + "\\Nuitka\\Nuitka\\Cache"
+          uv_path = environ.get("LOCALAPPDATA") + "\\uv\\cache"
+          week = datetime.now().strftime("%V")
           with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
               env.write(f"VERSION={project.get('version')}\n")
               env.write(f"DESCRIPTION<<EOF\n{project.get('description')}\nEOF\n")
-      - name: 设置环境变量
-        run: |
-          echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-          echo "UV_PATH=$env:LOCALAPPDATA\uv\cache" >> $env:GITHUB_ENV
-          echo "WEEK=$(Get-Date -uformat %V)" >> $env:GITHUB_ENV
+              env.write(f"NUITKA_PATH={nuitka_path}\n")
+              env.write(f"UV_PATH={uv_path}\n")
+              env.write(f"WEEK={week}\n")
       - name: 查询标签
         id: check
         uses: action-pack/tag-exists@v1
