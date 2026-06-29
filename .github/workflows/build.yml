@@ -21,7 +21,7 @@ jobs:
           from tomllib import load
           with open("pyproject.toml", "rb") as file:
               project = load(file).get("project")
-          with open(environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+          with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
               env.write(f"VERSION={project.get('version')}\n")
               env.write(f"DESCRIPTION<<EOF\n{project.get('description')}\nEOF\n")
       - name: 设置环境变量
