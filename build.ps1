@@ -1,5 +1,5 @@
 $version = $(python -c "from tomllib import load; print(load(open('pyproject.toml','rb')).get('project').get('version'))").Trim()
-Write-Output "Yes" | nuitka mole.py --standalone --jobs=8 --lto=yes --remove-output `
+Write-Output "Yes" | uv run nuitka mole.py --standalone --jobs=8 --lto=yes --remove-output `
 --windows-console-mode=disable --windows-icon-from-ico=icon.ico --enable-plugin=pyside6 `
 --copyright="Copyright (C) 2025 lingcraft. All Rights Reserved" `
 --file-description=摩尔抓包工具 `

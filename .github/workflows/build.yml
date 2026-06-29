@@ -44,7 +44,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.UV_PATH }}
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
           restore-keys: ${{ runner.os }}-uv-
       - name: 安装依赖
         if: steps.check.outputs.exists == 'false'
