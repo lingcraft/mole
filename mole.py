@@ -16,7 +16,7 @@ from enum import IntEnum, IntFlag
 from configparser import ConfigParser
 from os import getenv
 from pathlib import Path
-from json import load
+from tomllib import load
 from requests import get
 from bisect import bisect_right
 from math import floor, sqrt
@@ -133,8 +133,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.server = "官服"
             self.node = "主节点"
-        with open(path("version.json"), "r", encoding="utf-8") as file:  # 获取版本
-            self.version = load(file).get("version")
+        with open(path("pyproject.toml"), "r", encoding="utf-8") as file:  # 获取版本
+            self.version = load(file).get("project").get("version")
         # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)

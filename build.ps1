@@ -10,7 +10,7 @@ Write-Output "Yes" | nuitka mole.py --standalone --jobs=8 --lto=yes --remove-out
 --output-filename=mole.exe `
 --include-package-data=pypinyin `
 --include-data-files=hook.dll=hook.dll `
---include-data-files=version.json=version.json `
+--include-data-files=pyproject.toml=pyproject.toml `
 --include-data-files=github.ico=github.ico `
 --include-data-files=Flash.ocx=Flash.ocx `
 --include-data-files=manifest=manifest `
