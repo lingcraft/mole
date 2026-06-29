@@ -1,4 +1,4 @@
 {
-    "version": "1.7.7",
-    "description": "- 修复：修复增加pypinyin库之后，打包后的单文件运行无反应的问题"
+    "version": "1.7.8",
+    "description": "- 优化：增加元素骑士的点亮图鉴的封包解析，blockSignals 位置调整"
 }

@@ -312,9 +312,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.item(packet_index, 2).setToolTip(str(cmd_id))
         self.tableWidget.item(packet_index, 3).setToolTip(cmd_analyse)
         self.tableWidget.item(packet_index, 4).setToolTip(data)
-        self.tableWidget.blockSignals(False)
         if packet_index >= 10:  # 已有10条数据后拖动到底部
             self.tableWidget.scrollToBottom()
+        self.tableWidget.blockSignals(False)
         packet_index += 1  # 下一条要插入数据的索引
 
     def init_table_size(self):
