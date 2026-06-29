@@ -16,11 +16,12 @@ from enum import IntEnum, IntFlag
 from configparser import ConfigParser
 from os import getenv
 from pathlib import Path
-from tomllib import load
+from tomllib import load, loads
 from requests import get
 from bisect import bisect_right
 from math import floor, sqrt
 from pypinyin import lazy_pinyin, Style
+from packaging.version import parse
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -78,7 +79,7 @@ node_dict = {
     "国内节点": "175.178.55.57"
 }
 # 版本文件地址
-version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/version.json"
+version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/pyproject.toml"
 # 链接加速前缀
 cdn_prefixs = [
     "https://v6.gh-proxy.org",
@@ -133,7 +134,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.server = "官服"
             self.node = "主节点"
-        with open(path("pyproject.toml"), "r", encoding="utf-8") as file:  # 获取版本
+        with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file).get("project").get("version")
         # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
@@ -1106,19 +1107,10 @@ class UpdateThread(QThread):
             except:
                 continue
             else:
-                version, description = res.json().values()
+                version, description = [loads(res.text).get("project").get(key) for key in ("version", "description")]
                 break
-        if len(version) > 0:
-            new_version = version.split(".")
-            curr_version = window.version.split(".")
-            is_latest = True
-            for i in range(3):
-                new_num = int(new_version[i])
-                curr_num = int(curr_version[i])
-                if curr_num < new_num:
-                    is_latest = False
-                    break
-            if is_latest:
+        if version:
+            if parse(window.version) >= parse(version):
                 self.result.emit(1, f"当前版本 v{window.version} 已是最新！", version)
             else:
                 self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)

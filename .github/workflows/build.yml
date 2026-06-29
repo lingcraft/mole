@@ -15,18 +15,20 @@ jobs:
         uses: actions/checkout@v5
       - name: 获取版本
         id: version
-        uses: juliangruber/read-file-action@v1
-        with:
-          path: version.json
-      - name: 设置变量
+        shell: python
+        run: |
+          from os import environ
+          from tomllib import load
+          with open("pyproject.toml", "rb") as file:
+              project = load(file).get("project")
+          with open(environ["GITHUB_ENV"], "a") as env:
+              env.write(f"VERSION={project.get("version")}\n")
+              env.write(f"DESCRIPTION<<EOF\n{project.get("description")}\nEOF\n")
+      - name: 设置环境变量
         run: |
           echo "NUITKA_PATH=$env:LOCALAPPDATA\Nuitka\Nuitka\Cache" >> $env:GITHUB_ENV
-          echo "PIP_PATH=$env:LOCALAPPDATA\pip\cache" >> $env:GITHUB_ENV
+          echo "UV_PATH=$env:LOCALAPPDATA\uv\cache" >> $env:GITHUB_ENV
           echo "WEEK=$(Get-Date -uformat %V)" >> $env:GITHUB_ENV
-          echo "VERSION=${{ fromJson(steps.version.outputs.content).version }}" >> $env:GITHUB_ENV
-          echo "DESCRIPTION<<EOF" >> $env:GITHUB_ENV
-          echo "${{ fromJson(steps.version.outputs.content).description }}" >> $env:GITHUB_ENV
-          echo "EOF" >> $env:GITHUB_ENV
       - name: 查询标签
         id: check
         uses: action-pack/tag-exists@v1
@@ -41,13 +43,14 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: actions/cache@v4
         with:
-          path: ${{ env.PIP_PATH }}
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
+          path: ${{ env.UV_PATH }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-uv-
       - name: 安装依赖
         if: steps.check.outputs.exists == 'false'
         run: |
-          pip install -r requirements.txt
+          pip install uv
+          uv sync
       - name: 编译缓存
         if: steps.check.outputs.exists == 'false'
         uses: actions/cache@v4
@@ -65,7 +68,7 @@ jobs:
         with:
           name: mole
           path: D:/Downloads/*.exe
-      - name: 查询标签
+      - name: 复查标签
         if: steps.check.outputs.exists == 'false'
         id: recheck
         uses: action-pack/tag-exists@v1

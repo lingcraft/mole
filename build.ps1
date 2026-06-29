@@ -1,4 +1,4 @@
-$version = (Get-Content -Path "version.json" -Raw | ConvertFrom-Json).version
+$version = $(python -c "from tomllib import load; print(load(open('pyproject.toml','rb')).get('project').get('version'))").Trim()
 Write-Output "Yes" | nuitka mole.py --standalone --jobs=8 --lto=yes --remove-output `
 --windows-console-mode=disable --windows-icon-from-ico=icon.ico --enable-plugin=pyside6 `
 --copyright="Copyright (C) 2025 lingcraft. All Rights Reserved" `
