@@ -31,6 +31,7 @@ recv_buf = bytearray()  # 接收封包的数据缓冲区
 is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包、recv包、写回recv包
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否显示过消息
+pending_waits = []  # 等待中的请求
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
@@ -194,7 +195,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.timer_pool = {
             "摩摩怪": (RunTimer(self.mmg_run, 1500),),
             "好友查询": (RunTimer(self.mmg_query_run, 500),),
-            "餐厅收菜": tuple(RunTimer() for _ in range(7)),
+            "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
@@ -710,11 +711,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_start(self):
         send_lines([
-            "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
+            "00000000000000231E000000000000000000000000",  # 获取元素骑士信息
+            f"0000000000000023200000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",  # 查询无尽深渊已挑战次数
+            f"0000000000000023200000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",  # 查询莎士摩亚已挑战次数
         ])
-        run_later(self.ysqs_run)
+        run_later_expect(self.ysqs_run, {0x2320: {"num": 2, "need_data": True}})
 
-    def ysqs_run(self):
+    def ysqs_run(self, wjsy_times, ssmy_times):
         hour = datetime.now().hour
         level_info = get_level_info(self.ysqsLevelBox.currentText())
         has_no_card = ysqs_attack == 0  # 未装备卡牌
@@ -1247,6 +1250,42 @@ def run_later(func, delay: int = 350):
     QTimer.singleShot(delay, func)
 
 
+def run_later_expect(func, expect: dict):
+    # 等待到期望包之后运行
+    # expect：{cmd_id：{"num"：数量, "offset"：数据偏移, "bytes_num"：数据字节数, "need_data"：是否获取数据}}
+    # expect：{cmd_id：数量} 仅等待收齐指定数量的包
+    pending_waits.append({
+        "expect": expect,
+        "counts": {cid: 0 for cid in expect},
+        "data": {cid: [] for cid in expect},
+        "func": func,
+    })
+
+
+def check_waiting_packets(packet):
+    # 检查待匹配包
+    for index in range(len(pending_waits) - 1, -1, -1):
+        wait_info = pending_waits[index]
+        expect = wait_info.get("expect", {})
+        if packet.cmd_id in expect:
+            counts = wait_info.get("counts", {})
+            counts[packet.cmd_id] = counts.get(packet.cmd_id, 0) + 1
+            spec = expect.get(packet.cmd_id)
+            data = wait_info.get("data", {})
+            if isinstance(spec, dict) and spec.get("need_data"):
+                data.get(packet.cmd_id).append(get_int(packet.body, **{key: spec.get(key) for key in ("offset", "bytes_num") if key in spec}))
+            # 检查是否所有 cmd_id 都集齐
+            if all(counts.get(cid, 0) >= (spec.get("num") if isinstance(spec, dict) else spec)
+                   for cid, spec in expect.items()):
+                func = wait_info.get("func")
+                if func:
+                    if len(expect) == 1:
+                        run_later(lambda args=data.get(next(iter(expect)), []): func(*args), 0)
+                    else:
+                        run_later(lambda args=data: func(args), 0)
+                pending_waits.pop(index)
+
+
 def get_lamu_level(value: int):
     return bisect_right(lamu_thresholds, value) + 1
 
@@ -1487,252 +1526,258 @@ def process_recv_packet(socket_num, buf, length):
                     if is_show_recv:
                         show_data(packet, "R <==")  # 界面添加recv数据
                     if packet.version == 0:  # 正确包
-                        if packet.cmd_id == 228 and can_get_lamu_info:  # 第1次进入游戏时获取拉姆ID
-                            can_get_lamu_info = False
-                            lamu_id = get_int(packet.body)
-                            window.lamu_get_info()
-                        if packet.cmd_id == 212 and get_int(packet.body, 4) == 1:  # 获取拉姆信息
-                            lamu_id = get_int(packet.body, 8)
-                            lamu_name = get_name(packet.body, 24)
-                            lamu_value = get_int(packet.body, 79)
-                            lamu_level = get_lamu_level(lamu_value)
-                        if packet.cmd_id == 204 and get_int(packet.body) == user_id:  # 获取超拉信息
-                            super_lamu_level = get_int(packet.body, 92)
-                            super_lamu_value = get_int(packet.body, 100)
-                        if packet.cmd_id == 1209:  # 拉姆变身获得物品
-                            if lamu_times == 0:
-                                is_last_skill_success = True
-                            else:
-                                is_max_skill_success = True
-                            window.lamu_collect_result()
-                            lamu_times += 1
-                        if packet.cmd_id == 8200 and is_not_running("摩摩怪"):  # 获取摩摩怪能量和活力值
-                            mmg_energy = get_int(packet.body, 40)
-                            mmg_vigour = get_int(packet.body, 48)
-                            mmg_level = get_int(packet.body, 12)
-                        if packet.cmd_id == 8201 and is_not_running("摩摩怪"):  # 获取摩摩挑战卡数量
-                            mmg_card = 0
-                            items_num = len(packet.body) // 4
-                            size = 1 * 4
-                            for page in range(items_num):
-                                item_id = get_int(packet.body, page * size)
-                                if item_id == 0x13DA23:
-                                    mmg_card = get_int(packet.body, page * size + 4)
-                                    break
-                        if packet.cmd_id == 8224 and is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
-                            mmg_super_boss_times = 10 - get_int(packet.body)
-                            mmg_lamu_boss_times = 10 - get_int(packet.body, 4)
-                            if datetime.now().hour == 13:
-                                mmg_limit_boss_times = 10 - get_int(packet.body, 8)
-                            else:
-                                mmg_limit_boss_times = 0
-                            mmg_boss_index1 = mmg_limit_boss_times
-                            mmg_boss_index2 = mmg_boss_index1 + mmg_super_boss_times
-                            mmg_boss_index3 = mmg_boss_index2 + mmg_lamu_boss_times
-                        if packet.cmd_id == 10007:  # 获取摩摩怪游戏ID
-                            mmg_game_id = packet.body[18:130].hex()
-                        if packet.cmd_id == 8212:  # 翻牌成功
-                            mmg_times += 1
-                        if packet.cmd_id == 8226:  # 获取师徒ID
-                            mmg_students_dict.clear()
-                            students_num = get_int(packet.body, 40)
-                            start = 44
-                            size = 3 * 4
-                            for page in range(students_num):
-                                student_id = get_int(packet.body, start + page * size)
-                                mmg_students_dict[student_id] = 100  # 小小
-                            teacher_num = get_int(packet.body, 12)
-                            if teacher_num > 0:
-                                teacher_id = get_int(packet.body, 16)
-                                mmg_students_dict[teacher_id] = 200  # 大大
-                        if packet.cmd_id == 8208:  # 获取好友ID
-                            mmg_friends_dict.clear()
-                            friends_num = get_int(packet.body)
-                            start = 4
-                            size = 3 * 4
-                            for page in range(friends_num):
-                                friend_id = get_int(packet.body, start + page * size)
-                                friend_level = get_int(packet.body, start + page * size + 8)
-                                mmg_friends_dict[friend_id] = friend_level
-                            for student_id, student_level in mmg_students_dict.items():
-                                mmg_friends_dict[student_id] = student_level
-                            # 师徒放前面，后面好友等级从高到低
-                            mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
-                            mmg_friends_num = len(mmg_friends)
-                        if packet.cmd_id == 8218 and is_not_running("摩摩怪") \
-                                and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
-                            # 查询好友能否对战
-                            query_size = get_int(packet.body)
-                            start = 4
-                            size1 = 3 * 4
-                            size2 = 1 * 4
-                            for _ in range(query_size):
-                                friend_id = get_int(packet.body, start)
-                                fight_state = get_int(packet.body, start + 4)
-                                other_state_num = get_int(packet.body, start + 8)
-                                if fight_state == 0:  # 未挑战过的
-                                    friend_level = mmg_friends_dict[friend_id]
-                                    if friend_level == 200:
-                                        fight_type = 5  # 大大
-                                    elif friend_level == 100:
-                                        fight_type = 4  # 小小
-                                    else:
-                                        fight_type = 0  # 好友
-                                    mmg_fight_friends.append((friend_id, fight_type))
-                                for page in range(other_state_num):
-                                    state = get_int(packet.body, start + size1 + page * size2)
-                                    mmg_friends_state_dict[state].append(friend_id)
-                                start += size1 + other_state_num * size2
-                            mmg_query_page += 1
-                            if mmg_query_page == mmg_query_page_max:  # 查询完毕
-                                # 将师徒放后面先pop，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
-                                mmg_fight_friends.sort(key=lambda item: item[1])
-                                window.mmg_start()
-                        if packet.cmd_id == 12004:  # 魔灵用户信息
-                            mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
-                            mlcs_fight_elves_dict.clear()
-                            start = 24
-                            size = 1 * 4
-                            for page in range(15):  # 出战魔灵信息
-                                elf_id = get_int(packet.body, start + page * size)
-                                if elf_id != 0:
-                                    mlcs_fight_elves_dict[elf_id] = elf_id
-                        if packet.cmd_id == 12018 and is_not_sending():  # 魔灵背包信息
-                            mlcs_elves_dict.clear()
-                            elves_num = get_int(packet.body)
-                            start = 4
-                            size = 7 * 4
-                            for page in range(elves_num):
-                                elf_id = get_int(packet.body, start + page * size)
-                                elf_type = get_int(packet.body, start + page * size + 4)
-                                elf_level = get_int(packet.body, start + page * size + 9, 1)
-                                # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
-                                if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:
-                                    mlcs_elves_dict[elf_id] = elf_id
-                        if packet.cmd_id == 11009:  # 魔灵竞技场信息
-                            info_type = get_int(packet.body)
-                            if info_type == 5:  # 竞技场信息
-                                remain_times = 10 - get_int(packet.body, 4)  # 剩余挑战次数
-                                purchase_times = get_int(packet.body, 8)  # 金豆购买挑战次数
-                                mlcs_arena_times = remain_times + purchase_times
-                            elif info_type == 1:  # 经验之路信息
-                                mlcs_exp_times = 3 - get_int(packet.body, 4)  # 剩余挑战次数
-                        if packet.cmd_id == 8990 and get_int(packet.body) == 0:  # 元素骑士信息
-                            ysqs_cards_dict.clear()
-                            ysqs_material_cards_dict.clear()
-                            ysqs_energy = get_int(packet.body, 28)
-                            ysqs_attack = get_int(packet.body, 44)
-                            ysqs_max_floor = get_int(packet.body, 68)
-                            cards_num = get_int(packet.body, 76)
-                            start = 80
-                            size = 4 * 4
-                            for page in range(cards_num):
-                                card_id = get_int(packet.body, start + page * size)  # 卡牌ID
-                                card_type = get_int(packet.body, start + page * size + 4)  # 卡牌类型
-                                card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
-                                card_is_equip = get_int(packet.body, start + page * size + 12) > 0  # 卡牌是否已装备
-                                card_info = get_card_info(card_type)
-                                card_star = card_info.get("星级")
-                                card_level = get_card_level(card_star, card_exp)
-                                ysqs_cards_dict[card_id] = {
-                                    "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp, "已装备": card_is_equip
-                                }
-                                # 6星蛋蛋或者6星以下不是奥丁、汉青和洛基的0经验卡牌可为升级材料
-                                if (card_star < 6 and card_type not in (0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290) or card_type == 0x19627A) and card_exp == 0:
-                                    ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
-                            ysqs_cards_dict = dict(
-                                sorted(
-                                    ysqs_cards_dict.items(),
-                                    key=lambda item: (
-                                        item[1].get("星级"),
-                                        item[1].get("类型"),
-                                        item[1].get("经验")
-                                    ),
-                                    reverse=True
-                                )
-                            )
-                            # 更新数据并重新选中之前的卡牌
-                            window.ysqsCardBox.blockSignals(True)
-                            old_card_id = window.ysqsCardBox.currentData()
-                            window.ysqsCardBox.clear()
-                            ysqs_max_level_cards_dict.clear()
-                            for card_id, card_data in ysqs_cards_dict.items():
-                                # 只显示非满级的卡牌
-                                if card_data.get("经验") < get_card_max_exp(card_data.get("星级")):
-                                    window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
-                                # 满级卡牌信息
+                        check_waiting_packets(packet)
+                        match packet.cmd_id:
+                            case 228 if can_get_lamu_info:  # 第1次进入游戏时获取拉姆ID
+                                can_get_lamu_info = False
+                                lamu_id = get_int(packet.body)
+                                window.lamu_get_info()
+                            case 212 if get_int(packet.body, 4) == 1:  # 获取拉姆信息
+                                lamu_id = get_int(packet.body, 8)
+                                lamu_name = get_name(packet.body, 24)
+                                lamu_value = get_int(packet.body, 79)
+                                lamu_level = get_lamu_level(lamu_value)
+                            case 204 if get_int(packet.body) == user_id:  # 获取超拉信息
+                                super_lamu_level = get_int(packet.body, 92)
+                                super_lamu_value = get_int(packet.body, 100)
+                            case 1209:  # 拉姆变身获得物品
+                                if lamu_times == 0:
+                                    is_last_skill_success = True
                                 else:
-                                    ysqs_max_level_cards_dict.setdefault(card_data.get("类型"), []).append(card_data)
-                            # 未装备卡牌放后面先pop
-                            for card_list in ysqs_max_level_cards_dict.values():
-                                card_list.sort(key=lambda item: item.get("已装备"), reverse=True)
-                            if old_card_id is not None:
-                                index = window.ysqsCardBox.findData(old_card_id)
-                                if index != -1:
-                                    window.ysqsCardBox.setCurrentIndex(index)
-                            window.ysqsCardBox.blockSignals(False)
-                        if packet.cmd_id == 1014:  # 餐厅信息
-                            ct_cooked_dishes_dict.clear()
-                            ct_cooking_dishes_dict.clear()
-                            dishes_num = get_int(packet.body, 68)
-                            start = 72
-                            size = 6 * 4
-                            for page in range(dishes_num):
-                                dish_pos = get_int(packet.body, start + page * size)  # 菜位置
-                                dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
-                                dish_id = get_int(packet.body, start + page * size + 8)  # 菜ID
-                                dish_num = get_int(packet.body, start + page * size + 12)  # 菜数量
-                                dish_step = get_int(packet.body, start + page * size + 16)  # 菜步骤
-                                dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
-                                dish_info = get_dish_info(dish_type)
-                                if dish_step == 6:  # 已熟菜信息
-                                    ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
+                                    is_max_skill_success = True
+                                window.lamu_collect_result()
+                                lamu_times += 1
+                            case 8200 if is_not_running("摩摩怪"):  # 获取摩摩怪能量和活力值
+                                mmg_energy = get_int(packet.body, 40)
+                                mmg_vigour = get_int(packet.body, 48)
+                                mmg_level = get_int(packet.body, 12)
+                            case 8201 if is_not_running("摩摩怪"):  # 获取摩摩挑战卡数量
+                                mmg_card = 0
+                                items_num = len(packet.body) // 4
+                                size = 1 * 4
+                                for page in range(items_num):
+                                    item_id = get_int(packet.body, page * size)
+                                    if item_id == 0x13DA23:
+                                        mmg_card = get_int(packet.body, page * size + 4)
+                                        break
+                            case 8224 if is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
+                                mmg_super_boss_times = 10 - get_int(packet.body)
+                                mmg_lamu_boss_times = 10 - get_int(packet.body, 4)
+                                if datetime.now().hour == 13:
+                                    mmg_limit_boss_times = 10 - get_int(packet.body, 8)
+                                else:
+                                    mmg_limit_boss_times = 0
+                                mmg_boss_index1 = mmg_limit_boss_times
+                                mmg_boss_index2 = mmg_boss_index1 + mmg_super_boss_times
+                                mmg_boss_index3 = mmg_boss_index2 + mmg_lamu_boss_times
+                            case 10007:  # 获取摩摩怪游戏ID
+                                mmg_game_id = packet.body[18:130].hex()
+                            case 8212:  # 翻牌成功
+                                mmg_times += 1
+                            case 8226:  # 获取师徒ID
+                                mmg_students_dict.clear()
+                                students_num = get_int(packet.body, 40)
+                                start = 44
+                                size = 3 * 4
+                                for page in range(students_num):
+                                    student_id = get_int(packet.body, start + page * size)
+                                    mmg_students_dict[student_id] = 100  # 小小
+                                teacher_num = get_int(packet.body, 12)
+                                if teacher_num > 0:
+                                    teacher_id = get_int(packet.body, 16)
+                                    mmg_students_dict[teacher_id] = 200  # 大大
+                            case 8208:  # 获取好友ID
+                                mmg_friends_dict.clear()
+                                friends_num = get_int(packet.body)
+                                start = 4
+                                size = 3 * 4
+                                for page in range(friends_num):
+                                    friend_id = get_int(packet.body, start + page * size)
+                                    friend_level = get_int(packet.body, start + page * size + 8)
+                                    mmg_friends_dict[friend_id] = friend_level
+                                for student_id, student_level in mmg_students_dict.items():
+                                    mmg_friends_dict[student_id] = student_level
+                                # 师徒放前面，后面好友等级从高到低
+                                mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
+                                mmg_friends_num = len(mmg_friends)
+                            case 8218 if is_not_running("摩摩怪") \
+                                    and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
+                                # 查询好友能否对战
+                                query_size = get_int(packet.body)
+                                start = 4
+                                size1 = 3 * 4
+                                size2 = 1 * 4
+                                for _ in range(query_size):
+                                    friend_id = get_int(packet.body, start)
+                                    fight_state = get_int(packet.body, start + 4)
+                                    other_state_num = get_int(packet.body, start + 8)
+                                    if fight_state == 0:  # 未挑战过的
+                                        friend_level = mmg_friends_dict[friend_id]
+                                        if friend_level == 200:
+                                            fight_type = 5  # 大大
+                                        elif friend_level == 100:
+                                            fight_type = 4  # 小小
+                                        else:
+                                            fight_type = 0  # 好友
+                                        mmg_fight_friends.append((friend_id, fight_type))
+                                    for page in range(other_state_num):
+                                        state = get_int(packet.body, start + size1 + page * size2)
+                                        mmg_friends_state_dict[state].append(friend_id)
+                                    start += size1 + other_state_num * size2
+                                mmg_query_page += 1
+                                if mmg_query_page == mmg_query_page_max:  # 查询完毕
+                                    # 将师徒放后面先pop，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
+                                    mmg_fight_friends.sort(key=lambda item: item[1])
+                                    window.mmg_start()
+                            case 12004:  # 魔灵用户信息
+                                mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
+                                mlcs_fight_elves_dict.clear()
+                                start = 24
+                                size = 1 * 4
+                                for page in range(15):  # 出战魔灵信息
+                                    elf_id = get_int(packet.body, start + page * size)
+                                    if elf_id != 0:
+                                        mlcs_fight_elves_dict[elf_id] = elf_id
+                            case 12018 if is_not_sending():  # 魔灵背包信息
+                                mlcs_elves_dict.clear()
+                                elves_num = get_int(packet.body)
+                                start = 4
+                                size = 7 * 4
+                                for page in range(elves_num):
+                                    elf_id = get_int(packet.body, start + page * size)
+                                    elf_type = get_int(packet.body, start + page * size + 4)
+                                    elf_level = get_int(packet.body, start + page * size + 9, 1)
+                                    # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
+                                    if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:
+                                        mlcs_elves_dict[elf_id] = elf_id
+                            case 11009:  # 魔灵竞技场信息
+                                info_type = get_int(packet.body)
+                                if info_type == 5:  # 竞技场信息
+                                    remain_times = 10 - get_int(packet.body, 4)  # 剩余挑战次数
+                                    purchase_times = get_int(packet.body, 8)  # 金豆购买挑战次数
+                                    mlcs_arena_times = remain_times + purchase_times
+                                elif info_type == 1:  # 经验之路信息
+                                    mlcs_exp_times = 3 - get_int(packet.body, 4)  # 剩余挑战次数
+                            case 8990 if get_int(packet.body) == 0:  # 元素骑士信息
+                                ysqs_cards_dict.clear()
+                                ysqs_material_cards_dict.clear()
+                                ysqs_energy = get_int(packet.body, 28)
+                                ysqs_attack = get_int(packet.body, 44)
+                                ysqs_max_floor = get_int(packet.body, 68)
+                                cards_num = get_int(packet.body, 76)
+                                start = 80
+                                size = 4 * 4
+                                for page in range(cards_num):
+                                    card_id = get_int(packet.body, start + page * size)  # 卡牌ID
+                                    card_type = get_int(packet.body, start + page * size + 4)  # 卡牌类型
+                                    card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
+                                    card_is_equip = get_int(packet.body, start + page * size + 12) > 0  # 卡牌是否已装备
+                                    card_info = get_card_info(card_type)
+                                    card_star = card_info.get("星级")
+                                    card_level = get_card_level(card_star, card_exp)
+                                    ysqs_cards_dict[card_id] = {
+                                        "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp, "已装备": card_is_equip
                                     }
-                                elif dish_step == 3 and dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
-                                    ct_cooking_dishes_dict[dish_pos] = {
-                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
-                                    }
-                                elif dish_step < 3:
-                                    window.ct_cook_after(dish_id, dish_type, dish_step, True)
-                                    if dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):
-                                        ct_cooking_dishes_dict[dish_pos] = {
-                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
+                                    # 6星蛋蛋或者6星以下不是奥丁、汉青和洛基的0经验卡牌可为升级材料
+                                    if (card_star < 6 and card_type not in (0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290) or card_type == 0x19627A) and card_exp == 0:
+                                        ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
+                                ysqs_cards_dict = dict(
+                                    sorted(
+                                        ysqs_cards_dict.items(),
+                                        key=lambda item: (
+                                            item[1].get("星级"),
+                                            item[1].get("类型"),
+                                            item[1].get("经验")
+                                        ),
+                                        reverse=True
+                                    )
+                                )
+                                # 更新数据并重新选中之前的卡牌
+                                window.ysqsCardBox.blockSignals(True)
+                                old_card_id = window.ysqsCardBox.currentData()
+                                window.ysqsCardBox.clear()
+                                ysqs_max_level_cards_dict.clear()
+                                for card_id, card_data in ysqs_cards_dict.items():
+                                    # 只显示非满级的卡牌
+                                    if card_data.get("经验") < get_card_max_exp(card_data.get("星级")):
+                                        window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
+                                    # 满级卡牌信息
+                                    else:
+                                        ysqs_max_level_cards_dict.setdefault(card_data.get("类型"), []).append(card_data)
+                                # 未装备卡牌放后面先pop
+                                for card_list in ysqs_max_level_cards_dict.values():
+                                    card_list.sort(key=lambda item: item.get("已装备"), reverse=True)
+                                if old_card_id is not None:
+                                    index = window.ysqsCardBox.findData(old_card_id)
+                                    if index != -1:
+                                        window.ysqsCardBox.setCurrentIndex(index)
+                                window.ysqsCardBox.blockSignals(False)
+                            case 8992:  # 元素骑士关卡已挑战次数
+                                level_times = get_int(packet.body)
+                            case 1014:  # 餐厅信息
+                                ct_cooked_dishes_dict.clear()
+                                ct_cooking_dishes_dict.clear()
+                                dishes_num = get_int(packet.body, 68)
+                                start = 72
+                                size = 6 * 4
+                                for page in range(dishes_num):
+                                    dish_pos = get_int(packet.body, start + page * size)  # 菜位置
+                                    dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
+                                    dish_id = get_int(packet.body, start + page * size + 8)  # 菜ID
+                                    dish_num = get_int(packet.body, start + page * size + 12)  # 菜数量
+                                    dish_step = get_int(packet.body, start + page * size + 16)  # 菜步骤
+                                    dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
+                                    dish_info = get_dish_info(dish_type)
+                                    if dish_step == 6:  # 已熟菜信息
+                                        ct_cooked_dishes_dict[dish_info.get("名称")] = {
+                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
                                         }
-                            window.ctDishBox.clear()
-                            window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
-                            window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
-                        if packet.cmd_id == 1017:  # 餐厅做菜信息
-                            dish_type = get_int(packet.body)
-                            dish_id = get_int(packet.body, 4)
-                            dish_pos = get_int(packet.body, 8)
-                            dish_step = get_int(packet.body, 12)
-                            if dish_step < 3:
-                                window.ct_cook_after(dish_id, dish_type, dish_step)
-                            elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
-                                ct_cooking_dishes_dict[dish_pos] = {
-                                    "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
-                                }
-                        if packet.cmd_id == 1021:  # 餐厅收菜信息
-                            dish_type = get_int(packet.body)
-                            dish_id = get_int(packet.body, 4)
-                            dish_pos = get_int(packet.body, 12)
-                            dish_info = get_dish_info(dish_type)
-                            if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
-                                ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                    "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
-                                }
-                                window.ctDishBox.addItem(dish_info.get("名称"))
-                                window.enable_ct_button(True)
-                        if packet.cmd_id == 8953:  # 开启七彩缤纷宝盒
-                            item_id = get_int(packet.body)
-                            if item_id == 0x31CE:  # 火龙珠
-                                window.stop_task("缤纷七彩宝盒")
-                                info(window, "缤纷七彩宝盒", "恭喜你获得火龙珠")
-                            elif item_id == 0 and not is_show_msg:
-                                is_show_msg = True
+                                    elif dish_step == 3 and dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
+                                        ct_cooking_dishes_dict[dish_pos] = {
+                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
+                                        }
+                                    elif dish_step < 3:
+                                        window.ct_cook_after(dish_id, dish_type, dish_step, True)
+                                        if dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):
+                                            ct_cooking_dishes_dict[dish_pos] = {
+                                                "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
+                                            }
+                                window.ctDishBox.clear()
+                                window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
+                                window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
+                            case 1017:  # 餐厅做菜信息
+                                dish_type = get_int(packet.body)
+                                dish_id = get_int(packet.body, 4)
+                                dish_pos = get_int(packet.body, 8)
+                                dish_step = get_int(packet.body, 12)
+                                if dish_step < 3:
+                                    window.ct_cook_after(dish_id, dish_type, dish_step)
+                                elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
+                                    ct_cooking_dishes_dict[dish_pos] = {
+                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
+                                    }
+                            case 1021:  # 餐厅收菜信息
+                                dish_type = get_int(packet.body)
+                                dish_id = get_int(packet.body, 4)
+                                dish_pos = get_int(packet.body, 12)
+                                dish_info = get_dish_info(dish_type)
+                                if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
+                                    ct_cooked_dishes_dict[dish_info.get("名称")] = {
+                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
+                                    }
+                                    window.ctDishBox.addItem(dish_info.get("名称"))
+                                    window.enable_ct_button(True)
+                            case 8953:  # 开启七彩缤纷宝盒
+                                item_id = get_int(packet.body)
+                                if item_id == 0x31CE:  # 火龙珠
+                                    window.stop_task("缤纷七彩宝盒")
+                                    info(window, "缤纷七彩宝盒", "恭喜你获得火龙珠")
+                                elif item_id == 0 and not is_show_msg:
+                                    is_show_msg = True
                                 window.stop_task("缤纷七彩宝盒")
                                 info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
+                            case _:
+                                pass
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
