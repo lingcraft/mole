@@ -27,7 +27,7 @@ jobs:
           week = datetime.now().strftime("%V")
           with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
               env.write(f"VERSION={project.get('version')}\n")
-              env.write(f"DESCRIPTION<<EOF\n{project.get('description')}\nEOF\n")
+              env.write(f"DESCRIPTION<<EOF\n{project.get('description').strip()}\nEOF\n")
               env.write(f"NUITKA_PATH={nuitka_path}\n")
               env.write(f"UV_PATH={uv_path}\n")
               env.write(f"WEEK={week}\n")
