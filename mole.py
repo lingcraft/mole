@@ -603,27 +603,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if self.mmgBossBox.currentText() == "独角萨摩":
                     match mmg_times:
                         case n if n < mmg_card:
-                            level_id = get_level_id("独角萨摩", mmg_level)
+                            level_id = get_level_info("独角萨摩", mmg_level)
                             self.mmg_fight(level_id, 1)
                         case _:
                             self.mmg_stop()
                 else:
                     match mmg_times:
                         case n if n < mmg_boss_index1:
-                            level_id = get_level_id("飞沙蝎")
+                            level_id = get_level_info("飞沙蝎")
                             self.mmg_fight(level_id, 1)
                         case n if mmg_boss_index1 <= n < mmg_boss_index2:
-                            level_id = get_level_id(self.mmgBossBox.currentText())
+                            level_id = get_level_info(self.mmgBossBox.currentText())
                             self.mmg_fight(level_id, 1)
                         case n if mmg_boss_index2 <= n < mmg_boss_index3:
-                            level_id = get_level_id("怪味糖蓝龙", mmg_level)
+                            level_id = get_level_info("怪味糖蓝龙", mmg_level)
                             self.mmg_fight(level_id, 1)
                         case _:
                             self.mmg_stop()
             case 2:  # 挑战副本
                 match mmg_times:
                     case n if n < mmg_energy // 10:
-                        level_id = get_level_id(self.mmgLevelBox.currentText())
+                        level_id = get_level_info(self.mmgLevelBox.currentText())
                         self.mmg_fight(level_id, 1)
                     case _:
                         self.mmg_stop()
@@ -715,50 +715,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_run(self):
         hour = datetime.now().hour
-        has_energy = ysqs_energy > 0  # 是否有体力
+        level_info = get_level_info(self.ysqsLevelBox.currentText())
+        has_no_card = ysqs_attack == 0  # 未装备卡牌
         can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
-        is_fight_wjsy = has_energy and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
-        is_fight_ssmy = has_energy and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
-        remain_times = ysqs_energy // 5  # 当前体力可挑战次数
+        is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
+        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
+        remain_times = ysqs_energy // level_info.get("体力消耗")  # 当前体力可挑战次数
         fight_times = remain_times
+        # 选定关卡实际挑战次数
         if can_fight_wjsy:  # 无尽深渊战力达标
             if hour < 21:
-                fight_times = 40 * is_fight_wjsy
+                fight_times = (170 // level_info.get("体力消耗") + 10) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
         elif can_fight_ssmy:  # 莎士摩亚战力达标
             if hour < 21:
-                fight_times = 10 * is_fight_ssmy
+                fight_times = (20 // level_info.get("体力消耗") + 10) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
         else:  # 战力未达标
-            if ysqs_attack == 0:  # 无卡牌挑战
+            if has_no_card:  # 无卡牌挑战
                 fight_times = remain_times * 2
         is_reward = is_fight_wjsy or is_fight_ssmy or fight_times >= 20  # 是否领取每日任务奖励
+        is_fight = is_fight_wjsy or is_fight_ssmy or fight_times > 0  # 是否挑战
+        # 无尽深渊、莎士摩亚和选定关卡的总挑战次数都+10，防止某些包无效
         send_lines_back(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能
             ]
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_id("无尽深渊"))}",
-                f"0000000000000023210000000000000000{get_hex(get_level_id("无尽深渊"))}"
-            ] * 80 * is_fight_wjsy
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
+            ] * (70 + 10) * is_fight_wjsy
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
-                f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 35 * is_fight_ssmy
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
+            ] * (30 + 5) * is_fight_ssmy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
             ] * is_fight_wjsy
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_id("莎士摩亚"))}",
-                f"0000000000000023210000000000000000{get_hex(get_level_id("莎士摩亚"))}"
-            ] * 15 * is_fight_ssmy
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
+            ] * (10 + 5) * is_fight_ssmy
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}",
-                f"0000000000000023210000000000000000{get_hex(get_level_id(self.ysqsLevelBox.currentText()))}"
+                f"00000000000000{"2321" if has_no_card else "231D"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡
             ] * fight_times
             +
             [
@@ -768,7 +768,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             +
             [
                 "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
-            ] * has_energy
+            ] * is_fight
         )
 
     def ysqs_upgrade_start(self):
@@ -838,7 +838,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             fight_times = min(need_times, remain_times)
             send_lines_back(
                 [
-                    f"000000000000002EE70000000000000000{get_hex(get_level_id("希望之光5"))}",
+                    f"000000000000002EE70000000000000000{get_hex(get_level_info("希望之光5"))}",
                     *["000000000000002EF000000000000000000000F000F000F000F000F000F000F0"] * 5,
                     "000000000000002EEA0000000000000000"
                 ] * fight_times
@@ -857,13 +857,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             fight_times = (mlcs_energy - mlcs_exp_times * 20) // 10
             send_lines_back(
                 [
-                    f"000000000000002EE70000000000000000{get_hex(get_level_id("经验之路"))}",
+                    f"000000000000002EE70000000000000000{get_hex(get_level_info("经验之路"))}",
                     *["000000000000002EF000000000000000000000F000F000F000F000F000F000F0"] * 5,
                     "000000000000002EEA0000000000000000"
                 ] * mlcs_exp_times
                 +
                 [
-                    f"000000000000002EE70000000000000000{get_hex(get_level_id("希望之光5"))}",
+                    f"000000000000002EE70000000000000000{get_hex(get_level_info("希望之光5"))}",
                     *["000000000000002EF000000000000000000000F000F000F000F000F000F000F0"] * 5,
                     "000000000000002EEA0000000000000000"
                 ] * fight_times
@@ -1426,7 +1426,7 @@ def get_remote_info(socket_num: int):
     if ip is None or ip != "123.206.131.236":
         return 0
     else:
-        if port in [1965, 1865, 1201, 1239]:
+        if port in (1965, 1865, 1201, 1239):
             return 2
         else:
             return 1
@@ -1559,7 +1559,7 @@ def process_recv_packet(socket_num, buf, length):
                             mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
                             mmg_friends_num = len(mmg_friends)
                         if packet.cmd_id == 8218 and is_not_running("摩摩怪") \
-                                and get_int(packet.body) in [mmg_query_size_max, mmg_friends_num % mmg_query_size_max]:
+                                and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
                             # 查询好友能否对战
                             query_size = get_int(packet.body)
                             start = 4
@@ -1637,7 +1637,7 @@ def process_recv_packet(socket_num, buf, length):
                                     "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp, "已装备": card_is_equip
                                 }
                                 # 6星蛋蛋或者6星以下不是奥丁、汉青和洛基的0经验卡牌可为升级材料
-                                if (card_star < 6 and card_type not in [0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290] or card_type == 0x19627A) and card_exp == 0:
+                                if (card_star < 6 and card_type not in (0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290) or card_type == 0x19627A) and card_exp == 0:
                                     ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
                             ysqs_cards_dict = dict(
                                 sorted(
@@ -1688,13 +1688,13 @@ def process_recv_packet(socket_num, buf, length):
                                     ct_cooked_dishes_dict[dish_info.get("名称")] = {
                                         "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
                                     }
-                                elif dish_step == 3 and dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:  # 正在做的菜信息
+                                elif dish_step == 3 and dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
                                     ct_cooking_dishes_dict[dish_pos] = {
                                         "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
                                     }
                                 elif dish_step < 3:
                                     window.ct_cook_after(dish_id, dish_type, dish_step, True)
-                                    if dish_info.get("名称") in ["酱爆雪顶菇", "阳光酥油肉松"]:
+                                    if dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):
                                         ct_cooking_dishes_dict[dish_pos] = {
                                             "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
                                         }

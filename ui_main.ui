@@ -267,6 +267,16 @@
        </property>
        <item>
         <property name="text">
+         <string>中秋探险</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>挑战汉青</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
          <string>激战蛋蛋</string>
         </property>
        </item>
@@ -343,9 +353,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>400</x>
+         <x>403</x>
          <y>20</y>
-         <width>90</width>
+         <width>89</width>
          <height>31</height>
         </rect>
        </property>
@@ -359,9 +369,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>109</x>
+         <x>107</x>
          <y>20</y>
-         <width>90</width>
+         <width>89</width>
          <height>31</height>
         </rect>
        </property>
@@ -375,9 +385,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>207</x>
+         <x>203</x>
          <y>23</y>
-         <width>86</width>
+         <width>98</width>
          <height>25</height>
         </rect>
        </property>
@@ -409,22 +419,22 @@
        </item>
        <item>
         <property name="text">
-         <string>蛮荒小林疯</string>
+         <string>蛮荒小林疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>蛮荒深处疯</string>
+         <string>蛮荒深处疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>爱萨木阵疯</string>
+         <string>爱萨木阵疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>爱萨栖地疯</string>
+         <string>爱萨栖地疯狂</string>
         </property>
        </item>
        <item>
@@ -449,22 +459,22 @@
        </item>
        <item>
         <property name="text">
-         <string>树洞密室疯</string>
+         <string>树洞密室疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>树洞深处疯</string>
+         <string>树洞深处疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>灵奇洞穴疯</string>
+         <string>灵奇洞穴疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>灵奇树根疯</string>
+         <string>灵奇树根疯狂</string>
         </property>
        </item>
        <item>
@@ -489,22 +499,22 @@
        </item>
        <item>
         <property name="text">
-         <string>神秘洞穴疯</string>
+         <string>神秘洞穴疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>碧水岩石疯</string>
+         <string>碧水岩石疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>毛头之家疯</string>
+         <string>毛头之家疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>碧水洞疯狂</string>
+         <string>碧水洞疯疯狂</string>
         </property>
        </item>
        <item>
@@ -529,22 +539,22 @@
        </item>
        <item>
         <property name="text">
-         <string>幻影莲池疯</string>
+         <string>幻影莲池疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>萤火之地疯</string>
+         <string>萤火之地疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>碧波深处疯</string>
+         <string>碧波深处疯狂</string>
         </property>
        </item>
        <item>
         <property name="text">
-         <string>呐奇树洞疯</string>
+         <string>呐奇树洞疯狂</string>
         </property>
        </item>
       </widget>
@@ -554,9 +564,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>302</x>
+         <x>308</x>
          <y>20</y>
-         <width>90</width>
+         <width>89</width>
          <height>31</height>
         </rect>
        </property>

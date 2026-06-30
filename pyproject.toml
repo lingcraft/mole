@@ -1,7 +1,11 @@
 [project]
 name = "mole"
-version = "1.7.11"
-description = "- 优化：检查更新提示优化"
+version = "1.7.12"
+description = """
+- 优化：元素骑士关卡增加“中秋探险”和“挑战汉青”，这2个关卡卡牌经验期望最高
+- 优化：元素骑士挑战逻辑优化，增加关卡体力消耗相关计算
+- 优化：元素骑士挑战封包解析优化（“挑战关卡”、“探索关卡”和“关卡信息”）
+"""
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
