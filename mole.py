@@ -103,8 +103,9 @@ is_window_defined = False
 
 
 class Interval(IntEnum):
-    NONE = 0  # 无延迟模式，前台发送，防止界面阻塞
-    NORMAL = 25  # 正常模式，后台发送，适用于元素骑士、魔灵传说等需要一定间隔发送的游戏
+    NONE = 0  # 无延迟模式，前台发送间隔
+    NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等
+    SLOW = 50  # 慢速模式，后台发送间隔，适用于元素骑士
 
 
 class Button(IntFlag):
@@ -767,7 +768,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             +
             [
                 "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
-            ] * is_fight
+            ] * is_fight,
+            Interval.SLOW
         )
 
     def ysqs_upgrade_start(self):
