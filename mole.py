@@ -726,16 +726,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 选定关卡实际挑战次数
         if can_fight_wjsy:  # 无尽深渊战力达标
             if hour < 21:
-                fight_times = (170 // level_info.get("体力消耗") + 10) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
+                fight_times = (170 // level_info.get("体力消耗")) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
         elif can_fight_ssmy:  # 莎士摩亚战力达标
             if hour < 21:
-                fight_times = (20 // level_info.get("体力消耗") + 10) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
+                fight_times = (20 // level_info.get("体力消耗")) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
         else:  # 战力未达标
             if has_no_card:  # 无卡牌挑战
                 fight_times = remain_times * 2
         is_reward = is_fight_wjsy or is_fight_ssmy or fight_times >= 20  # 是否领取每日任务奖励
         is_fight = is_fight_wjsy or is_fight_ssmy or fight_times > 0  # 是否挑战
-        # 无尽深渊、莎士摩亚和选定关卡的总挑战次数都+10，防止某些包无效
         send_lines_back(
             [
                 "00000000000000231A0000000000000000"  # 领悟技能
@@ -743,11 +742,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
-            ] * (70 + 10) * is_fight_wjsy
+            ] * 70 * is_fight_wjsy
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
-            ] * (30 + 5) * is_fight_ssmy
+            ] * 30 * is_fight_ssmy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
@@ -755,7 +754,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
-            ] * (10 + 5) * is_fight_ssmy
+            ] * 10 * is_fight_ssmy
             +
             [
                 f"00000000000000{"2321" if has_no_card else "231D"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡

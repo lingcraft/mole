@@ -18,6 +18,8 @@ jobs:
         shell: python
         run: |
           from datetime import datetime
+          from hashlib import sha256
+          from json import dumps
           from os import environ
           from tomllib import load
           with open("pyproject.toml", "rb") as file:
@@ -25,12 +27,14 @@ jobs:
           nuitka_path = environ.get("LOCALAPPDATA") + "\\Nuitka\\Nuitka\\Cache"
           uv_path = environ.get("LOCALAPPDATA") + "\\uv\\cache"
           week = datetime.now().strftime("%V")
+          deps_hash = sha256(dumps(project.get("dependencies"), sort_keys=True).encode()).hexdigest()
           with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
               env.write(f"VERSION={project.get('version')}\n")
               env.write(f"DESCRIPTION<<EOF\n{project.get('description').strip()}\nEOF\n")
               env.write(f"NUITKA_PATH={nuitka_path}\n")
               env.write(f"UV_PATH={uv_path}\n")
               env.write(f"WEEK={week}\n")
+              env.write(f"DEPS_HASH={deps_hash}\n")
       - name: 查询标签
         id: check
         uses: action-pack/tag-exists@v1
@@ -46,7 +50,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.UV_PATH }}
-          key: ${{ runner.os }}-uv-${{ hashFiles('uv.lock') }}
+          key: ${{ runner.os }}-uv-${{ env.DEPS_HASH }}
           restore-keys: ${{ runner.os }}-uv-
       - name: 安装依赖
         if: steps.check.outputs.exists == 'false'
