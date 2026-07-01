@@ -721,29 +721,33 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later_expect(self.ysqs_run, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
 
     def ysqs_run(self, wjsy_info, ssmy_info):
-        # 挑战信息判断
         hour = datetime.now().hour
         level_info = get_level_info(self.ysqsLevelBox.currentText())
-        has_no_card = ysqs_attack == 0  # 未装备卡牌
+        # 战力判断
+        is_equip_card = ysqs_attack > 0  # 是否装备卡牌
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
         can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
-        is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
-        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
-        # 特殊关卡挑战次数计算
-        # xxxx_state：0：可以挑战，2：挑战次数达到每日上限，3：体力不足，6：不在挑战时间内
+        # 无尽深渊、莎士摩亚挑战次数计算
+        # state：0：可以挑战，2：挑战次数达到每日上限，3：体力不足，6：不在挑战时间内
         wjsy_state, wjsy_fighted_times = wjsy_info
         wjsy_fight_times = (70 - wjsy_fighted_times) if wjsy_state == 0 and can_fight_wjsy else 0
         ssmy_state, ssmy_fighted_times = ssmy_info
         ssmy_fight_times = (40 - ssmy_fighted_times) if ssmy_state == 0 and can_fight_ssmy else 0
-        ssmy_fight_times_round1 = max(ysqs_energy - wjsy_fight_times, 0) // 5  # 第1管体力莎士摩亚挑战次数
-        ssmy_fight_times_round2 = ssmy_fight_times - ssmy_fight_times_round1 + 10  # 第2管体力莎士摩亚挑战次数，加10次容错包
+        if ssmy_fight_times == 0:
+            ssmy_fight_times_round1, ssmy_fight_times_round2 = 0, 0
+        else:
+            ssmy_fight_times_round1 = clamp((ysqs_energy - wjsy_fight_times) // 5, 0, 40)  # 第1管体力莎士摩亚挑战次数
+            ssmy_fight_times_round2 = ssmy_fight_times - ssmy_fight_times_round1 + ssmy_fight_times // 4  # 第2管体力莎士摩亚挑战次数，加1/4容错包
+        # 无尽深渊、莎士摩亚是否挑战判断
+        is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy and wjsy_fight_times > 0  # 是否挑战无尽深渊
+        is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and ssmy_fight_times > 0 and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
         # 选定关卡挑战次数计算
         remain_times = ysqs_energy // level_info.get("体力消耗")  # 当前体力可挑战次数
         if can_fight_wjsy and hour < 21 and wjsy_fight_times > 0:
             fight_times = (170 // level_info.get("体力消耗")) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
         elif can_fight_ssmy and hour < 21 and ssmy_fight_times > 0:
             fight_times = (20 // level_info.get("体力消耗")) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
-        elif not can_fight_ssmy and has_no_card:  # 战力未达标且无卡牌挑战
+        elif not can_fight_ssmy and not is_equip_card:  # 战力未达标且无卡牌挑战
             fight_times = remain_times * 2
         else:
             fight_times = remain_times
@@ -767,7 +771,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ] * ssmy_fight_times_round2 * is_fight_ssmy
             +
             [
-                f"00000000000000{"2321" if has_no_card else "231D"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡
+                f"00000000000000{"231D" if is_equip_card else "2321"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡
             ] * fight_times
             +
             [
@@ -1344,6 +1348,10 @@ def get_card_level(star, exp):
     star = min(star, 6)
     base = 2 * star + 5
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
+
+
+def clamp(value, lower, upper):
+    return min(max(int(value), lower), upper)
 
 
 def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):

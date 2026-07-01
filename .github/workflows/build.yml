@@ -24,8 +24,8 @@ jobs:
           from tomllib import load
           with open("pyproject.toml", "rb") as file:
               project = load(file).get("project")
-          nuitka_path = environ.get("LOCALAPPDATA") + "\\Nuitka\\Nuitka\\Cache"
-          uv_path = environ.get("LOCALAPPDATA") + "\\uv\\cache"
+          nuitka_path = environ.get("localappdata") + "\\Nuitka\\Nuitka\\Cache"
+          uv_path = environ.get("localappdata") + "\\uv\\cache"
           week = datetime.now().strftime("%V")
           deps_hash = sha256(dumps(project.get("dependencies"), sort_keys=True).encode()).hexdigest()
           with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
