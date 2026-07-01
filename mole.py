@@ -105,7 +105,7 @@ is_window_defined = False
 
 class Interval(IntEnum):
     NONE = 0  # 无延迟模式，前台发送间隔
-    NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等
+    NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等游戏
     SLOW = 50  # 慢速模式，后台发送间隔，适用于元素骑士
 
 
@@ -289,6 +289,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_all_buttons(False)
 
     def add_data(self, data_type, socket_num, cmd_id, cmd_analyse, data):
+        self.tableWidget.blockSignals(True)
         global packet_index
         if packet_index >= 10000:  # 已有数据10000条，清空
             self.clear_table()
@@ -298,7 +299,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.tableWidget.setColumnWidth(4, self.column_width)
         if packet_index >= self.tableWidget.rowCount():
             self.tableWidget.setRowCount(packet_index + 1)
-        self.tableWidget.blockSignals(True)
         self.tableWidget.setItem(packet_index, 0, QTableWidgetItem(data_type))
         self.tableWidget.setItem(packet_index, 1, QTableWidgetItem(str(socket_num)))
         self.tableWidget.setItem(packet_index, 2, QTableWidgetItem(str(cmd_id)))
@@ -316,10 +316,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.item(packet_index, 4).setToolTip(data)
         if packet_index >= 10:  # 已有10条数据后拖动到底部
             self.tableWidget.scrollToBottom()
-        self.tableWidget.blockSignals(False)
         packet_index += 1  # 下一条要插入数据的索引
+        self.tableWidget.blockSignals(False)
 
     def init_table_size(self):
+        self.tableWidget.blockSignals(True)
         self.row_len = 2  # 行数位数
         self.column_width = 224  # 封包数据列宽
         self.tableWidget.clearContents()  # 清空内容
@@ -331,6 +332,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.setColumnWidth(3, 100)
         self.tableWidget.setColumnWidth(4, self.column_width)
         self.tableWidget.scrollToTop()  # 拖动到顶部
+        self.tableWidget.blockSignals(False)
 
     def clear_table(self):
         global packet_index
@@ -711,46 +713,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_start(self):
         send_lines([
+            "00000000000000231A0000000000000000",  # 领悟技能
             "00000000000000231E000000000000000000000000",  # 获取元素骑士信息
-            f"0000000000000023200000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",  # 查询无尽深渊已挑战次数
-            f"0000000000000023200000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",  # 查询莎士摩亚已挑战次数
+            f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",  # 获取无尽深渊已挑战次数
+            f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",  # 获取莎士摩亚已挑战次数
         ])
-        run_later_expect(self.ysqs_run, {0x2320: {"num": 2, "need_data": True}})
+        run_later_expect(self.ysqs_run, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
 
-    def ysqs_run(self, wjsy_times, ssmy_times):
+    def ysqs_run(self, wjsy_info, ssmy_info):
+        # 挑战信息判断
         hour = datetime.now().hour
         level_info = get_level_info(self.ysqsLevelBox.currentText())
         has_no_card = ysqs_attack == 0  # 未装备卡牌
-        can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
+        can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         is_fight_wjsy = ysqs_energy > 0 and 13 <= hour < 21 and can_fight_wjsy  # 是否挑战无尽深渊
         is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
+        # 特殊关卡挑战次数计算
+        # xxxx_state：0：可以挑战，2：挑战次数达到每日上限，3：体力不足，6：不在挑战时间内
+        wjsy_state, wjsy_fighted_times = wjsy_info
+        wjsy_fight_times = (70 - wjsy_fighted_times) if wjsy_state == 0 and can_fight_wjsy else 0
+        ssmy_state, ssmy_fighted_times = ssmy_info
+        ssmy_fight_times = (40 - ssmy_fighted_times) if ssmy_state == 0 and can_fight_ssmy else 0
+        ssmy_fight_times_round1 = max(ysqs_energy - wjsy_fight_times, 0) // 5  # 第1管体力莎士摩亚挑战次数
+        ssmy_fight_times_round2 = ssmy_fight_times - ssmy_fight_times_round1 + 10  # 第2管体力莎士摩亚挑战次数，加10次容错包
+        # 选定关卡挑战次数计算
         remain_times = ysqs_energy // level_info.get("体力消耗")  # 当前体力可挑战次数
-        fight_times = remain_times
-        # 选定关卡实际挑战次数
-        if can_fight_wjsy:  # 无尽深渊战力达标
-            if hour < 21:
-                fight_times = (170 // level_info.get("体力消耗")) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
-        elif can_fight_ssmy:  # 莎士摩亚战力达标
-            if hour < 21:
-                fight_times = (20 // level_info.get("体力消耗")) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
-        else:  # 战力未达标
-            if has_no_card:  # 无卡牌挑战
-                fight_times = remain_times * 2
+        if can_fight_wjsy and hour < 21 and wjsy_fight_times > 0:
+            fight_times = (170 // level_info.get("体力消耗")) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
+        elif can_fight_ssmy and hour < 21 and ssmy_fight_times > 0:
+            fight_times = (20 // level_info.get("体力消耗")) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
+        elif not can_fight_ssmy and has_no_card:  # 战力未达标且无卡牌挑战
+            fight_times = remain_times * 2
+        else:
+            fight_times = remain_times
         is_reward = is_fight_wjsy or is_fight_ssmy or fight_times >= 20  # 是否领取每日任务奖励
         is_fight = is_fight_wjsy or is_fight_ssmy or fight_times > 0  # 是否挑战
         send_lines_back(
             [
-                "00000000000000231A0000000000000000"  # 领悟技能
-            ]
-            +
-            [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
-            ] * 70 * is_fight_wjsy
+            ] * wjsy_fight_times * is_fight_wjsy
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
-            ] * 30 * is_fight_ssmy
+            ] * ssmy_fight_times_round1 * is_fight_ssmy
             +
             [
                 "000000000000002319000000000000000000000000"  # 恢复体力
@@ -758,7 +764,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             +
             [
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
-            ] * 10 * is_fight_ssmy
+            ] * ssmy_fight_times_round2 * is_fight_ssmy
             +
             [
                 f"00000000000000{"2321" if has_no_card else "231D"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡
@@ -1252,7 +1258,7 @@ def run_later(func, delay: int = 350):
 
 def run_later_expect(func, expect: dict):
     # 等待到期望包之后运行
-    # expect：{cmd_id：{"num"：数量, "offset"：数据偏移, "bytes_num"：数据字节数, "need_data"：是否获取数据}}
+    # expect：{cmd_id：{"num"：数量, "offsets"：[offset, ...], "need_data"：是否获取数据}}
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
     pending_waits.append({
         "expect": expect,
@@ -1273,7 +1279,10 @@ def check_waiting_packets(packet):
             spec = expect.get(packet.cmd_id)
             data = wait_info.get("data", {})
             if isinstance(spec, dict) and spec.get("need_data"):
-                data.get(packet.cmd_id).append(get_int(packet.body, **{key: spec.get(key) for key in ("offset", "bytes_num") if key in spec}))
+                offsets = spec.get("offsets", ())
+                data[packet.cmd_id].append(
+                    tuple(get_int(packet.body, offset) for offset in offsets) if offsets else get_int(packet.body)
+                )
             # 检查是否所有 cmd_id 都集齐
             if all(counts.get(cid, 0) >= (spec.get("num") if isinstance(spec, dict) else spec)
                    for cid, spec in expect.items()):
