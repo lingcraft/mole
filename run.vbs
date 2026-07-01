@@ -1,1 +1,1 @@
-CreateObject("WScript.Shell").Run "uv run python mole.py", vbHide
+CreateObject("WScript.Shell").Run "uv run mole.py", vbHide
