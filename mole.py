@@ -716,7 +716,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "00000000000000231A0000000000000000",  # 领悟技能
             "00000000000000231E000000000000000000000000",  # 获取元素骑士信息
             f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",  # 获取无尽深渊已挑战次数
-            f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",  # 获取莎士摩亚已挑战次数
+            f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}"  # 获取莎士摩亚已挑战次数
         ])
         run_later_expect(self.ysqs_run, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
 
