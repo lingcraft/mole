@@ -44,7 +44,7 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         uses: actions/setup-python@v6
         with:
-          python-version: 3.13
+          python-version-file: .python-version
       - name: 依赖缓存
         if: steps.check.outputs.exists == 'false'
         uses: actions/cache@v4
