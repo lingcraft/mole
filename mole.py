@@ -1526,7 +1526,6 @@ def process_recv_packet(socket_num, buf, length):
                     if is_show_recv:
                         show_data(packet, "R <==")  # 界面添加recv数据
                     if packet.version == 0:  # 正确包
-                        check_waiting_packets(packet)
                         match packet.cmd_id:
                             case 228 if can_get_lamu_info:  # 第1次进入游戏时获取拉姆ID
                                 can_get_lamu_info = False
@@ -1778,6 +1777,9 @@ def process_recv_packet(socket_num, buf, length):
                                 info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
                             case _:
                                 pass
+                        check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
+                        if is_write_recv:  # 修改原始数据模式
+                            raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
                     else:  # 错误包
                         if packet.cmd_id == 1209:  # 拉姆变身获得物品
                             if lamu_times == 0:
@@ -1785,8 +1787,6 @@ def process_recv_packet(socket_num, buf, length):
                             else:
                                 is_max_skill_success = False
                     # 处理后面的包
-                    if is_write_recv:
-                        raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
                     recv_buf = recv_buf[packet_len:]
                     buf_index += packet_len
                 else:
