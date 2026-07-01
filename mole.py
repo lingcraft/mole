@@ -743,9 +743,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         is_fight_ssmy = ysqs_energy > 0 and 10 <= hour < 21 and can_fight_ssmy and ssmy_fight_times > 0 and (is_fight_wjsy if can_fight_wjsy else True)  # 是否挑战莎士摩亚
         # 选定关卡挑战次数计算
         remain_times = ysqs_energy // level_info.get("体力消耗")  # 当前体力可挑战次数
-        if can_fight_wjsy and hour < 21 and wjsy_fight_times > 0:
+        if can_fight_wjsy and hour < 21:
             fight_times = (170 // level_info.get("体力消耗")) * is_fight_wjsy  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
-        elif can_fight_ssmy and hour < 21 and ssmy_fight_times > 0:
+        elif can_fight_ssmy and hour < 21:
             fight_times = (20 // level_info.get("体力消耗")) * is_fight_ssmy  # 打完莎士摩亚后的选定关卡挑战次数
         elif not can_fight_ssmy and not is_equip_card:  # 战力未达标且无卡牌挑战
             fight_times = remain_times * 2
