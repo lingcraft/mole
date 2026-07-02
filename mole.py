@@ -331,6 +331,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.setColumnWidth(2, 45)
         self.tableWidget.setColumnWidth(3, 100)
         self.tableWidget.setColumnWidth(4, self.column_width)
+        self.tableWidget.setCurrentCell(-1, -1)  # 清除选中，避免恢复信号后触发 currentCellChanged
         self.tableWidget.scrollToTop()  # 拖动到顶部
         self.tableWidget.blockSignals(False)
 

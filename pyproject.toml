@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.7.19"
+version = "1.7.20"
 description = """
-- 优化：元素骑士挑战逻辑优化
+- 修复：修复当按顺序操作："清空封包、点击任意按钮发送封包、切换功能区域页面"时，会自动触发封包列表区域的 currentCellChanged 信号导致发送区域自动显示 ip 的问题
 """
 readme = "README.md"
 requires-python = ">=3.12"
