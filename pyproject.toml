@@ -1,6 +1,6 @@
 [project]
 name = "mole"
-version = "1.7.18"
+version = "1.7.19"
 description = """
 - 优化：元素骑士挑战逻辑优化
 """
