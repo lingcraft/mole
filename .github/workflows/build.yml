@@ -18,7 +18,7 @@ jobs:
         shell: python
         run: |
           from datetime import datetime
-          from hashlib import sha256
+          from hashlib import md5
           from json import dumps
           from os import environ
           from tomllib import load
@@ -26,9 +26,12 @@ jobs:
               project = load(file).get("project")
           nuitka_path = environ.get("localappdata") + "\\Nuitka\\Nuitka\\Cache"
           week = datetime.now().strftime("%V")
+          deps_hash = md5(str(sorted(project.get("dependencies"))).encode()).hexdigest()
+          with open("deps.hash", "w") as file:
+              file.write(deps_hash)
           with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
-              env.write(f"VERSION={project.get('version')}\n")
-              env.write(f"DESCRIPTION<<EOF\n{project.get('description').strip()}\nEOF\n")
+              env.write(f"VERSION={project.get("version")}\n")
+              env.write(f"DESCRIPTION<<EOF\n{project.get("description").strip()}\nEOF\n")
               env.write(f"NUITKA_PATH={nuitka_path}\n")
               env.write(f"WEEK={week}\n")
       - name: 查询标签
@@ -46,6 +49,7 @@ jobs:
         uses: astral-sh/setup-uv@v8.2.0
         with:
           prune-cache: false
+          cache-dependency-glob: deps.hash
       - name: 安装依赖
 #        if: steps.check.outputs.exists == 'false'
         run: |
