@@ -45,9 +45,10 @@ jobs:
 #        if: steps.check.outputs.exists == 'false'
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          enable-cache: true
-          restore-cache: true
-          save-cache: true
+#          enable-cache: true
+#          restore-cache: true
+#          save-cache: true
+          prune-cache: false
       - name: 安装依赖
 #        if: steps.check.outputs.exists == 'false'
         run: |
