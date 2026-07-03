@@ -48,8 +48,8 @@ jobs:
 #        if: steps.check.outputs.exists == 'false'
         uses: astral-sh/setup-uv@v8.2.0
         with:
-          prune-cache: false
           cache-dependency-glob: deps.hash
+          prune-cache: false
       - name: 安装依赖
 #        if: steps.check.outputs.exists == 'false'
         run: |
