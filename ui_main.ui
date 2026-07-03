@@ -624,11 +624,11 @@
      <attribute name="title">
       <string>第2页</string>
      </attribute>
-     <widget class="QGroupBox" name="groupBox7">
+     <widget class="QGroupBox" name="groupBox4">
       <property name="geometry">
        <rect>
-        <x>-1</x>
-        <y>64</y>
+        <x>199</x>
+        <y>2</y>
         <width>300</width>
         <height>61</height>
        </rect>
@@ -685,11 +685,11 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox5">
+     <widget class="QGroupBox" name="groupBox6">
       <property name="geometry">
        <rect>
-        <x>298</x>
-        <y>2</y>
+        <x>98</x>
+        <y>64</y>
         <width>100</width>
         <height>61</height>
        </rect>
@@ -714,11 +714,11 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox6">
+     <widget class="QGroupBox" name="groupBox7">
       <property name="geometry">
        <rect>
-        <x>397</x>
-        <y>2</y>
+        <x>197</x>
+        <y>64</y>
         <width>102</width>
         <height>61</height>
        </rect>
@@ -788,11 +788,11 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox4">
+     <widget class="QGroupBox" name="groupBox5">
       <property name="geometry">
        <rect>
-        <x>199</x>
-        <y>2</y>
+        <x>-1</x>
+        <y>64</y>
         <width>100</width>
         <height>61</height>
        </rect>

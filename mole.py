@@ -58,6 +58,7 @@ mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞
 mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
+can_fight_wjsy, can_fight_ssmy, is_equip_card = False, False, True  # 能否挑战无尽深渊、莎士摩亚、是否装备卡牌
 ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
@@ -712,19 +713,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def ysqs_start(self):
         send_lines([
             "00000000000000231A0000000000000000",  # 领悟技能
-            "00000000000000231E000000000000000000000000",  # 获取元素骑士信息
-            f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",  # 获取无尽深渊已挑战次数
-            f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}"  # 获取莎士摩亚已挑战次数
+            "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
         ])
-        run_later_expect(self.ysqs_run, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
+        run_later_expect(self.ysqs_run, {0x231E: 1})
 
-    def ysqs_run(self, wjsy_info, ssmy_info):
+    def ysqs_run(self):
+        if (can_fight_wjsy and 10 <= datetime.now().hour < 13) or (not can_fight_wjsy and not can_fight_ssmy):
+            self.ysqs_fight((6, 0), (6, 0))
+        else:
+            send_lines([
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}"
+            ])
+            run_later_expect(self.ysqs_fight, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
+
+    def ysqs_fight(self, wjsy_info, ssmy_info):
         hour = datetime.now().hour
         level_info = get_level_info(self.ysqsLevelBox.currentText())
-        # 战力判断
-        is_equip_card = ysqs_attack > 0  # 是否装备卡牌
-        can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
-        can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
         # 无尽深渊、莎士摩亚挑战次数计算
         # state：0：可以挑战，2：挑战次数达到每日上限，3：体力不足，6：不在挑战时间内
         wjsy_state, wjsy_fighted_times = wjsy_info
@@ -742,7 +747,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             fight_times = 170 // level_info.get("体力消耗")  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
         elif can_fight_ssmy and 10 <= hour < 21 and ssmy_fight_times > 0:
             fight_times = 20 // level_info.get("体力消耗")  # 打完莎士摩亚后的选定关卡挑战次数
-        elif can_fight_wjsy and hour < 13 or can_fight_ssmy and hour < 10:
+        elif (can_fight_wjsy and hour < 13) or (can_fight_ssmy and hour < 10):
             fight_times = 0  # 特殊关卡时段未到
         elif not can_fight_wjsy and not can_fight_ssmy and not is_equip_card:
             fight_times = remain_times * 2  # 战力未达标且无卡牌挑战
@@ -1282,7 +1287,7 @@ def check_waiting_packets(packet):
             counts[packet.cmd_id] = counts.get(packet.cmd_id, 0) + 1
             spec = expect.get(packet.cmd_id)
             data = wait_info.get("data", {})
-            if isinstance(spec, dict) and spec.get("need_data"):
+            if isinstance(spec, dict) and spec.get("need_data", False):
                 offsets = spec.get("offsets", ())
                 data[packet.cmd_id].append(
                     tuple(get_int(packet.body, offset) for offset in offsets) if offsets else get_int(packet.body)
@@ -1526,7 +1531,7 @@ def process_recv_packet(socket_num, buf, length):
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
-        ysqs_material_cards_dict
+        ysqs_material_cards_dict, can_fight_wjsy, can_fight_ssmy, is_equip_card
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
     buf_index = 0
@@ -1680,6 +1685,9 @@ def process_recv_packet(socket_num, buf, length):
                                 ysqs_energy = get_int(packet.body, 28)
                                 ysqs_attack = get_int(packet.body, 44)
                                 ysqs_max_floor = get_int(packet.body, 68)
+                                can_fight_wjsy = ysqs_max_floor >= 50 or ysqs_attack >= 7000  # 无尽深渊战力达标
+                                can_fight_ssmy = ysqs_attack >= 2000  # 莎士摩亚战力达标
+                                is_equip_card = ysqs_attack > 0  # 是否装备卡牌
                                 cards_num = get_int(packet.body, 76)
                                 start = 80
                                 size = 4 * 4
@@ -1728,8 +1736,6 @@ def process_recv_packet(socket_num, buf, length):
                                     if index != -1:
                                         window.ysqsCardBox.setCurrentIndex(index)
                                 window.ysqsCardBox.blockSignals(False)
-                            case 8992:  # 元素骑士关卡已挑战次数
-                                level_times = get_int(packet.body)
                             case 1014:  # 餐厅信息
                                 ct_cooked_dishes_dict.clear()
                                 ct_cooking_dishes_dict.clear()
