@@ -147,9 +147,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)  # 禁止选多行
         self.tableWidget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)  # 一次选一行
         self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # 允许手动调整列宽
-        self.init_table_size()
         self.tableWidget.setHorizontalHeaderLabels(["类型", "通信号", "命令号", "解析", "封包数据"])
         self.tableWidget.currentCellChanged.connect(self.change_row)
+        self.clear_table()
         # 界面菜单栏设置
         self.serverMenu = self.menubar.addMenu("切换版本")
         for server in server_dict:
@@ -319,8 +319,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         packet_index += 1  # 下一条要插入数据的索引
         self.tableWidget.blockSignals(False)
 
-    def init_table_size(self):
+    def clear_table(self):
         self.tableWidget.blockSignals(True)
+        global packet_index
+        packet_index = 0
         self.row_len = 2  # 行数位数
         self.column_width = 224  # 封包数据列宽
         self.tableWidget.clearContents()  # 清空内容
@@ -334,11 +336,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.setCurrentCell(-1, -1)  # 清除选中，避免恢复信号后触发 currentCellChanged
         self.tableWidget.scrollToTop()  # 拖动到顶部
         self.tableWidget.blockSignals(False)
-
-    def clear_table(self):
-        global packet_index
-        packet_index = 0
-        self.init_table_size()
 
     def enable_lamu_button(self, enable):
         self.lamuGrowButton.setEnabled(enable)
