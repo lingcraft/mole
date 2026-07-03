@@ -148,9 +148,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)  # 禁止选多行
         self.tableWidget.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)  # 一次选一行
         self.tableWidget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # 允许手动调整列宽
+        self.clear_table()
         self.tableWidget.setHorizontalHeaderLabels(["类型", "通信号", "命令号", "解析", "封包数据"])
         self.tableWidget.currentCellChanged.connect(self.change_row)
-        self.clear_table()
         # 界面菜单栏设置
         self.serverMenu = self.menubar.addMenu("切换版本")
         for server in server_dict:

@@ -55,8 +55,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.NUITKA_PATH }}
-          key: ${{ runner.os }}-nuitka-${{ env.WEEK }}
-          restore-keys: ${{ runner.os }}-nuitka-
+          key: nuitka-${{ env.WEEK }}
+          restore-keys: nuitka-
       - name: 开始编译
         if: steps.check.outputs.exists == 'false'
         run: |
