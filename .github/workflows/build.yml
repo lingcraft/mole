@@ -42,12 +42,12 @@ jobs:
         with:
           python-version-file: .python-version
       - name: 安装环境
-#        if: steps.check.outputs.exists == 'false'
+        if: steps.check.outputs.exists == 'false'
         uses: astral-sh/setup-uv@v8.2.0
         with:
           prune-cache: false
       - name: 安装依赖
-#        if: steps.check.outputs.exists == 'false'
+        if: steps.check.outputs.exists == 'false'
         run: |
           uv sync
       - name: 编译缓存
