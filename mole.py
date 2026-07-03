@@ -718,7 +718,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later_expect(self.ysqs_run, {0x231E: 1})
 
     def ysqs_run(self):
-        if (can_fight_wjsy and 10 <= datetime.now().hour < 13) or (not can_fight_wjsy and not can_fight_ssmy):
+        if (can_fight_wjsy and 10 <= datetime.now().hour < 13) or not (can_fight_wjsy and can_fight_ssmy):
             self.ysqs_fight((6, 0), (6, 0))
         else:
             send_lines([
@@ -749,7 +749,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             fight_times = 20 // level_info.get("体力消耗")  # 打完莎士摩亚后的选定关卡挑战次数
         elif (can_fight_wjsy and hour < 13) or (can_fight_ssmy and hour < 10):
             fight_times = 0  # 特殊关卡时段未到
-        elif not can_fight_wjsy and not can_fight_ssmy and not is_equip_card:
+        elif not (can_fight_wjsy or can_fight_ssmy or is_equip_card):
             fight_times = remain_times * 2  # 战力未达标且无卡牌挑战
         else:
             fight_times = remain_times
