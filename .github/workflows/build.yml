@@ -43,7 +43,7 @@ jobs:
           python-version-file: .python-version
       - name: 安装环境
         if: steps.check.outputs.exists == 'false'
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8
       - name: 安装依赖
         if: steps.check.outputs.exists == 'false'
         run: |
