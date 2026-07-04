@@ -25,4 +25,5 @@ cmd = " ".join([
     "--include-data-files=zh_CN.qm=zh_CN.qm",
     "--onefile"
 ])
+
 run(cmd, input=b"Yes\n", shell=True)
