@@ -18,8 +18,21 @@ jobs:
         with:
           python-version-file: .python-version
       - name: 设置环境
+        shell: python
         run: |
-          python env.py
+          from datetime import datetime
+          from hashlib import md5
+          from os import environ
+          from tomllib import load
+          with open("pyproject.toml", "rb") as file:
+              project = load(file)["project"]
+          with open("deps.hash", "w") as file:
+              file.write(md5(str(sorted(project["dependencies"])).encode()).hexdigest())
+          with open(environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"VERSION={project["version"]}\n")
+              env.write(f"DESCRIPTION<<EOF\n{project["description"].strip()}\nEOF\n")
+              env.write(f"NUITKA_PATH={environ["localappdata"]}\\Nuitka\\Nuitka\\Cache\n")
+              env.write(f"WEEK={datetime.now().strftime("%V")}\n")
       - name: 查询标签
         id: check
         uses: action-pack/tag-exists@v1

@@ -2,7 +2,7 @@
 name = "mole"
 version = "1.7.23"
 description = """
-- 优化：工作流编译流程优化，取消使用PowerShell脚本直接改用Python，设置环境变量也直接写为Python代码
+- 优化：工作流编译流程优化，取消使用PowerShell脚本直接改用Python脚本
 """
 readme = "README.md"
 requires-python = ">=3.12"
