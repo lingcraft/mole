@@ -13,37 +13,18 @@ jobs:
     steps:
       - name: 拉取代码
         uses: actions/checkout@v5
-      - name: 设置环境变量
-        id: version
-        shell: python
+      - name: 安装环境
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+      - name: 设置环境
         run: |
-          from datetime import datetime
-          from hashlib import md5
-          from json import dumps
-          from os import environ
-          from tomllib import load
-          with open("pyproject.toml", "rb") as file:
-              project = load(file).get("project")
-          nuitka_path = environ.get("localappdata") + "\\Nuitka\\Nuitka\\Cache"
-          week = datetime.now().strftime("%V")
-          deps_hash = md5(str(sorted(project.get("dependencies"))).encode()).hexdigest()
-          with open("deps.hash", "w") as file:
-              file.write(deps_hash)
-          with open(environ.get("GITHUB_ENV"), "a", encoding="utf-8") as env:
-              env.write(f"VERSION={project.get("version")}\n")
-              env.write(f"DESCRIPTION<<EOF\n{project.get("description").strip()}\nEOF\n")
-              env.write(f"NUITKA_PATH={nuitka_path}\n")
-              env.write(f"WEEK={week}\n")
+          python env.py
       - name: 查询标签
         id: check
         uses: action-pack/tag-exists@v1
         with:
           tag: v${{ env.VERSION }}
-      - name: 安装环境
-        if: steps.check.outputs.exists == 'false'
-        uses: actions/setup-python@v6
-        with:
-          python-version-file: .python-version
       - name: 安装环境
         if: steps.check.outputs.exists == 'false'
         uses: astral-sh/setup-uv@v8.2.0
@@ -64,7 +45,7 @@ jobs:
       - name: 开始编译
         if: steps.check.outputs.exists == 'false'
         run: |
-          .\build.ps1
+          uv run build.py
       - name: 上传文件
         if: steps.check.outputs.exists == 'false'
         uses: actions/upload-artifact@v5

@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.7.22"
+version = "1.7.23"
 description = """
-- 优化：元素骑士若“无尽深渊”最高挑战层数达到50层，但实际装备卡牌战力过低时，不发送“无尽深渊”和“莎士摩亚”挑战包（用来获取已挑战次数）浪费体力
+- 优化：工作流编译流程优化，取消使用PowerShell脚本直接改用Python，设置环境变量也直接写为Python代码
 """
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,4 +13,5 @@ dependencies = [
     "pypinyin~=0.55.0",
     "pyside6~=6.11.1",
     "requests~=2.34.2",
+    "zstandard~=0.25"
 ]
