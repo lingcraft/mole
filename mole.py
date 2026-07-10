@@ -12,9 +12,9 @@ from copy import deepcopy
 from dict import *
 from datetime import datetime
 from time import sleep
-from enum import IntEnum, IntFlag
+from enum import IntEnum, IntFlag, StrEnum
 from configparser import ConfigParser
-from os import getenv
+from os import environ
 from pathlib import Path
 from tomllib import load, loads
 from requests import get
@@ -22,12 +22,14 @@ from bisect import bisect_right
 from math import floor, sqrt
 from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
+from pyamf import sol
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
 user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
+buf_index = 0  # 数据索引
 is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包、recv包、写回recv包
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否显示过消息
@@ -98,16 +100,28 @@ int WINAPI Send(ULONG64, PCHAR, INT);
 void LoadFlash();
 """)
 # 路径
-config = Path(getenv("appdata")) / "mole" / "config.ini"
+config = Path(environ["appdata"]) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
 log = base_dir / "hook.log"
-is_window_defined = False
+login_cache = next(
+    (
+        cache_dir / "mole.61.com" / "#mole" / "login.sol"
+        for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
+    ),
+    None
+)
+is_window_init = False
 
 
 class Interval(IntEnum):
     NONE = 0  # 无延迟模式，前台发送间隔
     NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等游戏
     SLOW = 50  # 慢速模式，后台发送间隔，适用于元素骑士
+
+
+class Show(StrEnum):
+    SEND = "S ==>"
+    RECV = "R <=="
 
 
 class Button(IntFlag):
@@ -139,6 +153,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.node = "主节点"
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file).get("project").get("version")
+        if login_cache is not None:
+            with open(login_cache, "rb") as file:  # 获取登录信息
+                self.account_dict = {data.get("userID"): get_password(data.get("pwd")) for data in sol.decode(file.read())[1].get("list")}
+        else:
+            self.account_dict = {}
         # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
@@ -204,6 +223,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 餐厅功能
         self.ctSellButton.clicked.connect(lambda: self.start_task("餐厅卖菜", self.ct_sell_run, 1, self.ctSellButton))
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
+        # 界面初始化完成
+        global is_window_init
+        is_window_init = True
 
     def closeEvent(self, event):
         if not self.config.has_section("Settings"):
@@ -1187,7 +1209,7 @@ class Packet:
     def parse_data(data: str):
         packet = bytearray.fromhex(data)
         if packet.startswith(b"\x00\x00"):
-            pack_into("!I", packet, 9, user_id)
+            set_int(packet, user_id, 9)
         return packet
 
     def get_serial_num(self):
@@ -1239,18 +1261,12 @@ def path(file: str):
     return str(base_dir / file)
 
 
-def show_data(packet: Packet, data_type: str, socket_num: int = None):
-    global is_window_defined
-    if is_window_defined:
-        if socket_num is None:
-            socket_num = login_socket_num
+def show_data(data_type: str, socket_num: int, packet: Packet):
+    if is_window_init:
         if QThread.currentThread() is QApplication.instance().thread():
             window.add_data(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
         else:
             window.signal.emit(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
-    else:
-        if "window" in globals():
-            is_window_defined = True
 
 
 def info(parent, title: str, msg: str, buttons: int = Button.OK):
@@ -1387,12 +1403,16 @@ def set_int(buf: bytes, value: int, offset: int = 0, bytes_num: int = 4):
             pack_into("!I", buf, offset, value)
 
 
-def get_hex(data: int, bytes_num: int = 4):
-    return f"{data:0{bytes_num * 2}X}"
+def get_hex(*values):
+    return "".join(f"{value:08X}" for value in values)
 
 
 def get_name(buf: bytes, offset: int = 0):
     return unpack_from("16s", buf, offset)[0].rstrip(b"\x00").decode()
+
+
+def get_password(pwd: str):
+    return f"{pwd[8:16]}{pwd[0:8]}{pwd[24:32]}{pwd[16:24]}".encode().hex()
 
 
 def send_lines(lines: list, interval: int = Interval.NONE):
@@ -1408,7 +1428,7 @@ def send_lines(lines: list, interval: int = Interval.NONE):
         send(login_socket_num, packet.data(), packet.length)
         packet.decrypt()
         if is_show_send:
-            show_data(packet, "S ==>")
+            show_data(Show.SEND, login_socket_num, packet)
         if interval > 0:
             sleep(interval / 1000)
 
@@ -1515,26 +1535,28 @@ def process_send_packet(socket_num, buf, length):
         if socket_num == login_socket_num:
             packet.decrypt()
             if is_show_send:
-                show_data(packet, "S ==>")  # 界面添加send数据
+                show_data(Show.SEND, socket_num, packet)  # 界面显示send数据
             with lock:
                 packet.encrypt()
-            return send(socket_num, packet.data(), length)
-    # 其他包
-    if is_show_send and raw_buf[:2] in (b"\x00\x00", b"\x3C\x70", b"\x3C\x3F"):
-        show_data(Packet(raw_buf), "S ==>", socket_num)  # 界面添加send数据
-    return send(socket_num, raw_buf, length)
+        else:
+            if is_show_send:
+                show_data(Show.SEND, socket_num, packet)  # 界面显示send数据
+        return send(socket_num, packet.data(), length)
+    else:
+        return send(socket_num, raw_buf, length)
 
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buf, length):
-    global recv_buf, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
+    global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
         super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
         ysqs_material_cards_dict, can_fight_wjsy, can_fight_ssmy, is_equip_card
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
-    buf_index = 0
+    if raw_buf[:2] == b"\x00\x00":  # 新包
+        buf_index = 0
     # 摩尔主服务器包
     if socket_num == login_socket_num:
         while True:
@@ -1546,7 +1568,7 @@ def process_recv_packet(socket_num, buf, length):
                     packet = Packet(cipher)
                     packet.decrypt()
                     if is_show_recv:
-                        show_data(packet, "R <==")  # 界面添加recv数据
+                        show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
                     if packet.version == 0:  # 正确包
                         match packet.cmd_id:
                             case 228 if can_get_lamu_info:  # 第1次进入游戏时获取拉姆ID
@@ -1818,24 +1840,27 @@ def process_recv_packet(socket_num, buf, length):
                 break
     # 其他包
     else:
-        if raw_buf[:2] == b"\x00\x00":  # 摩尔包
-            while True:
+        while True:
+            if recv_buf.startswith(b"\x00\x00"):
                 if len(recv_buf) >= 4:
                     packet_len = get_int(recv_buf)
                     if len(recv_buf) >= packet_len:
                         # 不是断包
                         cipher = recv_buf[:packet_len]
                         if is_show_recv:
-                            show_data(Packet(cipher), "R <==", socket_num)  # 界面添加recv数据
+                            show_data(Show.RECV, socket_num, Packet(cipher))  # 界面显示recv数据
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
                 else:
                     break
-        elif raw_buf[:2] in (b"\x3C\x70", b"\x3C\x3F"):  # 其他包
-            if is_show_recv:
-                show_data(Packet(raw_buf), "R <==", socket_num)  # 界面添加recv数据
-            recv_buf = recv_buf[length:]
+            else:
+                index = recv_buf.find(b"\x00\x00")
+                if index == -1:
+                    recv_buf.clear()
+                else:
+                    recv_buf = recv_buf[index:]  # 跳过非摩尔包
+                break
 
 
 if __name__ == '__main__':
