@@ -1665,7 +1665,7 @@ def process_recv_packet(socket_num, buf, length):
                                         mmg_fight_friends.append((friend_id, fight_type))
                                     for page in range(other_state_num):
                                         state = get_int(packet.body, start + size1 + page * size2)
-                                        mmg_friends_state_dict[state].append(friend_id)
+                                        mmg_friends_state_dict.get(state).append(friend_id)
                                     start += size1 + other_state_num * size2
                                 mmg_query_page += 1
                                 if mmg_query_page == mmg_query_page_max:  # 查询完毕
