@@ -23,6 +23,8 @@ from math import floor, sqrt
 from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
 from pyamf import sol
+from collections import deque
+from client import Client
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -52,7 +54,7 @@ mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_game_id = 0, 0, 0, 0, ""  # 能
 mmg_type, mmg_times = 0, 0  # 摩摩怪挑战类型、执行次数
 mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times = 0, 0, 0  # 超级Boss、超拉Boss、限时Boss的可挑战次数
 mmg_boss_index1, mmg_boss_index2, mmg_boss_index3 = 0, 0, 0  # 3种Boss挑战次数索引
-mmg_friends, mmg_friends_dict, mmg_students_dict, mmg_fight_friends = [], {}, {}, []  # 好友、好友字典（米米号：等级）、师徒、可挑战好友
+mmg_friends, mmg_friends_dict, mmg_students_dict, mmg_fight_friends = [], {}, {}, deque()  # 好友、好友字典（米米号：等级）、师徒、可挑战好友
 mmg_friends_state_dict = {1: [], 2: [], 3: [], 4: []}  # 4种状态的好友字典
 mmg_friends_num, mmg_query_size_max, mmg_query_page_max, mmg_query_page = 0, 14, 0, 0  # 好友数、最大可查询好友数、最大查询页码、查询页码
 # 魔灵传说
@@ -110,6 +112,12 @@ login_cache = next(
     ),
     None
 )
+account_caches = [
+    sol_file
+    for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
+    for sol_file in (cache_dir / "mole.61.com" / "#mole").glob("*.sol")
+    if sol_file.stem.isdigit()
+]
 is_window_init = False
 
 
@@ -152,12 +160,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.server = "官服"
             self.node = "主节点"
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
-            self.version = load(file).get("project").get("version")
+            self.version = load(file)["project"]["version"]
+        self.account_dict = {}
         if login_cache is not None:
             with open(login_cache, "rb") as file:  # 获取登录信息
-                self.account_dict = {data.get("userID"): get_password(data.get("pwd")) for data in sol.decode(file.read())[1].get("list")}
-        else:
-            self.account_dict = {}
+                self.account_dict = {data["userID"]: get_password(data["pwd"]) for data in sol.decode(file.read())[1]["list"]}
+        self.friend_dict = {}
+        for account_cache in account_caches:  # 获取好友信息
+            with open(account_cache, "rb") as file:
+                self.friend_dict[int(account_cache.stem)] = [int(item["friend"]) for item in sol.decode(file.read())[1]["ServerFriendsList"]]
         # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
@@ -194,6 +205,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_thread.result.connect(self.update_result)
         self.advance_dialog = AdvanceDialog()
         self.signal.connect(self.add_data)
+        self.client = None  # 独立进程客户端，懒启动时才创建
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
         self.sendClearButton.clicked.connect(self.send_clear)
@@ -214,7 +226,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": (RunTimer(self.mmg_run, 1500),),
-            "好友查询": (RunTimer(self.mmg_query_run, 500),),
             "餐厅收菜": tuple(RunTimer() for _ in range(7))
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
@@ -244,7 +255,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return self.timer_pool.get(name, (QTimer(),))[0]
 
     def timers(self, name):
-        return self.timer_pool.get(name)
+        return self.timer_pool[name]
 
     def stop_timer(self, name):
         if (timer := self.timer(name)).isActive():
@@ -306,7 +317,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.check_menu()
-        self.axWidget.dynamicCall("LoadMovie(long, string)", 0, server_dict.get("官服"))
+        self.axWidget.dynamicCall("LoadMovie(long, string)", 0, server_dict["官服"])
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.enable_all_buttons(False)
@@ -404,11 +415,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.enable_ct_button(False)
             self.stop_timer("拉姆")
             self.stop_timer("摩摩怪")
+            self.ct_harvest_stop()
 
     # 简单的多次任务
     def start_task(self, name, func, interval, button=None, start_func=None, stop_text="停止"):
         if name in self.timer_pool:
-            timer, text, button = self.timer_pool.get(name)
+            timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
                 button.setText(text)
                 timer.stop()
@@ -429,7 +441,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def stop_task(self, name):
         if name in self.timer_pool:
-            timer, text, button = self.timer_pool.get(name)
+            timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
                 button.setText(text)
                 timer.stop()
@@ -496,7 +508,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_get_skill_info(self, skill_level, item_level, type_index):
         skill_type = lamu_skill_types[type_index]
         return skill_type, get_skill_id(skill_level, skill_type), list(
-            lamu_dict.get(item_level).get(skill_type).items())
+            lamu_dict[item_level][skill_type].items())
 
     def lamu_collect_result(self):
         is_skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
@@ -536,18 +548,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         lamu_pick_result_dict.clear()
         now = datetime.now()
         refresh_time = datetime(now.year, now.month, now.day, 3)
-        limit_data = lamu_limit_item_dict.get(user_id)
-        if limit_data is None:
-            limit_data = {"数据": {"火": {}, "水": {}, "木": {}}, "时间": now}
-            lamu_limit_item_dict[user_id] = limit_data
-        elif limit_data.get("时间") < refresh_time <= now:
-            limit_data.get("数据").clear()
+        limit_data = lamu_limit_item_dict.setdefault(
+            user_id, {"数据": {"火": {}, "水": {}, "木": {}}, "时间": now}
+        )
+        if limit_data["时间"] < refresh_time <= now:
+            limit_data["数据"].clear()
             limit_data["时间"] = now
 
     def lamu_get_item(self, skill_level, item_level, type_index, item_index):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
-        while item_id in limit_data.get("数据").get(skill_type):
+        while item_id in limit_data["数据"][skill_type]:
             type_index += 1
             if type_index >= len(lamu_skill_types):  # 技能类型都用过了
                 item_index += 1
@@ -569,7 +580,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
             if not is_skill_success:  # 上次技能拿取失败
-                limit_data.get("数据").get(skill_type)[item_id] = item_id
+                limit_data["数据"][skill_type][item_id] = item_id
                 limit_data["时间"] = datetime.now()
                 item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
             if item_id is None:
@@ -594,7 +605,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if "疯" in self.mmgLevelBox.currentText():
                 mmg_energy /= 2
             send_lines([
-                "0000000000000001910000000000000000000000E40000000000000001000000000000000000000000"  # 获取地图信息
+                "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000"  # 获取地图信息
             ])
             self.timer("摩摩怪").start()
 
@@ -618,9 +629,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if fight_type < 3:
                 run_later(start)
             else:
-                if len(mmg_friends) == 0:
-                    info(self, "提示", "进入地图后，请先将鼠标移至右侧好友按钮处以获取好友列表")
-                self.timer("好友查询").start()
+                friends = self.friend_dict[user_id]
+                ids = "".join([get_hex(friend) for friend in friends])
+                send_lines([
+                    f"0000000000000020220000000000000000{get_hex(user_id)}",  # 获取师徒信息
+                    f"0000000000000020100000000000000000{get_hex(len(friends))}{ids}",  # 获取好友信息
+                ])
+                run_later(self.mmg_query_friends)
 
     def mmg_run(self):
         match mmg_type:
@@ -655,7 +670,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             case 3:  # 挑战好友
                 match mmg_times:
                     case n if n < mmg_vigour // 10 and len(mmg_fight_friends) > 0:
-                        level_id, fight_type = mmg_fight_friends.pop()
+                        level_id, fight_type, _ = mmg_fight_friends.popleft()
                         self.mmg_fight(level_id, fight_type)
                     case _:
                         self.mmg_wish()
@@ -687,24 +702,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def mmg_wish(self):
         send_lines_back([
-            *[f"0000000000000020170000000000000000{get_hex(friend_id)}" for friend_id in mmg_friends_state_dict.get(1)],  # 祝福
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000002" for friend_id in mmg_friends_state_dict.get(2)],  # 呼唤
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000003" for friend_id in mmg_friends_state_dict.get(3)],  # 抱抱
-            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000004" for friend_id in mmg_friends_state_dict.get(4)]  # 解救
+            *[f"0000000000000020170000000000000000{get_hex(friend_id)}" for friend_id in mmg_friends_state_dict[1]],  # 祝福
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000002" for friend_id in mmg_friends_state_dict[2]],  # 呼唤
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000003" for friend_id in mmg_friends_state_dict[3]],  # 抱抱
+            *[f"0000000000000020190000000000000000{get_hex(friend_id)}00000004" for friend_id in mmg_friends_state_dict[4]]  # 解救
         ])
-
-    def mmg_query_run(self):
-        if len(mmg_friends) > 0:
-            self.timer("好友查询").stop()
-            self.mmg_query_friends()
 
     def mmg_query_friends(self):
         global mmg_query_page_max, mmg_query_page
         mmg_fight_friends.clear()
-        mmg_friends_state_dict.get(1).clear()
-        mmg_friends_state_dict.get(2).clear()
-        mmg_friends_state_dict.get(3).clear()
-        mmg_friends_state_dict.get(4).clear()
+        mmg_friends_state_dict[1].clear()
+        mmg_friends_state_dict[2].clear()
+        mmg_friends_state_dict[3].clear()
+        mmg_friends_state_dict[4].clear()
         mmg_query_page = 0
         max_size = mmg_query_size_max
         max_page = mmg_friends_num // max_size
@@ -744,8 +754,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.ysqs_fight((6, 0), (6, 0))
         else:
             send_lines([
-                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
-                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}"
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊")["ID"])}",
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚")["ID"])}"
             ])
             run_later_expect(self.ysqs_fight, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
 
@@ -764,11 +774,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ssmy_fight_times_round1 = clamp((ysqs_energy - wjsy_fight_times) // 5, 0, 40)  # 第1管体力莎士摩亚挑战次数
             ssmy_fight_times_round2 = ssmy_fight_times - ssmy_fight_times_round1 + ssmy_fight_times // 4  # 第2管体力莎士摩亚挑战次数，加1/4容错包
         # 选定关卡挑战次数计算
-        remain_times = ysqs_energy // level_info.get("体力消耗")  # 当前体力可挑战次数
+        remain_times = ysqs_energy // level_info["体力消耗"]  # 当前体力可挑战次数
         if can_fight_wjsy and 13 <= hour < 21 and wjsy_fight_times > 0:
-            fight_times = 170 // level_info.get("体力消耗")  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
+            fight_times = 170 // level_info["体力消耗"]  # 打完无尽深渊、莎士摩亚后的选定关卡挑战次数
         elif can_fight_ssmy and 10 <= hour < 21 and ssmy_fight_times > 0:
-            fight_times = 20 // level_info.get("体力消耗")  # 打完莎士摩亚后的选定关卡挑战次数
+            fight_times = 20 // level_info["体力消耗"]  # 打完莎士摩亚后的选定关卡挑战次数
         elif (can_fight_wjsy and hour < 13) or (can_fight_ssmy and hour < 10):
             fight_times = 0  # 特殊关卡时段未到
         elif not (can_fight_wjsy or can_fight_ssmy or is_equip_card):
@@ -782,11 +792,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         is_fight = is_fight_wjsy or is_fight_ssmy or fight_times > 0  # 是否挑战
         send_lines_back(
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊").get("ID"))}",
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊")["ID"])}",
             ] * wjsy_fight_times * is_fight_wjsy
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚")["ID"])}",
             ] * ssmy_fight_times_round1 * is_fight_ssmy
             +
             [
@@ -794,11 +804,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ] * is_fight_wjsy
             +
             [
-                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚").get("ID"))}",
+                f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚")["ID"])}",
             ] * ssmy_fight_times_round2 * is_fight_ssmy
             +
             [
-                f"00000000000000{"231D" if is_equip_card else "2321"}0000000000000000{get_hex(level_info.get("ID"))}",  # 未装备卡牌时探索关卡
+                f"00000000000000{"231D" if is_equip_card else "2321"}0000000000000000{get_hex(level_info["ID"])}",  # 未装备卡牌时探索关卡
             ] * fight_times
             +
             [
@@ -819,9 +829,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later(self.ysqs_upgrade_run)
 
     def ysqs_upgrade_run(self):
-        card_data = ysqs_cards_dict.get(self.ysqsCardBox.currentData())
-        ysqs_material_cards_dict.pop(card_data.get("ID"), None)
-        required_exp = get_card_max_exp(card_data.get("星级")) - card_data.get("经验")
+        card_data = ysqs_cards_dict[self.ysqsCardBox.currentData()]
+        ysqs_material_cards_dict.pop(card_data["ID"], None)
+        required_exp = get_card_max_exp(card_data["星级"]) - card_data["经验"]
         # 计算需要的材料卡牌
         material_ids = []
         for card_id, card_exp in ysqs_material_cards_dict.items():
@@ -838,11 +848,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for page in range(max_page):
             cards = material_ids[page * max_size: (page + 1) * max_size]
             ids = "".join([get_hex(card_id) for card_id in cards])
-            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(max_size)}{ids}")
+            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(max_size)}{ids}")
         if last_size > 0:
             cards = material_ids[-last_size:]
             ids = "".join([get_hex(card_id) for card_id in cards])
-            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data.get("ID"))}{get_hex(last_size)}{ids}")
+            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(last_size)}{ids}")
         if lines:
             lines.append("00000000000000231E000000000000000000000000")  # 获取元素骑士信息
         send_lines(lines)
@@ -943,62 +953,79 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ct_sell_run(self):
         send_lines([
-            f"0000000000000003FA0000000000000000000027100000000000147293{get_hex(ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("ID"))}00000065"
+            f"0000000000000003FA0000000000000000000027100000000000147293{get_hex(ct_cooked_dishes_dict[self.ctDishBox.currentText()]["ID"])}00000065"
         ])
 
     def ct_harvest_start(self):
         if self.ctHarvestButton.text() == "自动收菜":
             self.ctHarvestButton.setText("停止")
             send_lines([
-                f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000096000000000000000000000000",
-                f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"
+                f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
+                f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
             ])
             run_later(self.ct_harvest_run)
         else:
-            self.ctHarvestButton.setText("自动收菜")
-            for timer in self.timers("餐厅收菜"):
-                timer.stop()
+            self.ct_harvest_stop()
+
+    def ct_harvest_stop(self):
+        self.ctHarvestButton.setText("自动收菜")
+        for timer in self.timers("餐厅收菜"):
+            timer.stop()
+        if self.client is not None and self.client.is_alive():
+            self.client.close()
+            self.client = None
 
     def ct_harvest_run(self):
         if len(ct_cooking_dishes_dict) == 0:
             self.ctHarvestButton.setText("自动收菜")
             info(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
             return
-        need_time = ct_cooked_dishes_dict.get(self.ctDishBox.currentText()).get("时间")
+        cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
+        need_time = cooked_info["完成时间"]
+        expire_time = cooked_info["烧糊时间"]
         interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
         timers = self.timers("餐厅收菜")
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
-            cook_time = dish_info.get("时间")
+            cook_time = dish_info["时间"]
             timer = timers[dish_pos - 1]
             if cook_time < need_time:  # 未成熟的菜
                 timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (need_time - cook_time) * 1000).start()
-            elif need_time <= cook_time < 3 * need_time:  # 已成熟的菜
+            elif need_time <= cook_time < expire_time:  # 已成熟的菜
                 timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
             else:  # 已糊的菜
-                send_lines([
-                    f"0000000000000003FB0000000000000000{get_hex(dish_info.get("类型"))}{get_hex(dish_info.get("ID"))}{get_hex(dish_pos)}",  # 处理糊菜
-                    f"0000000000000003F90000000000000000{get_hex(dish_info.get("类型"))}{get_hex(dish_pos)}"  # 做菜
-                ])
-                timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, interval * 1000).start()
+                dish_info["已糊"] = True
+                timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
 
     def ct_harvest_func(self, pos):
-        cooked_info = ct_cooked_dishes_dict.get(self.ctDishBox.currentText())
-        dish_info = ct_cooking_dishes_dict.get(pos)
+        password = self.account_dict[user_id]
+        cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
+        dish_info = ct_cooking_dishes_dict[pos]
         now = datetime.now()
-        if not dish_info.get("跳过收菜"):
-            send_lines([
-                f"0000000000000003FD0000000000000000{get_hex(cooked_info.get("类型"))}{get_hex(dish_info.get("ID"))}{get_hex(pos)}{get_hex(cooked_info.get("位置"))}"  # 收菜
-            ])
-        else:
+        # 首次登录包
+        init_lines = [
+            "0000000000000001920000000000000000",  # 离开地图
+            f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
+            f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
+        ]
+        lines = []
+        if dish_info["跳过收菜"]:
             dish_info["跳过收菜"] = False
+        else:
+            if dish_info.get("已糊", False):
+                dish_info["已糊"] = False
+                lines.append(f"0000000000000003FB0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}")  # 处理糊菜
+            else:
+                lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
-            send_lines([
-                f"0000000000000003F90000000000000000{get_hex(dish_info.get("类型"))}{get_hex(pos)}"  # 做菜
+            lines.extend([
+                f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}", # 做菜
+                *[f"0000000000000003FC0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}"] * 2  # 后续步骤
             ])
         else:
             dish_info["跳过收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6)
             self.timers("餐厅收菜")[pos - 1].restart((cook_start - now).total_seconds() * 1000)
+        send_lines_by_client((user_id, password), lines, init_lines)
 
     def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
         # 自动完成做菜后续步骤
@@ -1054,26 +1081,26 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
 
     def set_card_id(self, card_id: int):
         self.card_id = card_id
-        self.card_name = ysqs_cards_dict.get(card_id).get("名称")
+        self.card_name = ysqs_cards_dict[card_id]["名称"]
         self.lineEdit.clear()
 
     def advance(self):
         card_name = self.listWidget.currentItem().text()
         self.target_card_name = f"{card_name} Lv.1"
         card_info = get_card_info(get_card_type(card_name))
-        need_card_types = card_info.get("进阶材料")
-        card_type = card_info.get("上一星级")
+        need_card_types = card_info["进阶材料"]
+        card_type = card_info["上一星级"]
         owned_cards_dict = deepcopy(ysqs_max_level_cards_dict)
         unequip_cards = []
         consume_cards = []
         can_advance = True
         for need_card_type in need_card_types:
             if need_card_type in owned_cards_dict:
-                owned_cards = owned_cards_dict.get(need_card_type)
-                card_data = owned_cards.pop()
-                if card_data.get("已装备"):
-                    unequip_cards.append(card_data.get("ID"))
-                consume_cards.append(card_data.get("名称"))
+                owned_cards = owned_cards_dict[need_card_type]
+                card_data = owned_cards.popleft()
+                if card_data["已装备"]:
+                    unequip_cards.append(card_data["ID"])
+                consume_cards.append(card_data["名称"])
                 if not owned_cards:
                     owned_cards_dict.pop(need_card_type)
             else:
@@ -1095,9 +1122,9 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
                 info(window, "成功", f"{self.card_name} 进阶到 {self.target_card_name} 成功")
         else:
             need_count = Counter(need_card_types)
-            owned_count = {card_type: len(ysqs_max_level_cards_dict.get(card_type, [])) for card_type in need_count}
+            owned_count = {card_type: len(ysqs_max_level_cards_dict.get(card_type, deque())) for card_type in need_count}
             need_text = "\n".join(
-                f"{get_card_info(card_type).get("名称")} Lv.{get_card_max_level(get_card_info(card_type).get("星级"))} 需要 {need_count[card_type]} 张，拥有 {owned_count[card_type]} 张"
+                f"{get_card_info(card_type)["名称"]} Lv.{get_card_max_level(get_card_info(card_type)["星级"])} 需要 {need_count[card_type]} 张，拥有 {owned_count[card_type]} 张"
                 for card_type in need_count
             )
             info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 材料不足：\n{need_text}")
@@ -1123,7 +1150,7 @@ class SendExThread(SendThread):
 class SendToServerThread(QThread):
     result = Signal(bool)
 
-    def set_data(self, address: tuple, lines: list, wait_recv_nums: list):
+    def set_data(self, address: tuple[str, int], lines: list, wait_recv_nums: list):
         self.address = address
         self.lines = lines
         self.wait_recv_nums = wait_recv_nums
@@ -1146,7 +1173,7 @@ class UpdateThread(QThread):
             except:
                 continue
             else:
-                version, description = [loads(res.text).get("project").get(key) for key in ("version", "description")]
+                version, description = [loads(res.text)["project"][key] for key in ("version", "description")]
                 break
         if version:
             if parse(window.version) >= parse(version):
@@ -1193,13 +1220,10 @@ class RunTimer(QTimer):
 class Packet:
     def __init__(self, packet):
         if isinstance(packet, str):
-            packet = bytes.fromhex(packet)
-        if len(packet) >= 17:
-            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
-            self.body = packet[17:]
-        else:
-            self.length, self.serial_num, self.cmd_id, self.user_id, self.version = 0, 0, 0, 0, 0
-            self.body = bytes()
+            packet = bytearray.fromhex(packet)
+        packet_len = len(packet)
+        self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet) if packet_len >= 17 else (0, 0, 0, 0, 0)
+        self.body = packet[17:] if packet_len > 17 else bytearray()
 
     def data(self):
         head = pack("!IBIII", self.length, self.serial_num, self.cmd_id, self.user_id, self.version)
@@ -1301,7 +1325,7 @@ def check_waiting_packets(packet):
         if packet.cmd_id in expect:
             counts = wait_info.get("counts", {})
             counts[packet.cmd_id] = counts.get(packet.cmd_id, 0) + 1
-            spec = expect.get(packet.cmd_id)
+            spec = expect[packet.cmd_id]
             data = wait_info.get("data", {})
             if isinstance(spec, dict) and spec.get("need_data", False):
                 offsets = spec.get("offsets", ())
@@ -1309,9 +1333,9 @@ def check_waiting_packets(packet):
                     tuple(get_int(packet.body, offset) for offset in offsets) if offsets else get_int(packet.body)
                 )
             # 检查是否所有 cmd_id 都集齐
-            if all(counts.get(cid, 0) >= (spec.get("num") if isinstance(spec, dict) else spec)
+            if all(counts.get(cid, 0) >= (spec["num"] if isinstance(spec, dict) else spec)
                    for cid, spec in expect.items()):
-                func = wait_info.get("func")
+                func = wait_info["func"]
                 if func:
                     if len(expect) == 1:
                         run_later(lambda args=data.get(next(iter(expect)), []): func(*args), 0)
@@ -1403,8 +1427,8 @@ def set_int(buf: bytes, value: int, offset: int = 0, bytes_num: int = 4):
             pack_into("!I", buf, offset, value)
 
 
-def get_hex(*values):
-    return "".join(f"{value:08X}" for value in values)
+def get_hex(value: int, bytes_num: int = 4):
+    return f"{value:0{2 * bytes_num}X}"
 
 
 def get_name(buf: bytes, offset: int = 0):
@@ -1445,7 +1469,7 @@ def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
         window.send_ex_thread.start()
 
 
-def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = None):
+def send_lines_to_server(address: tuple[str, int], lines: list, wait_recv_nums: list = None):
     need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
         s.connect(address)
@@ -1463,7 +1487,7 @@ def send_lines_to_server(address: tuple, lines: list, wait_recv_nums: list = Non
     return True
 
 
-def send_lines_to_server_back(address: tuple, lines: list, wait_recv_nums: list = None):
+def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_nums: list = None):
     if not window.send_to_server_thread.isRunning():
         window.send_to_server_thread.set_data(address, lines, wait_recv_nums)
         window.send_to_server_thread.start()
@@ -1483,6 +1507,17 @@ def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
                         sleep(interval / 1000)
         except:
             pass
+
+
+def send_lines_by_client(account: tuple[int, str], lines: list, init_lines: list = None):
+    if window.client is None or not window.client.is_alive():
+        if init_lines:
+            lines = init_lines + lines
+        window.client = Client()
+        window.client.put_data(lines, *account)
+        window.client.start()
+    else:
+        window.client.put_data(lines, *account)
 
 
 def is_not_running(timer: str):
@@ -1549,7 +1584,7 @@ def process_send_packet(socket_num, buf, length):
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buf, length):
     global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
-        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_friends_num, \
+        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_fight_friends, mmg_friends_num, \
         mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
         mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
         ysqs_material_cards_dict, can_fight_wjsy, can_fight_ssmy, is_equip_card
@@ -1662,15 +1697,15 @@ def process_recv_packet(socket_num, buf, length):
                                             fight_type = 4  # 小小
                                         else:
                                             fight_type = 0  # 好友
-                                        mmg_fight_friends.append((friend_id, fight_type))
+                                        mmg_fight_friends.append((friend_id, fight_type, friend_level))
                                     for page in range(other_state_num):
                                         state = get_int(packet.body, start + size1 + page * size2)
-                                        mmg_friends_state_dict.get(state).append(friend_id)
+                                        mmg_friends_state_dict[state].append(friend_id)
                                     start += size1 + other_state_num * size2
                                 mmg_query_page += 1
                                 if mmg_query_page == mmg_query_page_max:  # 查询完毕
-                                    # 将师徒放后面先pop，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
-                                    mmg_fight_friends.sort(key=lambda item: item[1])
+                                    # 重新排序，因为返回的好友挑战信息和查询时的好友ID顺序可能不一样
+                                    mmg_fight_friends = deque(sorted(mmg_fight_friends, key=lambda item: item[2], reverse=True))
                                     window.mmg_start()
                             case 12004:  # 魔灵用户信息
                                 mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
@@ -1719,10 +1754,15 @@ def process_recv_packet(socket_num, buf, length):
                                     card_exp = get_int(packet.body, start + page * size + 8)  # 卡牌经验
                                     card_is_equip = get_int(packet.body, start + page * size + 12) > 0  # 卡牌是否已装备
                                     card_info = get_card_info(card_type)
-                                    card_star = card_info.get("星级")
+                                    card_star = card_info["星级"]
                                     card_level = get_card_level(card_star, card_exp)
                                     ysqs_cards_dict[card_id] = {
-                                        "ID": card_id, "类型": card_type, "名称": f"{card_info.get("名称")} Lv.{card_level}", "星级": card_star, "经验": card_exp, "已装备": card_is_equip
+                                        "ID": card_id,
+                                        "类型": card_type,
+                                        "名称": f"{card_info["名称"]} Lv.{card_level}",
+                                        "星级": card_star,
+                                        "经验": card_exp,
+                                        "已装备": card_is_equip
                                     }
                                     # 6星蛋蛋或者6星以下不是奥丁、汉青和洛基的0经验卡牌可为升级材料
                                     if (card_star < 6 and card_type not in (0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290) or card_type == 0x19627A) and card_exp == 0:
@@ -1731,9 +1771,9 @@ def process_recv_packet(socket_num, buf, length):
                                     sorted(
                                         ysqs_cards_dict.items(),
                                         key=lambda item: (
-                                            item[1].get("星级"),
-                                            item[1].get("类型"),
-                                            item[1].get("经验")
+                                            item[1]["星级"],
+                                            item[1]["类型"],
+                                            item[1]["经验"]
                                         ),
                                         reverse=True
                                     )
@@ -1745,14 +1785,14 @@ def process_recv_packet(socket_num, buf, length):
                                 ysqs_max_level_cards_dict.clear()
                                 for card_id, card_data in ysqs_cards_dict.items():
                                     # 只显示非满级的卡牌
-                                    if card_data.get("经验") < get_card_max_exp(card_data.get("星级")):
-                                        window.ysqsCardBox.addItem(card_data.get("名称"), card_id)
+                                    if card_data["经验"] < get_card_max_exp(card_data["星级"]):
+                                        window.ysqsCardBox.addItem(card_data["名称"], card_id)
                                     # 满级卡牌信息
                                     else:
-                                        ysqs_max_level_cards_dict.setdefault(card_data.get("类型"), []).append(card_data)
-                                # 未装备卡牌放后面先pop
-                                for card_list in ysqs_max_level_cards_dict.values():
-                                    card_list.sort(key=lambda item: item.get("已装备"), reverse=True)
+                                        ysqs_max_level_cards_dict.setdefault(card_data["类型"], deque()).append(card_data)
+                                # 未装备卡牌放前面
+                                for card_type, card_list in ysqs_max_level_cards_dict.items():
+                                    ysqs_max_level_cards_dict[card_type] = deque(sorted(card_list, key=lambda item: item["已装备"]))
                                 if old_card_id is not None:
                                     index = window.ysqsCardBox.findData(old_card_id)
                                     if index != -1:
@@ -1773,18 +1813,31 @@ def process_recv_packet(socket_num, buf, length):
                                     dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
                                     dish_info = get_dish_info(dish_type)
                                     if dish_step == 6:  # 已熟菜信息
-                                        ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间"), "数量": dish_num
+                                        ct_cooked_dishes_dict[dish_info["名称"]] = {
+                                            "ID": dish_id,
+                                            "类型": dish_type,
+                                            "位置": dish_pos,
+                                            "完成时间": dish_info["完成时间"],
+                                            "烧糊时间": dish_info["烧糊时间"],
+                                            "数量": dish_num
                                         }
-                                    elif dish_step == 3 and dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
+                                    elif dish_step == 3 and dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
                                         ct_cooking_dishes_dict[dish_pos] = {
-                                            "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_time, "跳过收菜": False
+                                            "ID": dish_id,
+                                            "类型": dish_type,
+                                            "位置": dish_pos,
+                                            "时间": dish_time,
+                                            "跳过收菜": False
                                         }
                                     elif dish_step < 3:
                                         window.ct_cook_after(dish_id, dish_type, dish_step, True)
-                                        if dish_info.get("名称") in ("酱爆雪顶菇", "阳光酥油肉松"):
+                                        if dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):
                                             ct_cooking_dishes_dict[dish_pos] = {
-                                                "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": -3, "跳过收菜": False
+                                                "ID": dish_id,
+                                                "类型": dish_type,
+                                                "位置": dish_pos,
+                                                "时间": -3,
+                                                "跳过收菜": False
                                             }
                                 window.ctDishBox.clear()
                                 window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
@@ -1798,18 +1851,28 @@ def process_recv_packet(socket_num, buf, length):
                                     window.ct_cook_after(dish_id, dish_type, dish_step)
                                 elif dish_step == 3:  # 做菜步骤完成后，更新灶台信息
                                     ct_cooking_dishes_dict[dish_pos] = {
-                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": 0, "跳过收菜": False
+                                        "ID": dish_id,
+                                        "类型": dish_type,
+                                        "位置": dish_pos,
+                                        "时间": 0,
+                                        "跳过收菜": False
                                     }
                             case 1021:  # 餐厅收菜信息
                                 dish_type = get_int(packet.body)
                                 dish_id = get_int(packet.body, 4)
                                 dish_pos = get_int(packet.body, 12)
+                                dish_num = get_int(packet.body, 16)
                                 dish_info = get_dish_info(dish_type)
-                                if dish_info.get("名称") not in ct_cooked_dishes_dict:  # 新收的菜
-                                    ct_cooked_dishes_dict[dish_info.get("名称")] = {
-                                        "ID": dish_id, "类型": dish_type, "位置": dish_pos, "时间": dish_info.get("时间")
+                                if dish_info["名称"] not in ct_cooked_dishes_dict:  # 新收的菜
+                                    ct_cooked_dishes_dict[dish_info["名称"]] = {
+                                        "ID": dish_id,
+                                        "类型": dish_type,
+                                        "位置": dish_pos,
+                                        "完成时间": dish_info["完成时间"],
+                                        "烧糊时间": dish_info["烧糊时间"],
+                                        "数量": dish_num
                                     }
-                                    window.ctDishBox.addItem(dish_info.get("名称"))
+                                    window.ctDishBox.addItem(dish_info["名称"])
                                     window.enable_ct_button(True)
                             case 8953:  # 开启七彩缤纷宝盒
                                 item_id = get_int(packet.body)
@@ -1863,7 +1926,7 @@ def process_recv_packet(socket_num, buf, length):
                 break
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     hook = ffi.dlopen("hook.dll")
     hook.SetSendCallBack(process_send_packet)
     hook.SetRecvCallBack(process_recv_packet)
