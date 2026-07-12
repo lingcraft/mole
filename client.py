@@ -140,7 +140,7 @@ class Client(Process):
                                             f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"
                                         ])
                                     elif dish_step == 3:
-                                        self.recv_queue.put((dish_id, dish_pos))  # 回传主进程刷新菜ID
+                                        self.recv_queue.put((dish_id, dish_pos))  # 传回主进程刷新菜ID
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
