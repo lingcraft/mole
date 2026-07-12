@@ -226,7 +226,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": RunTimer(self.mmg_run, 1500),
-            "餐厅收菜": {pos: RunTimer() for pos in range(1, 8)}
+            "餐厅": {pos: RunTimer() for pos in range(1, 8)}
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
@@ -402,8 +402,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def enable_ct_button(self, enable):
         self.ctSellButton.setEnabled(enable)
-        self.ctHarvestButton.setEnabled(enable)
-        self.ctDishBox.setEnabled(enable)
+        if self.ctHarvestButton.text() != "停止":
+            self.ctHarvestButton.setEnabled(enable)
+            self.ctDishBox.setEnabled(enable)
 
     def enable_bh_button(self, enable):
         self.bhOpenButton.setEnabled(enable)
@@ -420,7 +421,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.enable_ct_button(False)
             self.stop_timer("拉姆")
             self.stop_timer("摩摩怪")
-            self.ct_harvest_stop()
 
     # 简单的多次任务
     def start_task(self, name, func, interval, button=None, start_func=None, stop_text="停止"):
@@ -962,7 +962,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
     def ct_harvest_start(self):
-        if self.ctHarvestButton.text() == "自动做菜":
+        if self.ctHarvestButton.text() != "停止":
+            self.harvest_button_text = self.ctHarvestButton.text()
             self.ctHarvestButton.setText("停止")
             send_lines([
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
@@ -970,21 +971,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ])
             run_later(self.ct_harvest_run)
         else:
-            self.ct_harvest_stop()
-
-    def ct_harvest_stop(self):
-        self.ctHarvestButton.setText("自动做菜")
-        self.stop_timer("餐厅收菜")
-        if self.client is not None and self.client.is_alive():
-            self.client.close()
-            self.client = None
+            self.ctHarvestButton.setText(self.harvest_button_text)
+            self.stop_timer("餐厅")
+            if self.client is not None and self.client.is_alive():
+                self.client.close()
+                self.client = None
 
     def ct_harvest_run(self):
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         need_time = cooked_info["完成时间"]
         expire_time = cooked_info["烧糊时间"]
         interval = need_time + 30  # 增加30秒登录账号时间
-        timer_dict = self.timer_pool["餐厅收菜"]
+        timer_dict = self.timer_pool["餐厅"]
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             timer = timer_dict[dish_pos]
             if dish_info.get("灶台为空", False):
@@ -1021,7 +1019,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             dish_info["跳过一次收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6)
-            self.timer_pool["餐厅收菜"][pos].restart((cook_start - now).total_seconds() * 1000)
+            self.timer_pool["餐厅"][pos].restart((cook_start - now).total_seconds() * 1000)
         send_lines_by_client((user_id, password), init_lines, lines)
 
     def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
