@@ -225,8 +225,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, 50, self.bhOpenButton, self.bh_start))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": (RunTimer(self.mmg_run, 1500),),
-            "餐厅收菜": tuple(RunTimer() for _ in range(7))
+            "摩摩怪": RunTimer(self.mmg_run, 1500),
+            "餐厅收菜": {pos: RunTimer() for pos in range(1, 8)}
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
@@ -251,15 +251,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             log.unlink()
         super(MainWindow, self).closeEvent(event)
 
-    def timer(self, name):
-        return self.timer_pool.get(name, (QTimer(),))[0]
-
-    def timers(self, name):
-        return self.timer_pool[name]
-
     def stop_timer(self, name):
-        if (timer := self.timer(name)).isActive():
-            timer.stop()
+        if name in self.timer_pool:
+            timer = self.timer_pool[name]
+            if isinstance(timer, QTimer):
+                if timer.isActive():
+                    timer.stop()
+            elif isinstance(timer, dict):
+                for item in timer.values():
+                    if item.isActive():
+                        item.stop()
+            elif isinstance(timer, tuple):
+                for item in timer:
+                    if isinstance(item, QTimer) and item.isActive():
+                        item.stop()
 
     def url(self):
         return f"{server_dict.get(self.server, "").replace("$node", node_dict.get(self.node, ""))}/Client.swf"
@@ -597,7 +602,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lamu_feed()
         self.enable_lamu_button(True)
         self.lamu_show_result()
-        self.timer("拉姆").stop()
+        self.stop_timer("拉姆")
 
     def mmg_start(self, fight_type=0):
         def start():  # 开始执行
@@ -607,7 +612,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000"  # 获取地图信息
             ])
-            self.timer("摩摩怪").start()
+            self.timer_pool["摩摩怪"].start()
 
         if fight_type == 0:  # 查询好友完毕
             start()
@@ -733,7 +738,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def mmg_stop(self):
         self.enable_mmg_button(True)
-        self.timer("摩摩怪").stop()
+        self.stop_timer("摩摩怪")
 
     def ddd_run(self):
         send_lines([
@@ -957,7 +962,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
     def ct_harvest_start(self):
-        if self.ctHarvestButton.text() == "自动收菜":
+        if self.ctHarvestButton.text() == "自动做菜":
             self.ctHarvestButton.setText("停止")
             send_lines([
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
@@ -968,33 +973,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.ct_harvest_stop()
 
     def ct_harvest_stop(self):
-        self.ctHarvestButton.setText("自动收菜")
-        for timer in self.timers("餐厅收菜"):
-            timer.stop()
+        self.ctHarvestButton.setText("自动做菜")
+        self.stop_timer("餐厅收菜")
         if self.client is not None and self.client.is_alive():
             self.client.close()
             self.client = None
 
     def ct_harvest_run(self):
-        if len(ct_cooking_dishes_dict) == 0:
-            self.ctHarvestButton.setText("自动收菜")
-            info(self, "提示", f"当前所有灶台为空，请先在需要自动改菜为{self.ctDishBox.currentText()}和收菜的灶台制作1次阳光酥油肉松或酱爆雪顶菇")
-            return
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         need_time = cooked_info["完成时间"]
         expire_time = cooked_info["烧糊时间"]
-        interval = need_time + 5  # 做菜包+2秒动画+2次设置菜状态包
-        timers = self.timers("餐厅收菜")
+        interval = need_time + 30  # 增加30秒登录账号时间
+        timer_dict = self.timer_pool["餐厅收菜"]
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
-            cook_time = dish_info["时间"]
-            timer = timers[dish_pos - 1]
-            if cook_time < need_time:  # 未成熟的菜
-                timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (need_time - cook_time) * 1000).start()
-            elif need_time <= cook_time < expire_time:  # 已成熟的菜
+            timer = timer_dict[dish_pos]
+            if dish_info.get("灶台为空", False):
+                dish_info["跳过一次收菜"] = True
                 timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
-            else:  # 已糊的菜
-                dish_info["已糊"] = True
-                timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
+            else:
+                cook_time = dish_info["时间"]
+                if cook_time < need_time:  # 未成熟的菜
+                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (need_time - cook_time) * 1000).start()
+                elif need_time <= cook_time < expire_time:  # 已成熟的菜
+                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
+                else:  # 已糊的菜
+                    dish_info["已糊"] = True
+                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
 
     def ct_harvest_func(self, pos):
         password = self.account_dict[user_id]
@@ -1003,29 +1007,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         now = datetime.now()
         # 首次登录包
         init_lines = [
-            "0000000000000001920000000000000000",  # 离开地图
             f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
             f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
         ]
         lines = []
-        if dish_info["跳过收菜"]:
-            dish_info["跳过收菜"] = False
-        else:
-            if dish_info.get("已糊", False):
-                dish_info["已糊"] = False
+        if not dish_info.setdefault("跳过一次收菜", False):
+            if dish_info.setdefault("已糊", False):
                 lines.append(f"0000000000000003FB0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}")  # 处理糊菜
             else:
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
-            lines.extend([
-                f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}", # 做菜
-                *[f"0000000000000003FC0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}"] * 2  # 后续步骤
-            ])
+            lines.append(f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}")  # 做菜
         else:
-            dish_info["跳过收菜"] = True
+            dish_info["跳过一次收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6)
-            self.timers("餐厅收菜")[pos - 1].restart((cook_start - now).total_seconds() * 1000)
-        send_lines_by_client((user_id, password), lines, init_lines)
+            self.timer_pool["餐厅收菜"][pos].restart((cook_start - now).total_seconds() * 1000)
+        send_lines_by_client((user_id, password), init_lines, lines)
 
     def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
         # 自动完成做菜后续步骤
@@ -1509,19 +1506,17 @@ def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
             pass
 
 
-def send_lines_by_client(account: tuple[int, str], lines: list, init_lines: list = None):
+def send_lines_by_client(account: tuple[int, str], init_lines: list, lines: list):
     if window.client is None or not window.client.is_alive():
-        if init_lines:
-            lines = init_lines + lines
-        window.client = Client()
-        window.client.put_data(lines, *account)
+        window.client = Client(account, init_lines)
+        window.client.put_data(lines)
         window.client.start()
     else:
-        window.client.put_data(lines, *account)
+        window.client.put_data(lines)
 
 
-def is_not_running(timer: str):
-    return not window.timer(timer).isActive()
+def is_not_running(name: str):
+    return not window.timer_pool[name].isActive()
 
 
 def is_not_sending():
@@ -1801,6 +1796,8 @@ def process_recv_packet(socket_num, buf, length):
                             case 1014:  # 餐厅信息
                                 ct_cooked_dishes_dict.clear()
                                 ct_cooking_dishes_dict.clear()
+                                house_type = get_int(packet.body, 36)  # 内部装潢类型
+                                stove_num = get_stove_num(house_type)  # 餐厅灶台数
                                 dishes_num = get_int(packet.body, 68)
                                 start = 72
                                 size = 6 * 4
@@ -1827,7 +1824,6 @@ def process_recv_packet(socket_num, buf, length):
                                             "类型": dish_type,
                                             "位置": dish_pos,
                                             "时间": dish_time,
-                                            "跳过收菜": False
                                         }
                                     elif dish_step < 3:
                                         window.ct_cook_after(dish_id, dish_type, dish_step, True)
@@ -1836,9 +1832,15 @@ def process_recv_packet(socket_num, buf, length):
                                                 "ID": dish_id,
                                                 "类型": dish_type,
                                                 "位置": dish_pos,
-                                                "时间": -3,
-                                                "跳过收菜": False
+                                                "时间": -5,
                                             }
+                                for dish_pos in range(1, stove_num + 1):
+                                    if dish_pos not in ct_cooking_dishes_dict:
+                                        ct_cooking_dishes_dict[dish_pos] = {
+                                            "类型": 0x147267,
+                                            "位置": dish_pos,
+                                            "灶台为空": True
+                                        }
                                 window.ctDishBox.clear()
                                 window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
                                 window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
@@ -1855,7 +1857,6 @@ def process_recv_packet(socket_num, buf, length):
                                         "类型": dish_type,
                                         "位置": dish_pos,
                                         "时间": 0,
-                                        "跳过收菜": False
                                     }
                             case 1021:  # 餐厅收菜信息
                                 dish_type = get_int(packet.body)
@@ -1883,8 +1884,6 @@ def process_recv_packet(socket_num, buf, length):
                                     is_show_msg = True
                                 window.stop_task("缤纷七彩宝盒")
                                 info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
-                            case _:
-                                pass
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                         if is_write_recv:  # 修改原始数据模式
                             raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()

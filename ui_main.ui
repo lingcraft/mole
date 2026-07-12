@@ -681,7 +681,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>自动收菜</string>
+        <string>自动做菜</string>
        </property>
       </widget>
      </widget>

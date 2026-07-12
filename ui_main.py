@@ -308,7 +308,7 @@ class Ui_MainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab1), QCoreApplication.translate("MainWindow", u"第1页", None))
         self.groupBox4.setTitle(QCoreApplication.translate("MainWindow", u"餐厅", None))
         self.ctSellButton.setText(QCoreApplication.translate("MainWindow", u"一键卖菜", None))
-        self.ctHarvestButton.setText(QCoreApplication.translate("MainWindow", u"自动收菜", None))
+        self.ctHarvestButton.setText(QCoreApplication.translate("MainWindow", u"自动做菜", None))
         self.groupBox6.setTitle(QCoreApplication.translate("MainWindow", u"点点豆", None))
         self.dddGetButton.setText(QCoreApplication.translate("MainWindow", u"一键刷取", None))
         self.groupBox7.setTitle(QCoreApplication.translate("MainWindow", u"缤纷七彩宝盒", None))

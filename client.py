@@ -1,40 +1,44 @@
+from collections import deque
 from socket import socket, AF_INET, SOCK_STREAM
 from struct import pack, pack_into, unpack_from
-from threading import Lock
+from threading import Lock, Thread
 from multiprocessing import Process, Queue
 from queue import Empty
 from random import randint
 from hashlib import md5
+from time import sleep
 
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 user_id, serial_num = 0, 0  # 米米号、发送包序列号
+recv_buf = bytearray()  # 接收封包的数据缓冲区
 lock = Lock()  # 发送锁
 
 
 class Client(Process):
-    def __init__(self):
+    def __init__(self, account: tuple[int, str], init_lines: list[str]):
         super().__init__(daemon=True)
         self.login_socket = socket(AF_INET, SOCK_STREAM)
         self.main_socket = socket(AF_INET, SOCK_STREAM)
         self.is_connect = False
         self.cmd_queue = Queue()
+        self.user_id, self.password = account
+        self.init_lines = init_lines
 
-    def put_data(self, lines: list, account_user_id: int, account_password: str):
-        self.cmd_queue.put(("send", lines, account_user_id, account_password))
+    def put_data(self, lines: list):
+        self.cmd_queue.put(("send", lines))
 
     def run(self):
         global user_id
+        user_id = self.user_id
         while True:
             try:
-                cmd, lines, account_user_id, account_password = self.cmd_queue.get(timeout=60)
+                cmd, lines = self.cmd_queue.get(timeout=60)
             except Empty:
                 break
             if cmd == "stop":
                 break
             elif cmd == "send":
-                user_id = account_user_id
-                self.password = account_password
-                self.send_lines(lines)
+                self.send_lines(deque(lines))
 
     def login(self):
         try:
@@ -71,26 +75,74 @@ class Client(Process):
                 return False
             self.is_connect = True
             self.main_socket.settimeout(None)
+            Thread(target=self.recv_loop, daemon=True).start()
         except:
             return False
         else:
             return True
 
-    def send_lines(self, lines: list):
-        if not self.is_connect:
-            self.login()
-        try:
-            for data in lines:
-                if len(data) < 17:
-                    continue
-                packet = Packet(data)
-                with lock:
-                    packet.encrypt()
-                self.main_socket.send(packet.data())
+    def send_line(self, data: str):
+        if len(data) < 17:
             return True
+        try:
+            packet = Packet(data)
+            with lock:
+                packet.encrypt()
+            self.main_socket.send(packet.data())
         except:
             self.is_connect = False
             return False
+        else:
+            return True
+
+    def send_lines(self, lines: deque[str]):
+        while lines:
+            if not self.is_connect:
+                if not self.login():
+                    sleep(1)
+                    continue
+                for line in self.init_lines:  # 登录成功后发送初始化包
+                    if not self.send_line(line):
+                        break
+                if not self.is_connect:  # 初始化包发送失败，重新登录后重发
+                    continue
+            data = lines.popleft()
+            if not self.send_line(data):
+                lines.appendleft(data)  # 发送失败，放回队首待重连后重发
+                sleep(1)
+    
+    def recv_loop(self):
+        global recv_buf
+        while self.is_connect:
+            try:
+                data = self.main_socket.recv(4096)
+                if not data:
+                    self.is_connect = False
+                    break
+                recv_buf.extend(data)
+                while len(recv_buf) >= 4:
+                    packet_len = get_int(recv_buf)
+                    if len(recv_buf) >= packet_len:
+                        # 不是断包
+                        cipher = recv_buf[:packet_len]
+                        packet = Packet(cipher)
+                        packet.decrypt()
+                        if packet.version == 0:  # 正确包
+                            match packet.cmd_id:
+                                case 1017:  # 餐厅做菜信息
+                                    dish_type = get_int(packet.body)
+                                    dish_id = get_int(packet.body, 4)
+                                    dish_step = get_int(packet.body, 12)
+                                    if dish_step < 3:  # 做菜后续步骤
+                                        self.put_data([
+                                            f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"
+                                        ])
+                        recv_buf = recv_buf[packet_len:]
+                    else:
+                        break
+            except:
+                self.is_connect = False
+                break
 
     def close(self):
         try:
@@ -99,7 +151,7 @@ class Client(Process):
         except:
             pass
         try:
-            self.cmd_queue.put(("stop", None, None, None))
+            self.cmd_queue.put(("stop", None))
         except:
             pass
         if self.is_alive():

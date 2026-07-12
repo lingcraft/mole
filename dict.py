@@ -12,12 +12,16 @@ def get_level_info(level_name, level=40):
     return level_info
 
 
-def get_dish_info(type_id):
-    return dish_dict[type_id]
+def get_dish_info(dish_type):
+    return dish_dict[dish_type]
 
 
-def get_card_info(type_id):
-    return card_dict[type_id]
+def get_stove_num(house_type):
+    return house_dict[house_type]
+
+
+def get_card_info(card_type):
+    return card_dict[card_type]
 
 
 def get_card_type(card_name):
@@ -167,6 +171,28 @@ dish_dict = {
     0x14728C: {"名称": "双层巧克力蛋糕", "完成时间": 36 * 60 * 60, "烧糊时间": 108 * 60 * 60},
     0x147292: {"名称": "月亮船酸奶雪糕", "完成时间": 15 * 60, "烧糊时间": 45 * 60},
     0x147287: {"名称": "葡萄石榴派", "完成时间": 30 * 60, "烧糊时间": 90 * 60}
+}
+
+house_dict = {
+    # 温馨餐厅
+    0x144B54: 3,
+    0x144B56: 3,
+    0x144B5A: 3,
+    0x144B5C: 4,
+    0x144B61: 4,
+    # 典雅餐厅
+    0x144B59: 3,
+    0x144B5B: 3,
+    0x144B5D: 4,
+    0x144B62: 4,
+    # 复古餐厅
+    0x144B5E: 4,
+    0x144B5F: 6,
+    0x144B63: 4,
+    0x144B64: 7,
+    # 骑士餐厅
+    0x144B67: 7,
+    0x144B68: 5
 }
 
 card_dict = {
