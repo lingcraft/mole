@@ -1012,8 +1012,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ]
         lines = []
         if not dish_info.pop("跳过一次收菜", False):
-            if dish_info.get("已糊", False):
-                dish_info["已糊"] = False
+            if dish_info.pop("已糊", False):
                 lines.append(f"0000000000000003FB0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}")  # 处理糊菜
             else:
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
