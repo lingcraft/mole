@@ -4,7 +4,7 @@ from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
 from ui_advance import Ui_AdvanceDialog
 from struct import pack, pack_into, unpack_from
-from threading import Lock
+from threading import Lock, Thread
 from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
 from collections import Counter
@@ -1011,8 +1011,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
         ]
         lines = []
-        if not dish_info.setdefault("跳过一次收菜", False):
-            if dish_info.setdefault("已糊", False):
+        if not dish_info.pop("跳过一次收菜", False):
+            if dish_info.get("已糊", False):
+                dish_info["已糊"] = False
                 lines.append(f"0000000000000003FB0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}")  # 处理糊菜
             else:
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
@@ -1511,8 +1512,19 @@ def send_lines_by_client(account: tuple[int, str], init_lines: list, lines: list
         window.client = Client(account, init_lines)
         window.client.put_data(lines)
         window.client.start()
+        Thread(target=update_cooking_info, args=(window.client,), daemon=True).start()
     else:
         window.client.put_data(lines)
+
+
+def update_cooking_info(client):
+    while client.is_alive():
+        try:
+            dish_id, dish_pos = client.recv_queue.get(timeout=1)
+        except:
+            continue
+        ct_cooking_dishes_dict[dish_pos]["ID"] = dish_id
+        print(f"刷新菜ID：{hex(ct_cooking_dishes_dict[dish_pos]["ID"])}，位置：{dish_pos}")
 
 
 def is_not_running(name: str):

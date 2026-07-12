@@ -20,19 +20,20 @@ class Client(Process):
         self.login_socket = socket(AF_INET, SOCK_STREAM)
         self.main_socket = socket(AF_INET, SOCK_STREAM)
         self.is_connect = False
-        self.cmd_queue = Queue()
+        self.send_queue = Queue()
+        self.recv_queue = Queue()
         self.user_id, self.password = account
         self.init_lines = init_lines
 
     def put_data(self, lines: list):
-        self.cmd_queue.put(("send", lines))
+        self.send_queue.put(("send", lines))
 
     def run(self):
         global user_id
         user_id = self.user_id
         while True:
             try:
-                cmd, lines = self.cmd_queue.get(timeout=60)
+                cmd, lines = self.send_queue.get(timeout=60)
             except Empty:
                 break
             if cmd == "stop":
@@ -110,7 +111,7 @@ class Client(Process):
             if not self.send_line(data):
                 lines.appendleft(data)  # 发送失败，放回队首待重连后重发
                 sleep(1)
-    
+
     def recv_loop(self):
         global recv_buf
         while self.is_connect:
@@ -132,11 +133,14 @@ class Client(Process):
                                 case 1017:  # 餐厅做菜信息
                                     dish_type = get_int(packet.body)
                                     dish_id = get_int(packet.body, 4)
+                                    dish_pos = get_int(packet.body, 8)
                                     dish_step = get_int(packet.body, 12)
                                     if dish_step < 3:  # 做菜后续步骤
                                         self.put_data([
                                             f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"
                                         ])
+                                    elif dish_step == 3:
+                                        self.recv_queue.put((dish_id, dish_pos))  # 回传主进程刷新菜ID
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
@@ -147,11 +151,11 @@ class Client(Process):
     def close(self):
         try:
             while True:
-                self.cmd_queue.get_nowait()
+                self.send_queue.get_nowait()
         except:
             pass
         try:
-            self.cmd_queue.put(("stop", None))
+            self.send_queue.put(("stop", None))
         except:
             pass
         if self.is_alive():
