@@ -1524,7 +1524,6 @@ def update_cooking_info(client):
         except:
             continue
         ct_cooking_dishes_dict[dish_pos]["ID"] = dish_id
-        print(f"刷新菜ID：{hex(ct_cooking_dishes_dict[dish_pos]["ID"])}，位置：{dish_pos}")
 
 
 def is_not_running(name: str):
