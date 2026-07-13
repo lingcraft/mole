@@ -1188,18 +1188,21 @@ class UpdateThread(QThread):
 class RunTimer(QTimer):
     signal = Signal()
 
-    def __init__(self, func=None, interval: int = 1000, delay: int = 300):
+    def __init__(self, func=None, interval: int | float = 1, delay: int | float = 0.3):
         super().__init__()
         super().timeout.connect(self.on_timeout)
-        self.func = None
         self.set_data(func, interval, delay)
 
-    def set_data(self, func, interval: int, delay: int):
-        if self.func is None and func is not None:
-            self.func = func
+    def set_data(self, func, interval: int | float, delay: int | float):
+        if func is not None:
+            try:
+                self.signal.disconnect()
+            except:
+                pass
             self.signal.connect(func)
-        self.interval = interval
-        self.delay = min(delay, interval)
+        self.interval = int(interval * 1000)
+        self.delay = int(delay * 1000)
+        self.is_restart = False
         return self
 
     def start(self):
@@ -1209,11 +1212,13 @@ class RunTimer(QTimer):
     def restart(self, delay):
         self.stop()
         self.delay = delay
+        self.is_restart = True
         self.start()
 
     def on_timeout(self):
+        self.is_restart = False
         self.signal.emit()
-        if self.is_first:
+        if self.is_first and not self.is_restart:
             self.is_first = False
             super().setInterval(self.interval)
 
