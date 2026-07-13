@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.8.3"
+version = "1.8.4"
 description = """
-- 优化：优化按钮禁用逻辑，刷新游戏后不再自动停止做菜程序
+- 优化：开始自动做菜后禁止目标菜下拉框修改，防止不同菜的成熟时间不同导致定时任务异常的问题，停止后再允许修改
 """
 readme = "README.md"
 requires-python = ">=3.12"

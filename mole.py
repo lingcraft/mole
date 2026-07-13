@@ -402,8 +402,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def enable_ct_button(self, enable):
         self.ctSellButton.setEnabled(enable)
-        if self.ctHarvestButton.text() != "停止":
+        if not self.is_harvest_running():
             self.ctHarvestButton.setEnabled(enable)
+            self.ctDishBox.setEnabled(enable)
+        elif not enable:
             self.ctDishBox.setEnabled(enable)
 
     def enable_bh_button(self, enable):
@@ -417,10 +419,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_mlcs_button(enable)
         self.enable_bh_button(enable)
         if not enable:  # 刷新游戏后的操作
-            mmg_friends.clear()
-            self.enable_ct_button(False)
-            self.stop_timer("拉姆")
             self.stop_timer("摩摩怪")
+            self.stop_timer("拉姆")
+            self.enable_ct_button(enable)
 
     # 简单的多次任务
     def start_task(self, name, func, interval, button=None, start_func=None, stop_text="停止"):
@@ -961,17 +962,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000003FA0000000000000000000027100000000000147293{get_hex(ct_cooked_dishes_dict[self.ctDishBox.currentText()]["ID"])}00000065"
         ])
 
+    def is_harvest_running(self):
+        return self.ctHarvestButton.text() == "停止"
+
     def ct_harvest_start(self):
-        if self.ctHarvestButton.text() != "停止":
+        if not self.is_harvest_running():  # 启动
             self.harvest_button_text = self.ctHarvestButton.text()
             self.ctHarvestButton.setText("停止")
+            self.ctDishBox.setEnabled(False)
             send_lines([
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
                 f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
             ])
             run_later(self.ct_harvest_run)
-        else:
+        else:  # 停止
             self.ctHarvestButton.setText(self.harvest_button_text)
+            self.ctDishBox.setEnabled(True)
             self.stop_timer("餐厅")
             if self.client is not None and self.client.is_alive():
                 self.client.close()
@@ -1383,6 +1389,7 @@ def get_card_provided_exp(star):
     star = min(star, 6)
     return 5 * star - 2
 
+
 def get_card_level(star, exp):
     # n星卡牌根据总经验计算等级
     star = min(star, 6)
@@ -1682,7 +1689,7 @@ def process_recv_packet(socket_num, buf, length):
                                 mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
                                 mmg_friends_num = len(mmg_friends)
                             case 8218 if is_not_running("摩摩怪") \
-                                    and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
+                                         and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
                                 # 查询好友能否对战
                                 query_size = get_int(packet.body)
                                 start = 4
