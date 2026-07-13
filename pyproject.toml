@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.8.5"
+version = "1.8.6"
 description = """
-- 修复：定时器重启方法问题修复，解决餐厅自动做菜功能在0—6点收了菜后，下一次做菜开始时间不是6点的问题
+- 优化：做菜初始化延迟优化
 """
 readme = "README.md"
 requires-python = ">=3.12"

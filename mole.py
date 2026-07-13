@@ -997,7 +997,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 cook_time = dish_info["时间"]
                 if cook_time < need_time:  # 未成熟的菜
-                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (interval - cook_time) * 1000).start()
+                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (need_time - cook_time) * 1000).start()
                 elif need_time <= cook_time < expire_time:  # 已成熟的菜
                     timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
                 else:  # 已糊的菜
