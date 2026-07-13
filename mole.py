@@ -1312,8 +1312,8 @@ def run_later_expect(func, expect: dict):
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
     pending_waits.append({
         "expect": expect,
-        "counts": {cid: 0 for cid in expect},
-        "data": {cid: [] for cid in expect},
+        "counts": {cmd_id: 0 for cmd_id in expect},
+        "data": {cmd_id: [] for cmd_id in expect},
         "func": func,
     })
 
