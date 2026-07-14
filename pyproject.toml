@@ -1,8 +1,12 @@
 [project]
 name = "mole"
-version = "1.8.6"
+version = "1.9.0"
 description = """
-- 优化：做菜初始化延迟优化
+- 新增：刷摩尔豆功能
+- 修复：修复循环发送的每条包的延迟设置为 0 导致卡顿的问题，现改为 1 ms
+- 优化：start_task() 简单的多次任务方法优化
+- 优化：Packet 类新增支持 cmd_id + body 的构造方法参数，使用更方便，并优化 packet 处理逻辑
+- 优化：Interval 延迟枚举类命名规范化，并增加更多延迟项
 """
 readme = "README.md"
 requires-python = ">=3.12"

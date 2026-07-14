@@ -714,10 +714,10 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox7">
+     <widget class="QGroupBox" name="groupBox8">
       <property name="geometry">
        <rect>
-        <x>197</x>
+        <x>296</x>
         <y>64</y>
         <width>102</width>
         <height>61</height>
@@ -814,6 +814,35 @@
        </property>
        <property name="text">
         <string>一键获取</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox7">
+      <property name="geometry">
+       <rect>
+        <x>197</x>
+        <y>64</y>
+        <width>100</width>
+        <height>61</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string>摩尔豆</string>
+      </property>
+      <widget class="QPushButton" name="medGetButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>20</y>
+         <width>80</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>一键刷取</string>
        </property>
       </widget>
      </widget>

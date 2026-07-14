@@ -122,9 +122,11 @@ is_window_init = False
 
 
 class Interval(IntEnum):
-    NONE = 0  # 无延迟模式，前台发送间隔
-    NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等游戏
+    INSTANT = 0  # 无延迟模式，前台发送间隔，防止界面卡顿
+    FAST = 1  # 快速模式，后台发送间隔，适用于刷点点豆、摩尔豆等
+    NORMAL = 25  # 正常模式，后台通用发送间隔，适用于魔灵传说等
     SLOW = 50  # 慢速模式，后台发送间隔，适用于元素骑士
+    IDLE = 200  # 最慢模式，后台发送间隔，适用于拉姆变身值
 
 
 class Show(StrEnum):
@@ -219,10 +221,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
         # 多次运行功能
-        self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, 1, self.sendLoopButton))
-        self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, 200, self.lamuGrowButton, self.lamu_start))
-        self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, 1, self.dddGetButton))
-        self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, 50, self.bhOpenButton, self.bh_start))
+        self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, Interval.FAST, self.sendLoopButton))
+        self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, Interval.IDLE, self.lamuGrowButton, self.lamu_start))
+        self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, Interval.FAST, self.dddGetButton))
+        self.medGetButton.clicked.connect(lambda: self.start_task("摩尔豆", self.med_run, Interval.FAST, self.medGetButton))
+        self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton, self.bh_start))
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": RunTimer(self.mmg_run, 1500),
@@ -232,7 +235,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
         self.mmgPVPButton.clicked.connect(lambda: self.mmg_start(3))
         # 餐厅功能
-        self.ctSellButton.clicked.connect(lambda: self.start_task("餐厅卖菜", self.ct_sell_run, 1, self.ctSellButton))
+        self.ctSellButton.clicked.connect(lambda: self.start_task("餐厅卖菜", self.ct_sell_run, Interval.FAST, self.ctSellButton))
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
         # 界面初始化完成
         global is_window_init
@@ -284,7 +287,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def send(self):
         # 使用后台发送，防止添加自定义延迟后阻塞界面
-        send_lines_back_ex(self.textEdit.toPlainText().split('\n'), Interval.NONE)
+        send_lines_back_ex(self.textEdit.toPlainText().split('\n'), Interval.FAST)
 
     def send_clear(self):
         self.textEdit.clear()
@@ -386,9 +389,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.mmgLevelBox.setEnabled(enable)
         self.mmgBossBox.setEnabled(enable)
 
-    def enable_ddd_button(self, enable):
-        self.dddGetButton.setEnabled(enable)
-
     def enable_ysqs_button(self, enable):
         self.ysqsFightButton.setEnabled(enable)
         self.ysqsUpgradeButton.setEnabled(enable)
@@ -408,15 +408,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         elif not enable:
             self.ctDishBox.setEnabled(enable)
 
+    def enable_ddd_button(self, enable):
+        self.dddGetButton.setEnabled(enable)
+
+    def enable_med_button(self, enable):
+        self.medGetButton.setEnabled(enable)
+
     def enable_bh_button(self, enable):
         self.bhOpenButton.setEnabled(enable)
 
     def enable_all_buttons(self, enable):
         self.enable_lamu_button(enable)
         self.enable_mmg_button(enable)
-        self.enable_ddd_button(enable)
         self.enable_ysqs_button(enable)
         self.enable_mlcs_button(enable)
+        self.enable_ddd_button(enable)
+        self.enable_med_button(enable)
         self.enable_bh_button(enable)
         if not enable:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
@@ -429,21 +436,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
                 button.setText(text)
+                if interval <= Interval.FAST:
+                    self.recvCheckBox.setChecked(True)
                 timer.stop()
-            else:  # 启动
-                if start_func is not None:
-                    start_func()
-                if button.isEnabled():
-                    button.setText(stop_text)
-                timer.start()
-        else:  # 创建新timer并启动
+                return
+        else:  # 创建
             timer = RunTimer(func, interval)
             self.timer_pool[name] = timer, button.text(), button
-            if start_func is not None:
-                start_func()
-            if button.isEnabled():
-                button.setText(stop_text)
-            timer.start()
+        # 启动
+        if start_func is not None:
+            start_func()
+        if button.isEnabled():
+            button.setText(stop_text)
+        if interval <= Interval.FAST:
+            self.recvCheckBox.setChecked(False)
+        timer.start()
 
     def stop_task(self, name):
         if name in self.timer_pool:
@@ -741,13 +748,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_mmg_button(True)
         self.stop_timer("摩摩怪")
 
-    def ddd_run(self):
-        send_lines([
-            "0000000000000001F500000000000000000002737200000001",
-            "0000000000000004DB0000000000000000000000790000000100000001",
-            *["0000000000000017850000000000000000000000010002E96400000001"] * 5
-        ])
-
     def ysqs_start(self):
         send_lines([
             "00000000000000231A0000000000000000",  # 领悟技能
@@ -1039,6 +1039,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             else:
                 send_lines(lines)  # 后续设置菜状态时，不用等待动画
 
+    def ddd_run(self):
+        send_lines([
+            "0000000000000001F500000000000000000002737200000001",
+            "0000000000000004DB0000000000000000000000790000000100000001",
+            *["0000000000000017850000000000000000000000010002E96400000001"] * 5
+        ])
+
+    def med_run(self):
+        send_lines_back([
+            f"000000000000002B1A0000000000000000{get_hex(num)}" for num in range(1, 11)
+        ], Interval.FAST)
+
     def bh_start(self):
         global is_show_msg
         is_show_msg = False
@@ -1195,10 +1207,6 @@ class RunTimer(QTimer):
 
     def set_data(self, func, interval: int, delay: int):
         if func is not None:
-            try:
-                self.signal.disconnect()
-            except:
-                pass
             self.signal.connect(func)
         self.interval = interval
         self.delay = delay
@@ -1458,7 +1466,7 @@ def get_password(pwd: str):
     return f"{pwd[8:16]}{pwd[0:8]}{pwd[24:32]}{pwd[16:24]}".encode().hex()
 
 
-def send_lines(lines: list, interval: int = Interval.NONE):
+def send_lines(lines: list, interval: int = Interval.INSTANT):
     for data in lines:
         if len(data) < 17:
             if 0 < len(data) < 5:
@@ -1512,7 +1520,7 @@ def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_n
         window.send_to_server_thread.start()
 
 
-def send_lines_to_socket(lines: list, interval: int = Interval.NONE):
+def send_lines_to_socket(lines: list, interval: int = Interval.INSTANT):
     socket_num = window.socketLineEdit.text()
     if socket_num.isdigit():
         socket_num = int(socket_num)
