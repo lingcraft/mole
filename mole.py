@@ -1922,8 +1922,8 @@ def process_recv_packet(socket_num, buf, length):
                                     info(window, "缤纷七彩宝盒", "恭喜你获得火龙珠")
                                 elif item_id == 0 and not is_show_msg:
                                     is_show_msg = True
-                                window.stop_task("缤纷七彩宝盒")
-                                info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
+                                    window.stop_task("缤纷七彩宝盒")
+                                    info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                         if is_write_recv:  # 修改原始数据模式
                             raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
