@@ -46,7 +46,7 @@ class Client(Process):
             # 获取账户认证信息
             self.login_socket.settimeout(10)
             self.login_socket.connect(("123.206.131.236", 1863))
-            self.login_socket.send(Packet.parse_data(
+            self.login_socket.send(Packet.from_hex(
                 f"0000009301000000670000000000000000{self.password}0000000000000001{"00" * 90}"
             ))
             self.login_socket.settimeout(1.2)
@@ -163,29 +163,41 @@ class Client(Process):
 
 
 class Packet:
-    def __init__(self, packet):
-        if isinstance(packet, str):
-            packet = bytearray.fromhex(packet)
-        packet_len = len(packet)
-        self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet) if packet_len >= 17 else (0, 0, 0, 0, 0)
-        self.body = packet[17:] if packet_len > 17 else bytearray()
+    def __init__(self, packet: str | bytearray | bytes | None = None, cmd_id: int | None = None, body: str | bytearray | bytes | None = None):
+        self.length = self.serial_num = self.cmd_id = self.user_id = self.version = 0
+        self.body = bytearray()
+        if packet is not None:
+            packet = self.to_bytearray(packet)
+            if len(packet) >= 17:
+                self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
+                self.body = packet[17:]
+        elif cmd_id is not None:
+            self.cmd_id = cmd_id
+            self.body = self.to_bytearray(body)
 
     def data(self):
         head = pack("!IBIII", self.length, self.serial_num, self.cmd_id, self.user_id, self.version)
         return head + self.body
 
     @staticmethod
-    def parse_data(data: str):
-        packet = bytearray.fromhex(data)
+    def to_bytearray(data: str | bytearray | bytes | None):
+        if data is None:
+            return bytearray()
+        if isinstance(data, str):
+            return bytearray.fromhex(data)
+        return bytearray(data)
+
+
+    @staticmethod
+    def from_hex(packet: str):
+        packet = bytearray.fromhex(packet)
         if packet.startswith(b"\x00\x00"):
             set_int(packet, user_id, 9)
         return packet
 
     def get_serial_num(self):
         global serial_num
-        self.length = len(self.body) + 18
-        self.user_id = user_id
-        self.version = 0
+        self.length, self.user_id, self.version = len(self.body) + 18, user_id, 0
         if self.cmd_id == 201:
             serial_num = 65
         else:
