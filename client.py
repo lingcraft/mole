@@ -95,6 +95,8 @@ class Client(Process):
             return False
         else:
             return True
+        finally:
+            sleep(0.05)
 
     def send_lines(self, lines: deque[str]):
         while lines:
