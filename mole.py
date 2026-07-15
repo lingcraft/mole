@@ -170,7 +170,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.friend_dict = {}
         for account_cache in account_caches:  # 获取好友信息
             with open(account_cache, "rb") as file:
-                self.friend_dict[int(account_cache.stem)] = [int(item["friend"]) for item in sol.decode(file.read())[1]["ServerFriendsList"]]
+                self.friend_dict[int(account_cache.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
         # 界面主区域设置
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
@@ -228,7 +228,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton, self.bh_start))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": RunTimer(self.mmg_run, 1500),
+            "摩摩怪": RunTimer(self.mmg_run),
             "餐厅": {pos: RunTimer() for pos in range(1, 8)}
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
@@ -620,13 +620,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000"  # 获取地图信息
             ])
+            self.enable_mmg_button(False)
             self.timer_pool["摩摩怪"].start()
 
         if fight_type == 0:  # 查询好友完毕
             start()
         else:
             global mmg_type, mmg_times
-            self.enable_mmg_button(False)
             mmg_type, mmg_times = fight_type, 0
             send_lines(
                 [
@@ -640,7 +640,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 ]
             )
             if fight_type < 3:
-                run_later(start)
+                run_later_expect(start, {0x2008: 1, 0x2009: 1})
             else:
                 friends = self.friend_dict[user_id]
                 ids = "".join([get_hex(friend) for friend in friends])
@@ -648,7 +648,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     f"0000000000000020220000000000000000{get_hex(user_id)}",  # 获取师徒信息
                     f"0000000000000020100000000000000000{get_hex(len(friends))}{ids}",  # 获取好友信息
                 ])
-                run_later(self.mmg_query_friends)
+                run_later_expect(self.mmg_query_friends, {0x2022: 1, 0x2010: 1})
 
     def mmg_run(self):
         match mmg_type:
@@ -694,7 +694,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "00000000000000019300000000000000000000000100000000"  # 进入游戏
         ])
 
-        run_later(lambda: send_lines_to_server_back(
+        run_later_expect(lambda: send_lines_to_server_back(
             ("123.206.131.63", 3001),
             [
                 f"0000008101000075310000000000000000{mmg_game_id}",  # 进入游戏
@@ -703,15 +703,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "000000152000007724000000000000000000000080"  # 快速战斗
             ],
             [3, 1, 1, 2]
-        ), 400)
+        ), {0x2717: 1})
 
     def mmg_get_reward(self, is_success):
         if is_success:
-            run_later(lambda: send_lines([
-                "0000000000000020140000000000000000",  # 校验能否翻牌
+            send_lines([
+                "0000000000000020140000000000000000"  # 校验能否翻牌
+            ])
+            run_later_expect(lambda: send_lines([
                 "000000000000002015000000000000000000000000",  # 翻牌
                 "000000000000000194000000000000000000"  # 离开游戏
-            ]))
+            ]), {0x2014: 1})
 
     def mmg_wish(self):
         send_lines_back([
@@ -832,7 +834,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         send_lines([
             "00000000000000231E000000000000000000000000"  # 获取元素骑士信息
         ])
-        run_later(self.ysqs_upgrade_run)
+        run_later_expect(self.ysqs_upgrade_run, {0x231E: 1})
 
     def ysqs_upgrade_run(self):
         card_data = ysqs_cards_dict[self.ysqsCardBox.currentData()]
@@ -877,7 +879,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "000000000000002B010000000000000000000000050000271E0000271F000027200000272100009C42",  # 获取竞技场剩余挑战次数
             "000000000000002B0100000000000000000000000100002722"  # 获取经验之路剩余挑战次数
         ])
-        run_later(self.mlcs_run)
+        run_later_expect(self.mlcs_run, {0x2EE4: 1, 0x2B01: 2})
 
     def mlcs_run(self):
         now = datetime.now()
@@ -941,7 +943,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"000000000000002EE40000000000000000{get_hex(user_id)}",  # 魔灵用户信息
             "000000000000002EF2000000000000000000000000"  # 魔灵背包信息
         ])
-        run_later(self.mlcs_sell_run)
+        run_later_expect(self.mlcs_sell_run, {0x2EE4: 1, 0x2EF2: 1})
 
     def mlcs_sell_run(self):
         elves = [get_hex(elf_id) for elf_id in mlcs_elves_dict.keys()]
@@ -974,7 +976,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
                 f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
             ])
-            run_later(self.ct_harvest_run)
+            run_later_expect(self.ct_harvest_run, {0x03F6: 1})
         else:  # 停止
             self.ctHarvestButton.setText(self.harvest_button_text)
             self.ctDishBox.setEnabled(True)
@@ -1327,7 +1329,7 @@ def warn(parent, title: str, msg: str, buttons: int = Button.OK):
     return QMessageBox.warning(parent, title, msg, QMessageBox.StandardButton(buttons))
 
 
-def run_later(func, delay: int = 350):
+def run_later(func, delay: int = 300):
     QTimer.singleShot(delay, func)
 
 
@@ -1365,8 +1367,10 @@ def check_waiting_packets(packet):
                 if func:
                     if len(expect) == 1:
                         run_later(lambda args=data.get(next(iter(expect)), []): func(*args), 0)
-                    else:
+                    elif any(isinstance(spec, dict) and spec.get("need_data", False) for spec in expect.values()):
                         run_later(lambda args=data: func(args), 0)
+                    else:
+                        run_later(func, 0)
                 pending_waits.pop(index)
 
 
@@ -1452,6 +1456,10 @@ def set_int(buf: bytes, value: int, offset: int = 0, bytes_num: int = 4):
             pack_into("!Q", buf, offset, value)
         case _:
             pack_into("!I", buf, offset, value)
+
+
+def get_bytes(buf: bytes, offset: int = 0, length: int = 0):
+    return buf[offset:offset + length]
 
 
 def get_hex(value: int, bytes_num: int = 4):
@@ -1555,12 +1563,12 @@ def update_cooking_info(client):
         ct_cooking_dishes_dict[dish_pos]["ID"] = dish_id
 
 
-def is_not_running(name: str):
-    return not window.timer_pool[name].isActive()
+def is_running(name: str):
+    return window.timer_pool[name].isActive()
 
 
-def is_not_sending():
-    return not window.send_thread.isRunning()
+def is_sending():
+    return window.send_thread.isRunning()
 
 
 def get_ip_port(socket_num: int):
@@ -1575,7 +1583,7 @@ def get_ip_port(socket_num: int):
 
 def get_remote_info(socket_num: int):
     ip, port = get_ip_port(socket_num)
-    if ip is None or ip != "123.206.131.236":
+    if ip is None or not ip.startswith("123.206.131"):
         return 0
     else:
         if port in (1965, 1865, 1201, 1239):
@@ -1660,11 +1668,11 @@ def process_recv_packet(socket_num, buf, length):
                                     is_max_skill_success = True
                                 window.lamu_collect_result()
                                 lamu_times += 1
-                            case 8200 if is_not_running("摩摩怪"):  # 获取摩摩怪能量和活力值
+                            case 8200 if not is_running("摩摩怪"):  # 获取摩摩怪能量和活力值
                                 mmg_energy = get_int(packet.body, 40)
                                 mmg_vigour = get_int(packet.body, 48)
                                 mmg_level = get_int(packet.body, 12)
-                            case 8201 if is_not_running("摩摩怪"):  # 获取摩摩挑战卡数量
+                            case 8201 if not is_running("摩摩怪"):  # 获取摩摩挑战卡数量
                                 mmg_card = 0
                                 items_num = len(packet.body) // 4
                                 size = 1 * 4
@@ -1673,7 +1681,7 @@ def process_recv_packet(socket_num, buf, length):
                                     if item_id == 0x13DA23:
                                         mmg_card = get_int(packet.body, page * size + 4)
                                         break
-                            case 8224 if is_not_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
+                            case 8224 if not is_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
                                 mmg_super_boss_times = 10 - get_int(packet.body)
                                 mmg_lamu_boss_times = 10 - get_int(packet.body, 4)
                                 if datetime.now().hour == 13:
@@ -1684,7 +1692,7 @@ def process_recv_packet(socket_num, buf, length):
                                 mmg_boss_index2 = mmg_boss_index1 + mmg_super_boss_times
                                 mmg_boss_index3 = mmg_boss_index2 + mmg_lamu_boss_times
                             case 10007:  # 获取摩摩怪游戏ID
-                                mmg_game_id = packet.body[18:130].hex()
+                                mmg_game_id = get_bytes(packet.body, 18, 112).hex()
                             case 8212:  # 翻牌成功
                                 mmg_times += 1
                             case 8226:  # 获取师徒ID
@@ -1713,7 +1721,7 @@ def process_recv_packet(socket_num, buf, length):
                                 # 师徒放前面，后面好友等级从高到低
                                 mmg_friends = sorted(mmg_friends_dict.items(), key=lambda item: item[1], reverse=True)
                                 mmg_friends_num = len(mmg_friends)
-                            case 8218 if is_not_running("摩摩怪") \
+                            case 8218 if not is_running("摩摩怪") \
                                          and get_int(packet.body) in (mmg_query_size_max, mmg_friends_num % mmg_query_size_max):
                                 # 查询好友能否对战
                                 query_size = get_int(packet.body)
@@ -1751,7 +1759,7 @@ def process_recv_packet(socket_num, buf, length):
                                     elf_id = get_int(packet.body, start + page * size)
                                     if elf_id != 0:
                                         mlcs_fight_elves_dict[elf_id] = elf_id
-                            case 12018 if is_not_sending():  # 魔灵背包信息
+                            case 12018 if not is_sending():  # 魔灵背包信息
                                 mlcs_elves_dict.clear()
                                 elves_num = get_int(packet.body)
                                 start = 4
@@ -1928,11 +1936,14 @@ def process_recv_packet(socket_num, buf, length):
                         if is_write_recv:  # 修改原始数据模式
                             raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
                     else:  # 错误包
-                        if packet.cmd_id == 1209:  # 拉姆变身获得物品
-                            if lamu_times == 0:
-                                is_last_skill_success = False
-                            else:
-                                is_max_skill_success = False
+                        match packet.cmd_id:
+                            case 1209:  # 拉姆变身获得物品
+                                if lamu_times == 0:
+                                    is_last_skill_success = False
+                                else:
+                                    is_max_skill_success = False
+                            case 403 if is_running("摩摩怪"):  # 摩摩怪进入游戏失败
+                                window.mmg_stop()
                     # 处理后面的包
                     recv_buf = recv_buf[packet_len:]
                     buf_index += packet_len
