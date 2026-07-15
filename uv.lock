@@ -207,7 +207,7 @@ requires-dist = [
     { name = "cffi", specifier = "~=2.1.0" },
     { name = "nuitka", specifier = "~=4.1.3" },
     { name = "packaging", specifier = "~=26.2" },
-    { name = "py3amf", specifier = "~=0.9.0" },
+    { name = "py3amf", specifier = "~=0.9.1" },
     { name = "pypinyin", specifier = "~=0.55.0" },
     { name = "pyside6", specifier = "~=6.11.1" },
     { name = "requests", specifier = "~=2.34.2" },
@@ -231,14 +231,14 @@ wheels = [
 
 [[package]]
 name = "py3amf"
-version = "0.9.0"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "defusedxml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f9/d8/93c3a0d838cefcf77174709ba9cd8159c20a747950a453d0fb4bc3010466/py3amf-0.9.0.tar.gz", hash = "sha256:64f4a7f19ac7fbd3ef58efec722532d200d9c8f3ec314e25025fbadcd5c55a02", size = 1428891, upload-time = "2026-07-03T06:02:20.808Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/df/4a89217635f5cf2532ca1c7a1073b79b5620c0897c8a34a46752d5eed509/py3amf-0.9.1.tar.gz", hash = "sha256:c9414aa31032978f258fd97c7334f60da0bda9b5e73fa526f7c43a995da5bf78", size = 1433119, upload-time = "2026-07-15T07:57:34.256Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/63/fd538222b1b5333ff536ea3676d0b4e15b23b4897f042761541910bef055/py3amf-0.9.0-py3-none-any.whl", hash = "sha256:4ba3bfadf4ae5663151bee0612d6696b0092e4452d667b3f8120a8b3d8d04552", size = 204947, upload-time = "2026-07-03T06:02:18.87Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/6c/ec602117f0226905e36626c661cecdaf2d28113623c764a33b7a95f6c0b6/py3amf-0.9.1-py3-none-any.whl", hash = "sha256:8d97c0e9206e33d72c23d0ce6a729f53cbdb57537b3a10445de7bdfd47641a73", size = 208265, upload-time = "2026-07-15T07:57:32.287Z" },
 ]
 
 [[package]]
