@@ -10,7 +10,7 @@ from socket import socket, fromfd, AF_INET, SOCK_STREAM
 from collections import Counter
 from copy import deepcopy
 from dict import *
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import sleep
 from enum import IntEnum, IntFlag, StrEnum
 from configparser import ConfigParser
@@ -66,6 +66,7 @@ can_fight_wjsy, can_fight_ssmy, is_equip_card = False, False, True  # 能否挑�
 ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
+ct_cooking_countdown_dict = {}  # 灶台做菜倒计时信息
 # 游戏版本
 server_dict = {
     "官服": "http://mole.61.com",
@@ -237,6 +238,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 餐厅功能
         self.ctSellButton.clicked.connect(lambda: self.start_task("餐厅卖菜", self.ct_sell_run, Interval.FAST, self.ctSellButton))
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
+        # 标题功能提示信息
+        self.title = self.windowTitle()
+        self.title_timer_pool = {}
+        self.title_part_pool = {}
         # 界面初始化完成
         global is_window_init
         is_window_init = True
@@ -476,6 +481,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
+
+    def update_title(self, module_name, func_name=None, func_info=None, next_run_getter=None):
+        if func_name is None:
+            self.title_part_pool.pop(module_name, None)
+        else:
+            title = f"{module_name} · {func_name}："
+            if func_info is not None:
+                title += func_info
+            if next_run_getter is not None and (next_run := next_run_getter()) is not None:
+                remain = max(0, int((next_run - datetime.now()).total_seconds()))
+                h, left = divmod(remain, 3600)
+                m, s = divmod(left, 60)
+                cd = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
+                title += f"（{cd}）"
+            self.title_part_pool[module_name] = title
+        parts = [part for part in self.title_part_pool.values() if part]
+        suffix = " | ".join(parts)
+        self.setWindowTitle(f"{self.title}{(" | " + suffix) if suffix else ""}")
+
+    def start_update_title(self, module_name, func_name=None, func_info=None, next_run_getter=None):
+        self.update_title(module_name, func_name, func_info, next_run_getter)
+        delay = (1000 - datetime.now().microsecond // 1000) % 1000  # 对齐到整秒
+        timer = RunTimer(lambda: self.update_title(module_name, func_name, func_info, next_run_getter), delay=delay, is_precise=True)
+        timer.start()
+        self.title_timer_pool[module_name] = timer
+
+    def stop_update_title(self, module_name):
+        self.title_timer_pool[module_name].stop()
+        self.update_title(module_name)
 
     # =======================================上面是界面功能，下面是游戏功能============================================
 
@@ -972,6 +1006,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.harvest_button_text = self.ctHarvestButton.text()
             self.ctHarvestButton.setText("停止")
             self.ctDishBox.setEnabled(False)
+            self.start_update_title(
+                "餐厅",
+                self.harvest_button_text,
+                self.ctDishBox.currentText(),
+                lambda: min(
+                    (countdown_info["next_run"] for countdown_info in ct_cooking_countdown_dict.values() if "next_run" in countdown_info),
+                    default=None
+                )
+            )
             send_lines([
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
                 f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
@@ -980,6 +1023,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:  # 停止
             self.ctHarvestButton.setText(self.harvest_button_text)
             self.ctDishBox.setEnabled(True)
+            self.stop_update_title("餐厅")
             self.stop_timer("餐厅")
             if self.client is not None and self.client.is_alive():
                 self.client.close()
@@ -993,23 +1037,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         timer_dict = self.timer_pool["餐厅"]
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             timer = timer_dict[dish_pos]
+            delay = 0
             if dish_info.get("灶台为空", False):
                 dish_info["跳过一次收菜"] = True
-                timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
             else:
                 cook_time = dish_info["时间"]
                 if cook_time < need_time:  # 未成熟的菜
-                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, (need_time - cook_time) * 1000).start()
-                elif need_time <= cook_time < expire_time:  # 已成熟的菜
-                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
-                else:  # 已糊的菜
+                    delay = (need_time - cook_time) * 1000
+                elif cook_time >= expire_time:  # 已糊的菜
                     dish_info["已糊"] = True
-                    timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, 0).start()
+            ct_cooking_countdown_dict[dish_pos] = {
+                "interval": interval,
+                "next_run": datetime.now() + timedelta(milliseconds=delay)
+            }
+            timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay).start()
 
     def ct_harvest_func(self, pos):
         password = self.account_dict[user_id]
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         dish_info = ct_cooking_dishes_dict[pos]
+        countdown_info = ct_cooking_countdown_dict[pos]
         now = datetime.now()
         # 首次登录包
         init_lines = [
@@ -1024,10 +1071,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
             lines.append(f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}")  # 做菜
+            countdown_info["next_run"] = datetime.now() + timedelta(seconds=countdown_info["interval"])
         else:
             dish_info["跳过一次收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6)
             self.timer_pool["餐厅"][pos].restart((cook_start - now).total_seconds() * 1000)
+            countdown_info["next_run"] = cook_start
         send_lines_by_client((user_id, password), init_lines, lines)
 
     def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
@@ -1202,9 +1251,11 @@ class UpdateThread(QThread):
 class RunTimer(QTimer):
     signal = Signal()
 
-    def __init__(self, func=None, interval: int = 1000, delay: int = 300):
+    def __init__(self, func=None, interval: int = 1000, delay: int = 300, is_precise: bool = False):
         super().__init__()
         super().timeout.connect(self.on_timeout)
+        if is_precise:
+            self.setTimerType(Qt.TimerType.PreciseTimer)
         self.set_data(func, interval, delay)
 
     def set_data(self, func, interval: int, delay: int):
@@ -1883,12 +1934,11 @@ def process_recv_packet(socket_num, buf, length):
                                                 "时间": -5,
                                             }
                                 for dish_pos in range(1, stove_num + 1):
-                                    if dish_pos not in ct_cooking_dishes_dict:
-                                        ct_cooking_dishes_dict[dish_pos] = {
-                                            "类型": 0x147267,
-                                            "位置": dish_pos,
-                                            "灶台为空": True
-                                        }
+                                    ct_cooking_dishes_dict.setdefault(dish_pos, {
+                                        "类型": 0x147267,
+                                        "位置": dish_pos,
+                                        "灶台为空": True
+                                    })
                                 window.ctDishBox.clear()
                                 window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
                                 window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
