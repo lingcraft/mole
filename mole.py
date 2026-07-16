@@ -486,7 +486,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if func_name is None:
             self.title_part_pool.pop(module_name, None)
         else:
-            title = f"{module_name} · {func_name}："
+            title = f"{module_name} • {func_name}："
             if func_info is not None:
                 title += func_info
             if next_run_getter is not None and (next_run := next_run_getter()) is not None:
