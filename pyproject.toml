@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.9.5"
+version = "1.9.6"
 description = """
-- 修复：修复当0—6点启动餐厅自动做菜后，若所有灶台都为空时，做菜状态机一直卡在“正在登录”状态的问题
+- 修复：修复多次开始再停止自动做菜后，定时器信号连接了多个函数导致计算下次做菜倒计时异常的问题
 """
 readme = "README.md"
 requires-python = ">=3.12"

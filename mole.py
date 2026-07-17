@@ -271,17 +271,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def stop_timer(self, name):
         if name in self.timer_pool:
             timer = self.timer_pool[name]
-            if isinstance(timer, QTimer):
-                if timer.isActive():
-                    timer.stop()
-            elif isinstance(timer, dict):
+            if isinstance(timer, dict):
                 for item in timer.values():
-                    if item.isActive():
-                        item.stop()
-            elif isinstance(timer, tuple):
-                for item in timer:
                     if isinstance(item, QTimer) and item.isActive():
                         item.stop()
+            elif isinstance(timer, QTimer) and timer.isActive():
+                timer.stop()
 
     def url(self):
         return f"{server_dict.get(self.server, "").replace("$node", node_dict.get(self.node, ""))}/Client.swf"
@@ -1033,7 +1028,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         match ct_state:
             case State.COUNTDOWN:
-                next_run = min(item["next_run"] for item in ct_cooking_countdown_dict.values() if "next_run" in item)
+                next_run = min(item["next_run"] for item in ct_cooking_countdown_dict.values())
                 if int((next_run - datetime.now()).total_seconds()) > 0:
                     return next_run
                 else:
@@ -1331,8 +1326,14 @@ class RunTimer(QTimer):
         self.set_data(func, interval, delay)
 
     def set_data(self, func, interval: int | float, delay: int | float):
+        if (old_func := getattr(self, "func", None)) is not None:
+            try:
+                self.signal.disconnect(old_func)
+            except (TypeError, RuntimeError):
+                pass
         if func is not None:
             self.signal.connect(func)
+            self.func = func
         self.interval = int(interval)
         self.delay = int(delay)
         self.is_restart = False
