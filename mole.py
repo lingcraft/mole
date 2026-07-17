@@ -1104,21 +1104,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         timer_dict = self.timer_pool["餐厅"]
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             timer = timer_dict[dish_pos]
+            now = datetime.now()
             delay = 0
             if dish_info.get("灶台为空", False):
                 dish_info["跳过一次收菜"] = True
+                if now.hour < 6:
+                    cook_start = datetime(now.year, now.month, now.day, 6)
+                    delay = (cook_start - now).total_seconds()
             else:
                 cook_time = dish_info["时间"]
                 if cook_time < need_time:  # 未成熟的菜
-                    delay = (need_time - cook_time) * 1000
+                    delay = need_time - cook_time
                 elif cook_time >= expire_time:  # 已糊的菜
                     dish_info["已糊"] = True
             ct_cooking_countdown_dict[dish_pos] = {
-                "interval": interval,
-                "next_run": datetime.now() + timedelta(milliseconds=delay)
+                "interval": timedelta(seconds=interval),
+                "next_run": now + timedelta(seconds=delay)
             }
             ct_state = State.LOGGING_IN if delay == 0 else State.COUNTDOWN
-            timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay).start()
+            timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay * 1000).start()
 
     def ct_harvest_func(self, pos):
         password = self.account_dict[user_id]
@@ -1139,11 +1143,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
             lines.append(f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}")  # 做菜
-            countdown_info["next_run"] = datetime.now() + timedelta(seconds=countdown_info["interval"])
+            countdown_info["next_run"] += countdown_info["interval"]
         else:
             dish_info["跳过一次收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6)
-            self.timer_pool["餐厅"][pos].restart((cook_start - now).total_seconds() * 1000)
+            self.timer_pool["餐厅"][pos].restart(cook_start)
             countdown_info["next_run"] = cook_start
         send_lines_by_client((user_id, password), init_lines, lines)
 
@@ -1319,36 +1323,39 @@ class UpdateThread(QThread):
 class RunTimer(QTimer):
     signal = Signal()
 
-    def __init__(self, func=None, interval: int = 1000, delay: int = 300, is_precise: bool = False):
+    def __init__(self, func=None, interval: int | float = 1000, delay: int | float = 300, is_precise: bool = False):
         super().__init__()
         super().timeout.connect(self.on_timeout)
         if is_precise:
             self.setTimerType(Qt.TimerType.PreciseTimer)
         self.set_data(func, interval, delay)
 
-    def set_data(self, func, interval: int, delay: int):
+    def set_data(self, func, interval: int | float, delay: int | float):
         if func is not None:
             self.signal.connect(func)
-        self.interval = interval
-        self.delay = delay
+        self.interval = int(interval)
+        self.delay = int(delay)
         self.is_restart = False
         return self
 
-    def set_interval(self, interval: int | None = None):
+    def set_interval(self, interval: int | float | None = None):
         if interval is None:
             super().setInterval(self.interval)
         elif self.interval != interval:
-            self.interval = interval
-            super().setInterval(interval)
+            self.interval = int(interval)
+            super().setInterval(self.interval)
 
     def start(self):
         self.is_first = True
         super().start(self.delay)
 
-    def restart(self, delay):
-        self.stop()
-        self.delay = delay
+    def restart(self, delay: int | float | datetime):
+        super().stop()
         self.is_restart = True
+        if isinstance(delay, datetime):
+            self.delay = int((delay - datetime.now()).total_seconds() * 1000)
+        else:
+            self.delay = int(delay)
         self.start()
 
     def on_timeout(self):
