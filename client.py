@@ -6,7 +6,7 @@ from multiprocessing import Process, Queue
 from queue import Empty
 from random import randint
 from hashlib import md5
-from time import sleep
+from time import sleep, monotonic
 
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 user_id, serial_num = 0, 0  # 米米号、发送包序列号
@@ -22,6 +22,7 @@ class Client(Process):
         self.is_connect = False
         self.send_queue = Queue()
         self.recv_queue = Queue()
+        self.state_queue = Queue()
         self.user_id, self.password = account
         self.init_lines = init_lines
 
@@ -75,8 +76,10 @@ class Client(Process):
             if res.version != 0:
                 return False
             self.is_connect = True
+            self.state_queue.put("connected")
             self.main_socket.settimeout(None)
             Thread(target=self.recv_loop, daemon=True).start()
+            Thread(target=self.done_monitor, daemon=True).start()
         except:
             return False
         else:
@@ -94,15 +97,17 @@ class Client(Process):
             self.is_connect = False
             return False
         else:
+            self.last_send = monotonic()
+            self.is_done_signaled = False
             return True
         finally:
-            sleep(0.05)
+            sleep(0.025)
 
     def send_lines(self, lines: deque[str]):
         while lines:
             if not self.is_connect:
                 if not self.login():
-                    sleep(1)
+                    sleep(0.1)
                     continue
                 for line in self.init_lines:  # 登录成功后发送初始化包
                     if not self.send_line(line):
@@ -112,7 +117,14 @@ class Client(Process):
             data = lines.popleft()
             if not self.send_line(data):
                 lines.appendleft(data)  # 发送失败，放回队首待重连后重发
-                sleep(1)
+                sleep(0.1)
+
+    def done_monitor(self):
+        while self.is_connect:
+            sleep(0.1)
+            if not self.is_done_signaled and monotonic() - self.last_send > 1:
+                self.state_queue.put("done")
+                self.is_done_signaled = True
 
     def recv_loop(self):
         global recv_buf

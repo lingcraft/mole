@@ -11,7 +11,8 @@ from collections import Counter
 from copy import deepcopy
 from dict import *
 from datetime import datetime, timedelta
-from time import sleep
+from queue import Empty
+from time import sleep, monotonic
 from enum import IntEnum, IntFlag, StrEnum
 from configparser import ConfigParser
 from os import environ
@@ -65,8 +66,8 @@ ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数�
 can_fight_wjsy, can_fight_ssmy, is_equip_card = False, False, True  # 能否挑战无尽深渊、莎士摩亚、是否装备卡牌
 ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
 # 餐厅
-ct_cooked_dishes_dict, ct_cooking_dishes_dict = {}, {}  # 餐台菜信息、灶台菜信息
-ct_cooking_countdown_dict = {}  # 灶台做菜倒计时信息
+ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdown_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
+ct_state, ct_state_since, is_connect, is_done = None, None, False, False  # 餐厅做菜状态、上一状态时间、客户端是否连接、做菜是否完成
 # 游戏版本
 server_dict = {
     "官服": "http://mole.61.com",
@@ -133,6 +134,14 @@ class Interval(IntEnum):
 class Show(StrEnum):
     SEND = "S ==>"
     RECV = "R <=="
+
+
+class State(IntEnum):
+    COUNTDOWN = 1  # 倒计时
+    LOGGING_IN = 2  # 正在登录
+    LOGIN_OK = 3  # 登录成功
+    COOKING = 4  # 做菜中
+    DONE = 5  # 做菜完成
 
 
 class Button(IntFlag):
@@ -240,7 +249,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
         # 标题功能提示信息
         self.title = self.windowTitle()
-        self.title_timer_pool = {}
+        self.title_timer_pool: dict[str, RunTimer] = {}
         self.title_part_pool = {}
         # 界面初始化完成
         global is_window_init
@@ -489,12 +498,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             title = f"{module_name} • {func_name}："
             if func_info is not None:
                 title += func_info
-            if next_run_getter is not None and (next_run := next_run_getter()) is not None:
-                remain = max(0, int((next_run - datetime.now()).total_seconds()))
-                h, left = divmod(remain, 3600)
-                m, s = divmod(left, 60)
-                cd = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
-                title += f"（{cd}）"
+            if next_run_getter is not None:
+                result = next_run_getter()
+                if isinstance(result, datetime):
+                    remain = max(0, int((result - datetime.now()).total_seconds()))
+                    h, left = divmod(remain, 3600)
+                    m, s = divmod(left, 60)
+                    cd = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
+                    title += f"（{cd}）"
+                elif isinstance(result, str):
+                    title += f"（{result}）"
             self.title_part_pool[module_name] = title
         parts = [part for part in self.title_part_pool.values() if part]
         suffix = " | ".join(parts)
@@ -1001,6 +1014,62 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def is_harvest_running(self):
         return self.ctHarvestButton.text() == "停止"
 
+    def ct_harvest_state(self):
+        global ct_state, is_connect, is_done, ct_state_since
+        if self.client is None:
+            is_connect = False
+        else:
+            try:
+                state = self.client.state_queue.get_nowait()
+                if state == "connected":
+                    is_connect = True
+                elif state == "done":
+                    is_done = True
+            except Empty:
+                pass
+
+        now = monotonic()
+        dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
+
+        match ct_state:
+            case State.COUNTDOWN:
+                next_run = min(item["next_run"] for item in ct_cooking_countdown_dict.values() if "next_run" in item)
+                if int((next_run - datetime.now()).total_seconds()) > 0:
+                    return next_run
+                else:
+                    self.title_timer_pool["餐厅"].set_interval(50)
+                    ct_state_since = now
+                    if self.client is not None and self.client.is_alive():
+                        ct_state = State.COOKING
+                        return "做菜中"
+                    else:
+                        ct_state = State.LOGGING_IN
+                        return "正在登录"
+            case State.LOGGING_IN:
+                if is_connect and dwell_ok:
+                    ct_state = State.LOGIN_OK
+                    ct_state_since = now
+                return "正在登录"
+            case State.LOGIN_OK:
+                if dwell_ok:
+                    ct_state = State.COOKING
+                    ct_state_since = now
+                return "登录成功"
+            case State.COOKING:
+                if is_done and dwell_ok:
+                    is_done = False
+                    ct_state = State.DONE
+                    ct_state_since = now
+                return "做菜中"
+            case State.DONE:
+                if dwell_ok:
+                    self.title_timer_pool["餐厅"].set_interval(1000)
+                    ct_state = State.COUNTDOWN
+                    ct_state_since = now
+                return "做菜完成"
+            case _:
+                return "准备中"
+
     def ct_harvest_start(self):
         if not self.is_harvest_running():  # 启动
             self.harvest_button_text = self.ctHarvestButton.text()
@@ -1010,10 +1079,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "餐厅",
                 self.harvest_button_text,
                 self.ctDishBox.currentText(),
-                lambda: min(
-                    (countdown_info["next_run"] for countdown_info in ct_cooking_countdown_dict.values() if "next_run" in countdown_info),
-                    default=None
-                )
+                self.ct_harvest_state,
             )
             send_lines([
                 f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
@@ -1030,10 +1096,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.client = None
 
     def ct_harvest_run(self):
+        global ct_state
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         need_time = cooked_info["完成时间"]
         expire_time = cooked_info["烧糊时间"]
-        interval = need_time + 30  # 增加30秒登录账号时间
+        interval = need_time + 10  # 增加登录账号时间
         timer_dict = self.timer_pool["餐厅"]
         for dish_pos, dish_info in ct_cooking_dishes_dict.items():
             timer = timer_dict[dish_pos]
@@ -1050,6 +1117,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 "interval": interval,
                 "next_run": datetime.now() + timedelta(milliseconds=delay)
             }
+            ct_state = State.LOGGING_IN if delay == 0 else State.COUNTDOWN
             timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay).start()
 
     def ct_harvest_func(self, pos):
@@ -1266,6 +1334,13 @@ class RunTimer(QTimer):
         self.is_restart = False
         return self
 
+    def set_interval(self, interval: int | None = None):
+        if interval is None:
+            super().setInterval(self.interval)
+        elif self.interval != interval:
+            self.interval = interval
+            super().setInterval(interval)
+
     def start(self):
         self.is_first = True
         super().start(self.delay)
@@ -1281,7 +1356,7 @@ class RunTimer(QTimer):
         self.signal.emit()
         if self.is_first and not self.is_restart:
             self.is_first = False
-            super().setInterval(self.interval)
+            self.set_interval()
 
 
 class Packet:
