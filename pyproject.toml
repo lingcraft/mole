@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.9.6"
+version = "1.9.7"
 description = """
-- 修复：修复多次开始再停止自动做菜后，定时器信号连接了多个函数导致计算下次做菜倒计时异常的问题
+- 修复：修复stop_timer()停止定时器方法的问题
 """
 readme = "README.md"
 requires-python = ">=3.12"

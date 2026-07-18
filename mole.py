@@ -275,6 +275,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 for item in timer.values():
                     if isinstance(item, QTimer) and item.isActive():
                         item.stop()
+            elif isinstance(timer, tuple):
+                for item in timer:
+                    if isinstance(item, QTimer) and item.isActive():
+                        item.stop()
             elif isinstance(timer, QTimer) and timer.isActive():
                 timer.stop()
 
