@@ -20,6 +20,7 @@ from pathlib import Path
 from tomllib import load, loads
 from requests import get
 from bisect import bisect_right
+from itertools import accumulate
 from math import floor, sqrt
 from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
@@ -40,8 +41,8 @@ pending_waits = []  # 等待中的请求
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
-lamu_thresholds = [40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700]  # 拉姆变身值阈值
-lamu_skill_types = ["火", "水", "木"]  # 拉姆技能类型
+lamu_thresholds = (40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700)  # 拉姆变身值阈值
+lamu_skill_types = ("火", "水", "木")  # 拉姆技能类型
 lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
 lamu_last_item_level, lamu_max_item_level = 0, 0  # 拿取的物品等级
 lamu_last_type_index, lamu_max_type_index = 0, 0  # 拿取的物品类型索引
@@ -53,8 +54,7 @@ super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
 # 摩摩怪
 mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_game_id = 0, 0, 0, 0, ""  # 能量、活力、等级、摩摩挑战卡、游戏ID
 mmg_type, mmg_times = 0, 0  # 摩摩怪挑战类型、执行次数
-mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times = 0, 0, 0  # 超级Boss、超拉Boss、限时Boss的可挑战次数
-mmg_boss_index1, mmg_boss_index2, mmg_boss_index3 = 0, 0, 0  # 3种Boss挑战次数索引
+mmg_boss_times_thresholds = (0, 0, 0, 0)  # 超级Boss、超拉Boss、限时Boss、活动Boss的挑战阈值
 mmg_friends, mmg_friends_dict, mmg_students_dict, mmg_fight_friends = [], {}, {}, deque()  # 好友、好友字典（米米号：等级）、师徒、可挑战好友
 mmg_friends_state_dict = {1: [], 2: [], 3: [], 4: []}  # 4种状态的好友字典
 mmg_friends_num, mmg_query_size_max, mmg_query_page_max, mmg_query_page = 0, 14, 0, 0  # 好友数、最大可查询好友数、最大查询页码、查询页码
@@ -661,7 +661,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def mmg_start(self, fight_type=0):
         def start():  # 开始执行
             global mmg_energy, mmg_type
-            if "疯" in self.mmgLevelBox.currentText():
+            if self.mmgLevelBox.currentText().endswith("疯狂"):
                 mmg_energy /= 2
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000"  # 获取地图信息
@@ -700,40 +700,37 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         match mmg_type:
             case 1:  # 挑战Boss
                 if self.mmgBossBox.currentText() == "独角萨摩":
-                    match mmg_times:
-                        case n if n < mmg_card:
-                            level_id = get_level_info("独角萨摩", mmg_level)
-                            self.mmg_fight(level_id, 1)
-                        case _:
-                            self.mmg_stop()
-                else:
-                    match mmg_times:
-                        case n if n < mmg_boss_index1:
-                            level_id = get_level_info("飞沙蝎")
-                            self.mmg_fight(level_id, 1)
-                        case n if mmg_boss_index1 <= n < mmg_boss_index2:
-                            level_id = get_level_info(self.mmgBossBox.currentText())
-                            self.mmg_fight(level_id, 1)
-                        case n if mmg_boss_index2 <= n < mmg_boss_index3:
-                            level_id = get_level_info("怪味糖蓝龙", mmg_level)
-                            self.mmg_fight(level_id, 1)
-                        case _:
-                            self.mmg_stop()
-            case 2:  # 挑战副本
-                match mmg_times:
-                    case n if n < mmg_energy // 10:
-                        level_id = get_level_info(self.mmgLevelBox.currentText())
+                    if mmg_times < mmg_card:
+                        level_id = get_level_info("独角萨摩", mmg_level)
                         self.mmg_fight(level_id, 1)
-                    case _:
+                    else:
                         self.mmg_stop()
+                else:
+                    boss_stages = [
+                        lambda: get_level_info("飞沙蝎"),
+                        lambda: get_level_info(self.mmgBossBox.currentText()),
+                        lambda: get_level_info("怪味糖蓝龙", mmg_level),
+                        lambda: get_level_info("鲁尼"),
+                    ]
+                    index = bisect_right(mmg_boss_times_thresholds, mmg_times)
+                    if index < len(boss_stages):
+                        level_id = boss_stages[index]()
+                        self.mmg_fight(level_id, 1)
+                    else:
+                        self.mmg_stop()
+            case 2:  # 挑战副本
+                if mmg_times < mmg_energy // 10:
+                    level_id = get_level_info(self.mmgLevelBox.currentText())
+                    self.mmg_fight(level_id, 1)
+                else:
+                    self.mmg_stop()
             case 3:  # 挑战好友
-                match mmg_times:
-                    case n if n < mmg_vigour // 10 and len(mmg_fight_friends) > 0:
-                        level_id, fight_type, _ = mmg_fight_friends.popleft()
-                        self.mmg_fight(level_id, fight_type)
-                    case _:
-                        self.mmg_wish()
-                        self.mmg_stop()
+                if mmg_times < mmg_vigour // 10 and len(mmg_fight_friends) > 0:
+                    level_id, fight_type, _ = mmg_fight_friends.popleft()
+                    self.mmg_fight(level_id, fight_type)
+                else:
+                    self.mmg_wish()
+                    self.mmg_stop()
 
     def mmg_fight(self, level_id, fight_type):
         send_lines([
@@ -1764,11 +1761,11 @@ def process_send_packet(socket_num, buf, length):
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buf, length):
-    global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, is_max_skill_success, \
-        super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, mmg_fight_friends, mmg_friends_num, \
-        mmg_friends_dict, mmg_query_page, mmg_super_boss_times, mmg_lamu_boss_times, mmg_limit_boss_times, mmg_boss_index1, mmg_boss_index2, \
-        mmg_boss_index3, mlcs_energy, mlcs_arena_times, mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, \
-        ysqs_material_cards_dict, can_fight_wjsy, can_fight_ssmy, is_equip_card
+    global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, \
+        is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
+        mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
+        mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, can_fight_wjsy, \
+        can_fight_ssmy, is_equip_card
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
     if raw_buf[:2] == b"\x00\x00":  # 新包
@@ -1822,13 +1819,11 @@ def process_recv_packet(socket_num, buf, length):
                             case 8224 if not is_running("摩摩怪"):  # 获取摩摩怪Boss已挑战次数
                                 mmg_super_boss_times = 10 - get_int(packet.body)
                                 mmg_lamu_boss_times = 10 - get_int(packet.body, 4)
-                                if datetime.now().hour == 13:
-                                    mmg_limit_boss_times = 10 - get_int(packet.body, 8)
-                                else:
-                                    mmg_limit_boss_times = 0
-                                mmg_boss_index1 = mmg_limit_boss_times
-                                mmg_boss_index2 = mmg_boss_index1 + mmg_super_boss_times
-                                mmg_boss_index3 = mmg_boss_index2 + mmg_lamu_boss_times
+                                mmg_limit_boss_times = 10 - get_int(packet.body, 8) if datetime.now().hour == 13 else 0
+                                mmg_activity_boss_times = 10 - get_int(packet.body, 12)
+                                mmg_boss_times_thresholds = tuple(accumulate((
+                                    mmg_limit_boss_times, mmg_super_boss_times, mmg_lamu_boss_times, mmg_activity_boss_times
+                                )))
                             case 10007:  # 获取摩摩怪游戏ID
                                 mmg_game_id = get_bytes(packet.body, 18, 112).hex()
                             case 8212:  # 翻牌成功
