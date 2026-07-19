@@ -12,7 +12,7 @@ from copy import deepcopy
 from dict import *
 from datetime import datetime, timedelta
 from queue import Empty
-from time import sleep, monotonic
+from time import sleep, monotonic, time
 from enum import IntEnum, IntFlag, StrEnum
 from configparser import ConfigParser
 from os import environ
@@ -27,6 +27,8 @@ from packaging.version import parse
 from pyamf import sol
 from collections import deque
 from client import Client
+from bridge import start_injector, start_bridge, set_upstream, injector_url, push_cmd
+
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -109,7 +111,7 @@ base_dir = Path(__file__).resolve().parent
 log = base_dir / "hook.log"
 login_cache = next(
     (
-        cache_dir / "mole.61.com" / "#mole" / "login.sol"
+        cache_dir / "127.0.0.1" / "#mole" / "login.sol"
         for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
     ),
     None
@@ -117,7 +119,7 @@ login_cache = next(
 account_caches = [
     sol_file
     for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
-    for sol_file in (cache_dir / "mole.61.com" / "#mole").glob("*.sol")
+    for sol_file in (cache_dir / "127.0.0.1" / "#mole").glob("*.sol")
     if sol_file.stem.isdigit()
 ]
 is_window_init = False
@@ -174,7 +176,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file)["project"]["version"]
         self.account_dict = {}
-        if login_cache is not None:
+        if login_cache and login_cache.exists():
             with open(login_cache, "rb") as file:  # 获取登录信息
                 self.account_dict = {data["userID"]: get_password(data["pwd"]) for data in sol.decode(file.read())[1]["list"]}
         self.friend_dict = {}
@@ -182,6 +184,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             with open(account_cache, "rb") as file:
                 self.friend_dict[int(account_cache.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
         # 界面主区域设置
+        if self.server == "官服":
+            set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
+        start_injector()  # SWF注入服务：127.0.0.1:10000
+        start_bridge()  # 命令桥：127.0.0.1:20000
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
@@ -236,6 +242,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, Interval.FAST, self.dddGetButton))
         self.medGetButton.clicked.connect(lambda: self.start_task("摩尔豆", self.med_run, Interval.FAST, self.medGetButton))
         self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton, self.bh_start))
+        self.kllFinishButton.clicked.connect(lambda: self.start_task("卡罗拉幸运儿", self.kll_run, Interval.IDLE, self.kllFinishButton))
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": RunTimer(self.mmg_run),
@@ -283,7 +290,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 timer.stop()
 
     def url(self):
-        return f"{server_dict.get(self.server, "").replace("$node", node_dict.get(self.node, ""))}/Client.swf"
+        if self.server == "官服":
+            return injector_url(f"/Client.swf?t={time()}")
+        else:
+            return f"{server_dict[self.server].replace("$node", node_dict[self.node])}/Client.swf?t={time()}"
 
     def change_show_send(self, state):
         global is_show_send
@@ -338,7 +348,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.check_menu()
-        self.axWidget.dynamicCall("LoadMovie(long, string)", 0, server_dict["官服"])
+        if self.server == "官服":
+            set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.enable_all_buttons(False)
@@ -430,6 +441,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def enable_bh_button(self, enable):
         self.bhOpenButton.setEnabled(enable)
 
+    def enable_kll_button(self, enable):
+        self.kllFinishButton.setEnabled(enable)
+
     def enable_all_buttons(self, enable):
         self.enable_lamu_button(enable)
         self.enable_mmg_button(enable)
@@ -438,6 +452,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_ddd_button(enable)
         self.enable_med_button(enable)
         self.enable_bh_button(enable)
+        self.enable_kll_button(enable)
         if not enable:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
             self.stop_timer("拉姆")
@@ -674,6 +689,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             global mmg_type, mmg_times
             mmg_type, mmg_times = fight_type, 0
+            enter_map(228)
             send_lines(
                 [
                     "0000000000000020200000000000000000"  # 查询Boss已挑战次数
@@ -681,8 +697,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 +
                 [
                     f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
-                    "0000000000000020090000000000000000",  # 获取背包信息
-                    "0000000000000001960000000000000000000000E400000000"  # 进入地图场景
+                    "0000000000000020090000000000000000"  # 获取背包信息
                 ]
             )
             if fight_type < 3:
@@ -1179,6 +1194,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             "0000000000000022F9000000000000000000003E95"
         ])
 
+    def kll_run(self):
+        send_lines([
+            "0000000000000020D20000000000000000"
+        ])
+
+    def kll_finish(self, body):
+        send_lines([
+            f"0000000000000020D30000000000000000{body}"
+        ])
+
 
 class AdvanceDialog(QDialog, Ui_AdvanceDialog):
     def __init__(self):
@@ -1460,8 +1485,17 @@ def info(parent, title: str, msg: str, buttons: int = Button.OK):
     return QMessageBox.information(parent, title, msg, QMessageBox.StandardButton(buttons))
 
 
-def warn(parent, title: str, msg: str, buttons: int = Button.OK):
-    return QMessageBox.warning(parent, title, msg, QMessageBox.StandardButton(buttons))
+def alert(msg: str | tuple | int):
+    if isinstance(msg, str):
+        push_cmd(f"alert|{msg}")
+    elif isinstance(msg, tuple):
+        push_cmd(f"alertItem|{",".join(str(num) for num in msg)}")
+    else:
+        push_cmd(f"alertItem|{msg},1")
+
+
+def enter_map(map_id: int):
+    push_cmd(f"enterMap|{map_id}")
 
 
 def run_later(func, delay: int = 300):
@@ -1616,7 +1650,12 @@ def send_lines(lines: list, interval: int = Interval.INSTANT):
                 if (delay := int(data)) > 0:
                     sleep(delay / 1000)
             continue
-        packet = Packet(data)
+        if isinstance(data, dict):
+            packet = Packet(**data)
+        elif isinstance(data, (tuple, list)):
+            packet = Packet(cmd_id=data[0], body=data[1])
+        else:
+            packet = Packet(data)
         with lock:
             packet.encrypt()
         send(login_socket_num, packet.data(), packet.length)
@@ -1734,10 +1773,9 @@ def send(socket_num, buf, length):
 @ffi.callback("int(ULONG64, PCHAR, INT)")
 def process_send_packet(socket_num, buf, length):
     global login_socket_num, login_ip, login_port, user_id, can_get_lamu_info
-    sock_type = get_remote_info(socket_num)
     raw_buf = ffi.buffer(buf, length)
     # 摩尔主服务器包
-    if sock_type > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
+    if get_remote_info(socket_num) > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
         packet = Packet(raw_buf)
         if packet.cmd_id == 201:  # 登录包
             login_socket_num = socket_num
@@ -1766,6 +1804,8 @@ def process_recv_packet(socket_num, buf, length):
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
         mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, can_fight_wjsy, \
         can_fight_ssmy, is_equip_card
+    if get_remote_info(socket_num) == 0:
+        return
     raw_buf = ffi.buffer(buf, length)
     recv_buf.extend(raw_buf)
     if raw_buf[:2] == b"\x00\x00":  # 新包
@@ -2059,11 +2099,21 @@ def process_recv_packet(socket_num, buf, length):
                                 item_id = get_int(packet.body)
                                 if item_id == 0x31CE:  # 火龙珠
                                     window.stop_task("缤纷七彩宝盒")
-                                    info(window, "缤纷七彩宝盒", "恭喜你获得火龙珠")
+                                    alert(item_id)
                                 elif item_id == 0 and not is_show_msg:
                                     is_show_msg = True
                                     window.stop_task("缤纷七彩宝盒")
-                                    info(window, "缤纷七彩宝盒", "宝盒已开完，暂未获得火龙珠")
+                                    alert("宝盒已开完，暂未获得火龙珠")
+                            case 8402:  # 卡罗拉幸运儿游戏开始
+                                window.kll_finish(packet.body.hex())
+                            case 8403:  # 卡罗拉幸运儿游戏结果
+                                if get_int(packet.body, 4) == 1:
+                                    item_id = get_int(packet.body, 8)
+                                    item_num = get_int(packet.body, 12)
+                                    alert((item_id, item_num))
+                                else:
+                                    window.stop_task("卡罗拉幸运儿")
+                                    alert("今日卡罗拉幸运儿游戏已完成")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                         if is_write_recv:  # 修改原始数据模式
                             raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()

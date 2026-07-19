@@ -232,6 +232,13 @@ class Ui_MainWindow(object):
         self.medGetButton.setObjectName(u"medGetButton")
         self.medGetButton.setEnabled(False)
         self.medGetButton.setGeometry(QRect(10, 20, 80, 31))
+        self.groupBox9 = QGroupBox(self.tab2)
+        self.groupBox9.setObjectName(u"groupBox9")
+        self.groupBox9.setGeometry(QRect(397, 64, 102, 61))
+        self.kllFinishButton = QPushButton(self.groupBox9)
+        self.kllFinishButton.setObjectName(u"kllFinishButton")
+        self.kllFinishButton.setEnabled(False)
+        self.kllFinishButton.setGeometry(QRect(11, 20, 80, 31))
         self.tabWidget.addTab(self.tab2, "")
         MainWindow.setCentralWidget(self.centralWidget)
         self.menubar = QMenuBar(MainWindow)
@@ -327,6 +334,8 @@ class Ui_MainWindow(object):
         self.lamuGrowButton.setText(QCoreApplication.translate("MainWindow", u"一键获取", None))
         self.groupBox7.setTitle(QCoreApplication.translate("MainWindow", u"摩尔豆", None))
         self.medGetButton.setText(QCoreApplication.translate("MainWindow", u"一键刷取", None))
+        self.groupBox9.setTitle(QCoreApplication.translate("MainWindow", u"卡罗拉幸运儿", None))
+        self.kllFinishButton.setText(QCoreApplication.translate("MainWindow", u"一键完成", None))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab2), QCoreApplication.translate("MainWindow", u"第2页", None))
     # retranslateUi
 

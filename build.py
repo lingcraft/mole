@@ -23,6 +23,7 @@ cmd = " ".join([
     "--include-data-files=Flash.ocx=Flash.ocx",
     "--include-data-files=manifest=manifest",
     "--include-data-files=zh_CN.qm=zh_CN.qm",
+    "--include-data-files=ClientCommonDLL.swf=ClientCommonDLL.swf",
     "--onefile"
 ])
 
