@@ -1485,13 +1485,15 @@ def info(parent, title: str, msg: str, buttons: int = Button.OK):
     return QMessageBox.information(parent, title, msg, QMessageBox.StandardButton(buttons))
 
 
-def alert(msg: str | tuple | int):
-    if isinstance(msg, str):
-        push_cmd(f"alert|{msg}")
-    elif isinstance(msg, tuple):
-        push_cmd(f"alertItem|{",".join(str(num) for num in msg)}")
+def alert_msg(msg: str):
+    push_cmd(f"alertMsg|{msg}")
+
+
+def alert_reward(data: tuple | int):
+    if isinstance(data, tuple):
+        push_cmd(f"alertReward|{",".join(str(num) for num in data)}")
     else:
-        push_cmd(f"alertItem|{msg},1")
+        push_cmd(f"alertReward|{data},1")
 
 
 def enter_map(map_id: int):
@@ -2099,21 +2101,21 @@ def process_recv_packet(socket_num, buf, length):
                                 item_id = get_int(packet.body)
                                 if item_id == 0x31CE:  # 火龙珠
                                     window.stop_task("缤纷七彩宝盒")
-                                    alert(item_id)
+                                    alert_reward(item_id)
                                 elif item_id == 0 and not is_show_msg:
                                     is_show_msg = True
                                     window.stop_task("缤纷七彩宝盒")
-                                    alert("宝盒已开完，暂未获得火龙珠")
+                                    alert_msg("宝盒已开完，暂未获得火龙珠")
                             case 8402:  # 卡罗拉幸运儿游戏开始
                                 window.kll_finish(packet.body.hex())
                             case 8403:  # 卡罗拉幸运儿游戏结果
                                 if get_int(packet.body, 4) == 1:
                                     item_id = get_int(packet.body, 8)
                                     item_num = get_int(packet.body, 12)
-                                    alert((item_id, item_num))
+                                    alert_reward((item_id, item_num))
                                 else:
                                     window.stop_task("卡罗拉幸运儿")
-                                    alert("今日卡罗拉幸运儿游戏已完成")
+                                    alert_msg("今日卡罗拉幸运儿游戏已完成")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                         if is_write_recv:  # 修改原始数据模式
                             raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
