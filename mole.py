@@ -2063,9 +2063,17 @@ def process_recv_packet(socket_num, buf, length):
                                         "位置": dish_pos,
                                         "灶台为空": True
                                     })
+                                # 更新数据并重新选中之前的菜
+                                window.ctDishBox.blockSignals(True)
+                                old_dish_name = window.ctDishBox.currentText()
                                 window.ctDishBox.clear()
                                 window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
+                                if old_dish_name is not None:
+                                    index = window.ctDishBox.findText(old_dish_name)
+                                    if index != -1:
+                                        window.ctDishBox.setCurrentIndex(index)
                                 window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
+                                window.ctDishBox.blockSignals(False)
                             case 1017:  # 餐厅做菜信息
                                 dish_type = get_int(packet.body)
                                 dish_id = get_int(packet.body, 4)
