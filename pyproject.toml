@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.10.2"
+version = "1.10.3"
 description = """
-- 修复：修复餐厅餐台有多道菜时，开始自动做菜会自动选中第1道菜的bug，现在刷新餐厅时会记忆之前选中的目标菜
+- 优化：命令桥路径名优化
 """
 readme = "README.md"
 requires-python = ">=3.12"

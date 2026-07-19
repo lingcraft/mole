@@ -8,7 +8,7 @@ PATCHED = {                   # 命中这些 URL 片段 -> 返回本地补丁文
 }
 INJECT_LISTEN = ("127.0.0.1", 10000)   # 本地注入服务：Flash 直连，不依赖系统代理
 BRIDGE_LISTEN = ("127.0.0.1", 20000)   # 命令桥，SWF 直连，绕过系统代理
-BRIDGE_BASE = "/_mole_bridge/"
+BRIDGE_BASE = "/mole-bridge/"
 
 UPSTREAM_BASE = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按当前服/节点设置
 
