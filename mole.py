@@ -1115,7 +1115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if dish_info.get("灶台为空", False):
                 dish_info["跳过一次收菜"] = True
                 if now.hour < 6:
-                    cook_start = datetime(now.year, now.month, now.day, 6)
+                    cook_start = datetime(now.year, now.month, now.day, 6, 5)
                     delay = (cook_start - now).total_seconds()
             else:
                 cook_time = dish_info["时间"]
@@ -1152,7 +1152,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             countdown_info["next_run"] += countdown_info["interval"]
         else:
             dish_info["跳过一次收菜"] = True
-            cook_start = datetime(now.year, now.month, now.day, 6)
+            cook_start = datetime(now.year, now.month, now.day, 6, 5)
             self.timer_pool["餐厅"][pos].restart(cook_start)
             countdown_info["next_run"] = cook_start
         send_lines_by_client((user_id, password), init_lines, lines)
