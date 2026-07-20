@@ -27,7 +27,7 @@ from packaging.version import parse
 from pyamf import sol
 from collections import deque
 from client import Client
-from bridge import start_injector, start_bridge, set_upstream, injector_url, push_cmd
+from bridge import start_bridge, set_upstream, injector_url, push_cmd
 
 
 # 封包
@@ -184,10 +184,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             with open(account_cache, "rb") as file:
                 self.friend_dict[int(account_cache.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
         # 界面主区域设置
-        if self.server == "官服":
-            set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
-        start_injector()  # SWF注入服务：127.0.0.1:10000
-        start_bridge()  # 命令桥：127.0.0.1:20000
+        set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
+        start_bridge()  # 注入服务：10000、命令桥：10001
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
@@ -290,10 +288,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 timer.stop()
 
     def url(self):
-        if self.server == "官服":
-            return injector_url(f"/Client.swf?t={time()}")
-        else:
-            return f"{server_dict[self.server].replace("$node", node_dict[self.node])}/Client.swf?t={time()}"
+        prefix = "" if self.server == "官服" else f"/server{list(server_dict).index(self.server)}"
+        return injector_url(f"{prefix}/Client.swf?t={time()}")
 
     def change_show_send(self, state):
         global is_show_send
@@ -348,8 +344,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.check_menu()
-        if self.server == "官服":
-            set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
+        set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.axWidget.dynamicCall("SetScaleMode(int)", 0)
         self.enable_all_buttons(False)
