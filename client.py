@@ -99,15 +99,14 @@ class Client(Process):
         else:
             self.last_send = monotonic()
             self.is_done_signaled = False
-            return True
-        finally:
             sleep(0.025)
+            return True
 
     def send_lines(self, lines: deque[str]):
         while lines:
             if not self.is_connect:
                 if not self.login():
-                    sleep(0.1)
+                    sleep(1)
                     continue
                 for line in self.init_lines:  # 登录成功后发送初始化包
                     if not self.send_line(line):
@@ -117,7 +116,6 @@ class Client(Process):
             data = lines.popleft()
             if not self.send_line(data):
                 lines.appendleft(data)  # 发送失败，放回队首待重连后重发
-                sleep(0.1)
 
     def done_monitor(self):
         while self.is_connect:

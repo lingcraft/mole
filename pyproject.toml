@@ -1,9 +1,8 @@
 [project]
 name = "mole"
-version = "1.10.6"
+version = "1.10.7"
 description = """
-- 优化：现在不固定注入 ext.xml 的端口以及和 swf 进行 socket 通信的端口，改为动态获取，解决运行多个客户端会冲突的问题
-- 优化：BridgeDLL.swf 的源码提交 git 并设为本仓库的子模块
+- 优化：优化 client.py 的发包延迟和登录失败延迟等
 """
 readme = "README.md"
 requires-python = ">=3.12"
