@@ -214,9 +214,9 @@ def start_bridge():
     global injecter_port
     http_srv = ThreadingHTTPServer(("127.0.0.1", 0), InjectHandler)
     injecter_port = http_srv.server_address[1]
+    print(f"[bridge] 注入服务监听端口: {injecter_port}")
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
-    print(f"[bridge] 注入服务监听端口: {injecter_port}")
     start_socket_bridge()
     return http_srv
 
