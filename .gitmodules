@@ -3,4 +3,4 @@
 	url = git@github.com:lingcraft/mole-hook.git
 [submodule "bridge"]
 	path = bridge
-	url = https://github.com/lingcraft/mole-bridge
+	url = git@github.com:lingcraft/mole-bridge.git
