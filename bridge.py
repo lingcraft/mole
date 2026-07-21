@@ -19,7 +19,7 @@ def list_mod_swfs() -> list[Path]:
                   key=lambda p: p.name.lower())
 
 
-injecter_address = ("127.0.0.1", 10000)  # 注入服务：Flash 直连，不走系统代理
+injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
 upstream_base = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按服/节点设置
 
 # 复用 TCP 连接；trust_env=False 强制不走系统代理，避免回环到本代理自身
@@ -42,7 +42,7 @@ def set_upstream(base: str) -> None:
 
 def injector_url(path: str = "/Client.swf") -> str:
     """返回本地注入服务的完整 URL（Flash 的 LoadMovie 目标）。"""
-    return f"http://{injecter_address[0]}:{injecter_address[1]}{path}"
+    return f"http://127.0.0.1:{injecter_port}{path}"
 
 
 def clear_ext_xml_cache() -> None:
@@ -59,7 +59,7 @@ def clear_ext_xml_cache() -> None:
         urls = {
             "http://mole.61.com/resource/xml/ext.xml",
             f"{upstream_base}/resource/xml/ext.xml",
-            f"http://{injecter_address[0]}:{injecter_address[1]}/resource/xml/ext.xml",
+            f"http://127.0.0.1:{injecter_port}/resource/xml/ext.xml",
         }
         for url in urls:
             try:
@@ -104,6 +104,21 @@ class InjectHandler(BaseHTTPRequestHandler):
 
     def dispatch(self):
         url = self.path
+        # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器后，GET /__cmdport 取真实 socket 端口
+        # （不依赖 ext.xml 的 ?port= 查询串，兼容 new 实例化 / loadBytes 等拿不到参数的场景）
+        if url.split("?", 1)[0] == "/cmd-port":
+            self.serve_local(str(bridge_port).encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        # BridgeDLL 诊断回传：把 SWF 内部状态打印到控制台，便于排查连桥问题
+        if url.split("?", 1)[0] == "/log":
+            try:
+                from urllib.parse import urlparse, parse_qs, unquote
+                q = parse_qs(urlparse(self.path).query)
+                print(f"[bridgedll] {q.get('m', [''])[0]}")
+            except Exception:
+                pass
+            self.serve_local(b"ok", "text/plain; charset=utf-8")
+            return
         # 官服无前缀直接透传；其他服用 /server<索引>/ 前缀隔离缓存，这里剥离前缀再按原逻辑处理
         m = match(r"^/server\d+(/.*)$", url)
         if m:
@@ -180,6 +195,9 @@ class InjectHandler(BaseHTTPRequestHandler):
                 for p in mods
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
+            print(f"[ext.xml] 注入 {len(mods)} 个 mod: {[p.name for p in mods]}")
+        else:
+            print(f"[ext.xml] 未注入 mod（mods={len(mods)}, has</ext>={'</ext>' in text}）")
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
 
@@ -191,18 +209,22 @@ class InjectHandler(BaseHTTPRequestHandler):
 
 
 def start_bridge():
-    """启动本地桥服务（守护线程）：注入服务(10000) + socket 命令桥(10001)。"""
-    clear_ext_xml_cache()  # 清旧版 ext.xml 缓存，保证拉到最新（含 mod）
-    srv = ThreadingHTTPServer(injecter_address, InjectHandler)
-    Thread(target=srv.serve_forever, daemon=True).start()
+    """启动本地桥服务（守护线程）：注入服务(动态端口) + socket 命令桥(动态端口)。
+    两个端口均由 OS 动态分配，保证多客户端实例各用独立端口、互不干扰。"""
+    global injecter_port
+    http_srv = ThreadingHTTPServer(("127.0.0.1", 0), InjectHandler)
+    injecter_port = http_srv.server_address[1]
+    clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
+    Thread(target=http_srv.serve_forever, daemon=True).start()
+    print(f"[bridge] 注入服务监听端口: {injecter_port}")
     start_socket_bridge()
-    return srv
+    return http_srv
 
 
 # ---------------------------------------------------------------------------
 # socket 命令桥：127.0.0.1:10001，SWF 用 flash.net.Socket 连接，替代 HTTP 轮询
 # ---------------------------------------------------------------------------
-bridge_address = ("127.0.0.1", 10001)
+bridge_port: int = 10001  # 本实例 socket 命令桥实际监听端口（由 start_socket_bridge 动态分配）
 
 # SWF↔本地命令方向前缀（与 mole.py 的 Show.SEND/Show.RECV 一致）
 send_prefix = "S ==>"
@@ -262,10 +284,14 @@ def sock_serve(conn):
 
 
 def start_socket_bridge():
-    """启动 socket 命令桥（守护线程），返回监听 socket。"""
+    """启动 socket 命令桥（守护线程），返回监听 socket。
+    端口由 OS 动态分配（bind 0），保证多客户端实例各用独立端口、互不干扰。"""
+    global bridge_port
     srv = socket(AF_INET, SOCK_STREAM)
     srv.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    srv.bind(bridge_address)
+    srv.bind(("127.0.0.1", 0))          # 0 = 由 OS 分配空闲端口
+    bridge_port = srv.getsockname()[1]
+    print(f"[bridge] 命令桥监听端口: {bridge_port}")
     srv.listen(8)
 
     def loop():
