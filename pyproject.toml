@@ -1,8 +1,9 @@
 [project]
 name = "mole"
-version = "1.10.7"
+version = "1.10.8"
 description = """
-- 优化：优化 client.py 的发包延迟和登录失败延迟等
+- 修复：修复非 100% 缩放时，Flash 游戏区域显示异常的问题
+- 优化：启动时自动检查新版本，如果有新版本则提示更新，其他情况不显示消息，只有手动点击检查更新才显示其他情况的提示消息
 """
 readme = "README.md"
 requires-python = ">=3.12"

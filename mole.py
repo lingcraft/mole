@@ -28,6 +28,7 @@ from pyamf import sol
 from collections import deque
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd
+from ctypes import windll, c_void_p
 
 
 # 封包
@@ -92,9 +93,10 @@ node_dict = {
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/pyproject.toml"
 # 链接加速前缀
 cdn_prefixs = [
-    "https://v6.gh-proxy.org",
-    "https://github.cnxiaobai.com"
+    "https://v6.gh-proxy.org/",
+    "https://github.cnxiaobai.com/"
 ]
+available_cdn_prefix = ""
 # Hook文件
 ffi = FFI()
 ffi.cdef("""
@@ -185,9 +187,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.friend_dict[int(account_cache.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
         # 界面主区域设置
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
-        start_bridge()  # 注入服务：10000、命令桥：10001
+        start_bridge()  # 注入服务、命令桥，端口自适应
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
-        self.axWidget.dynamicCall("SetScaleMode(int)", 0)
+        self.set_scale_mode()
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
         self.tableWidget.verticalHeader().setDefaultSectionSize(10)  # 行高
         self.tableWidget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 禁止编辑单元格
@@ -218,7 +220,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.send_to_server_thread = SendToServerThread()
         self.send_to_server_thread.result.connect(self.mmg_get_reward)
         self.update_thread = UpdateThread()
-        self.update_thread.result.connect(self.update_result)
+        self.update_thread.result.connect(self.update_notice)
         self.advance_dialog = AdvanceDialog()
         self.signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
@@ -256,9 +258,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.title = self.windowTitle()
         self.title_timer_pool: dict[str, RunTimer] = {}
         self.title_part_pool = {}
-        # 界面初始化完成
-        global is_window_init
-        is_window_init = True
 
     def closeEvent(self, event):
         if not self.config.has_section("Settings"):
@@ -290,6 +289,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def url(self):
         prefix = "" if self.server == "官服" else f"/server{list(server_dict).index(self.server)}"
         return injector_url(f"{prefix}/Client.swf?t={time()}")
+
+    def set_scale_mode(self):
+        start = monotonic()
+
+        def apply():
+            self.axWidget.dynamicCall("SetScaleMode(int)", 2)
+            if monotonic() - start > 1:
+                timer.stop()
+
+        timer = RunTimer(apply, Interval.NORMAL, 0).start()
 
     def change_show_send(self, state):
         global is_show_send
@@ -346,7 +355,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.check_menu()
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
-        self.axWidget.dynamicCall("SetScaleMode(int)", 0)
+        self.set_scale_mode()
         self.enable_all_buttons(False)
 
     def add_data(self, data_type, socket_num, cmd_id, cmd_analyse, data):
@@ -486,16 +495,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.update_thread.isRunning():
             self.update_thread.start()
 
-    def update_result(self, res, msg, version):
-        match res:
-            case 1:
-                info(self, "提示", msg)
-            case 2:
-                if info(self, "提示", msg, Button.OK_CANCEL) == Button.OK:
-                    QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
-            case 3:
-                if info(self, "提示", msg, Button.OK_CANCEL) == Button.OK:
-                    QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases"))
+    def update_notice(self, is_first, version, description):
+        is_latest_msg = f"当前版本 v{self.version} 已是最新！"
+        is_expired_msg = f"发现新版本：v{version}，更新信息：\n{description}"
+        is_error_msg = "检查更新失败，是否前往下载页？"
+        if version:
+            if parse(self.version) < parse(version):
+                if info(self, "提示", is_expired_msg, Button.OK_CANCEL) == Button.OK:
+                    QDesktopServices.openUrl(QUrl(f"{available_cdn_prefix}https://github.com/lingcraft/mole/releases/download/v{version}/mole.exe"))
+            elif not is_first:
+                info(self, "提示", is_latest_msg)
+        elif not is_first:
+            if info(self, "提示", is_error_msg, Button.OK_CANCEL) == Button.OK:
+                QDesktopServices.openUrl(QUrl(f"https://github.com/lingcraft/mole/releases"))
+
 
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
@@ -1313,12 +1326,17 @@ class SendToServerThread(QThread):
 
 
 class UpdateThread(QThread):
-    result = Signal(int, str, str)
+    result = Signal(bool, str, str)
+
+    def __init__(self):
+        super().__init__()
+        self.is_first = True
 
     def run(self):
+        global available_cdn_prefix
         version, description = "", ""
         for cdn_prefix in cdn_prefixs:
-            url = f"{cdn_prefix}/{version_url}"
+            url = f"{cdn_prefix}{version_url}"
             try:
                 res = get(url, timeout=(3, 5))
                 res.raise_for_status()
@@ -1326,14 +1344,10 @@ class UpdateThread(QThread):
                 continue
             else:
                 version, description = [loads(res.text)["project"][key] for key in ("version", "description")]
+                available_cdn_prefix = cdn_prefix
                 break
-        if version:
-            if parse(window.version) >= parse(version):
-                self.result.emit(1, f"当前版本 v{window.version} 已是最新！", version)
-            else:
-                self.result.emit(2, f"发现新版本：v{version}，更新信息：\n{description}", version)
-        else:
-            self.result.emit(3, "检查更新失败，是否前往下载页？", version)
+        self.result.emit(self.is_first, version, description)
+        self.is_first = False
 
 
 class RunTimer(QTimer):
@@ -1366,10 +1380,12 @@ class RunTimer(QTimer):
         elif self.interval != interval:
             self.interval = int(interval)
             super().setInterval(self.interval)
+        return self
 
     def start(self):
         self.is_first = True
         super().start(self.delay)
+        return self
 
     def restart(self, delay: int | float | datetime):
         super().stop()
@@ -1378,7 +1394,7 @@ class RunTimer(QTimer):
             self.delay = int((delay - datetime.now()).total_seconds() * 1000)
         else:
             self.delay = int(delay)
-        self.start()
+        return self.start()
 
     def on_timeout(self):
         self.is_restart = False
@@ -2168,10 +2184,13 @@ if __name__ == "__main__":
     hook.SetSendCallBack(process_send_packet)
     hook.SetRecvCallBack(process_recv_packet)
     hook.LoadFlash()
+    windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))  # 设置DPI感知级别
     app = QApplication([])
     trans = QTranslator()
     trans.load(path("zh_CN.qm"))
     app.installTranslator(trans)
     window = MainWindow()
+    is_window_init = True
     window.show()
+    window.check_update()
     app.exec()
