@@ -5,6 +5,8 @@ from threading import Thread, Lock
 from requests import Session
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from ctypes import wintypes, WinDLL
+from urllib.parse import urlparse, parse_qs
 
 # 根目录下的 *.swf 注入 ext.xml 并就地提供。
 # 注意：只放自定义 mod，勿放游戏官方 SWF（如 Client.swf），否则会覆盖上游。
@@ -50,9 +52,7 @@ def clear_ext_xml_cache() -> None:
     注入器已对 ext.xml 发 no-store，此函数只清历史残留。"""
     # 1) 按 URL 删除 WinINet 索引条目（索引+文件一并清理）
     try:
-        import ctypes
-        from ctypes import wintypes
-        wininet = ctypes.WinDLL("wininet", use_last_error=True)
+        wininet = WinDLL("wininet", use_last_error=True)
         delete_url_cache_entry_w = wininet.DeleteUrlCacheEntryW
         delete_url_cache_entry_w.argtypes = [wintypes.LPCWSTR]  # 必须显式声明，否则 64 位下指针被截断
         delete_url_cache_entry_w.restype = wintypes.BOOL
@@ -112,7 +112,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         # BridgeDLL 诊断回传：把 SWF 内部状态打印到控制台，便于排查连桥问题
         if url.split("?", 1)[0] == "/log":
             try:
-                from urllib.parse import urlparse, parse_qs, unquote
+
                 q = parse_qs(urlparse(self.path).query)
                 print(f"[bridgedll] {q.get('m', [''])[0]}")
             except Exception:

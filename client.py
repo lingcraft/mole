@@ -101,6 +101,8 @@ class Client(Process):
             self.is_done_signaled = False
             sleep(0.025)
             return True
+        finally:
+            print(f"[{"✅️" if self.is_connect else "❌️"}] ==> {data}")
 
     def send_lines(self, lines: deque[str]):
         while lines:
@@ -153,6 +155,7 @@ class Client(Process):
                                         ])
                                     elif dish_step == 3:
                                         self.recv_queue.put((dish_id, dish_pos))  # 传回主进程刷新菜ID
+                        print(f"[{"✅️" if packet.version == 0 else "❌️"}] <== {packet.data().hex().upper()}")
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
