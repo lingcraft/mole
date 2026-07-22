@@ -394,9 +394,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         global packet_index
         packet_index = 0
         self.row_len = 2  # 行数位数
-        self.column_width = 224  # 封包数据列宽
+        self.column_width = 232  # 封包数据初始列宽
         self.tableWidget.clearContents()  # 清空内容
-        self.tableWidget.setRowCount(11)
+        self.tableWidget.setRowCount(14)  # 初始行数
         self.tableWidget.setColumnCount(5)
         self.tableWidget.setColumnWidth(0, 45)
         self.tableWidget.setColumnWidth(1, 45)
@@ -2186,6 +2186,7 @@ if __name__ == "__main__":
     hook.LoadFlash()
     windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))  # 设置DPI感知级别
     app = QApplication([])
+    app.setStyle("Fusion")  # 样式
     trans = QTranslator()
     trans.load(path("zh_CN.qm"))
     app.installTranslator(trans)

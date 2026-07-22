@@ -1,7 +1,7 @@
 from os import environ
 from re import match
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, timeout
-from threading import Thread
+from threading import Thread, Lock
 from requests import Session
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -104,7 +104,7 @@ class InjectHandler(BaseHTTPRequestHandler):
 
     def dispatch(self):
         url = self.path
-        # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器后，GET /__cmdport 取真实 socket 端口
+        # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器后，GET /cmd-port 取真实 socket 端口
         # （不依赖 ext.xml 的 ?port= 查询串，兼容 new 实例化 / loadBytes 等拿不到参数的场景）
         if url.split("?", 1)[0] == "/cmd-port":
             self.serve_local(str(bridge_port).encode("utf-8"), "text/plain; charset=utf-8")
@@ -226,6 +226,34 @@ def start_bridge():
 # ---------------------------------------------------------------------------
 bridge_port: int = 10001  # 本实例 socket 命令桥实际监听端口（由 start_socket_bridge 动态分配）
 
+# 当前唯一生效的 SWF 连接：刷新重载后旧连接必须被淘汰，否则多个连接共享 cmd_queue
+# 会随机分流命令、旧半开连接吞掉命令。新连接到来即取代旧的。
+conn_lock = Lock()
+active_conn = None
+
+
+def set_active(conn):
+    """把 conn 设为当前唯一生效的命令目标；关闭并淘汰上一个连接（如刷新后的旧 SWF 实例）。"""
+    global active_conn
+    with conn_lock:
+        old = active_conn
+        active_conn = conn
+    if old is not None and old is not conn:
+        try:
+            old.close()
+            print("[bridge] 新连接已取代旧连接，旧连接已关闭")
+        except Exception:
+            pass
+
+
+def release_active(conn):
+    """若 conn 仍是当前生效连接，则清空，避免命令继续发往已死的 socket。"""
+    global active_conn
+    with conn_lock:
+        if active_conn is conn:
+            active_conn = None
+
+
 # SWF↔本地命令方向前缀（与 mole.py 的 Show.SEND/Show.RECV 一致）
 send_prefix = "S ==>"
 recv_prefix = "R <=="
@@ -256,15 +284,24 @@ def sock_serve(conn):
             conn.close()
             return
 
+    # 标记为当前生效连接：刷新重载后新连接取代旧连接，旧连接被关闭、其线程随后退出，
+    # 从而避免多个 SWF 实例的连接共存、共享 cmd_queue 互相抢命令。
+    set_active(conn)
+
     # 数据通道主循环：recv 设 0.25s 超时，超时则回到顶部下发命令
     conn.settimeout(0.25)
     while True:
+        # 若已被更新的连接取代（如再次刷新），立即退出，不再服务于命令
+        with conn_lock:
+            if conn is not active_conn:
+                break
         # 下行：队列有命令则全部推送
         while cmd_queue:
             cmd = cmd_queue.pop(0)
             try:
                 conn.sendall((cmd + "\n").encode("utf-8"))
             except Exception:
+                release_active(conn)
                 conn.close()
                 return
         # 上行：读取 SWF 回传（READY / PING / ECHO 等）
@@ -280,6 +317,7 @@ def sock_serve(conn):
             line = line.rstrip("\r")
             if not line:
                 continue
+    release_active(conn)
     conn.close()
 
 

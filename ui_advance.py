@@ -62,9 +62,6 @@ class Ui_AdvanceDialog(object):
         sizePolicy1.setHeightForWidth(self.pushButton.sizePolicy().hasHeightForWidth())
         self.pushButton.setSizePolicy(sizePolicy1)
         self.pushButton.setMinimumSize(QSize(0, 25))
-        self.pushButton.setStyleSheet(u"QPushButton {\n"
-"    margin: -1px;\n"
-"}")
 
         self.horizontalLayout.addWidget(self.pushButton)
 
