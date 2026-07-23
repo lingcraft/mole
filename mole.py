@@ -29,6 +29,7 @@ from collections import deque
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd
 from ctypes import windll, c_void_p
+from re import sub
 
 
 # 封包
@@ -499,7 +500,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def update_notice(self, is_first, version, description):
         is_latest_msg = f"当前版本 v{self.version} 已是最新！"
-        is_expired_msg = f"发现新版本：v{version}，更新信息：\n{description}"
+        is_expired_msg = f"发现新版本：v{version}，更新信息：\n{sub(r"(?m)^- ", "  ●  ", description)}"
         is_error_msg = "检查更新失败，是否前往下载页？"
         if version:
             if parse(self.version) < parse(version):
@@ -533,9 +534,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     h, left = divmod(remain, 3600)
                     m, s = divmod(left, 60)
                     cd = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
-                    title += f"（{cd}）"
+                    title += f" ({cd})"
                 elif isinstance(result, str):
-                    title += f"（{result}）"
+                    title += f" ({result})"
             self.title_part_pool[module_name] = title
         parts = [part for part in self.title_part_pool.values() if part]
         suffix = " | ".join(parts)
