@@ -1765,7 +1765,12 @@ def update_cooking_info(client):
 
 
 def is_running(name: str):
-    return window.timer_pool[name].isActive()
+    timer = window.timer_pool[name]
+    if isinstance(timer, dict):
+        return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
+    elif isinstance(timer, tuple):
+        return any(isinstance(item, QTimer) and item.isActive() for item in timer)
+    return isinstance(timer, QTimer) and timer.isActive()
 
 
 def is_sending():
