@@ -1120,9 +1120,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.client is not None and self.client.is_alive():
                 self.client.close()
                 self.client = None
-            if self.user_id != user_id:  # 更新餐厅信息
+            if self.user_id != user_id:
                 self.user_id = user_id
                 send_lines([
+                    f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
                     f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
                 ])
 
