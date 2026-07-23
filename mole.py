@@ -1479,6 +1479,8 @@ class Packet:
         return self
 
     def decrypt(self):
+        if len(self.body) == 0:
+            return self
         res = bytearray(len(self.body) - 1)
         key_index = 0
         for index in range(len(res)):
