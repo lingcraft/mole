@@ -534,9 +534,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     h, left = divmod(remain, 3600)
                     m, s = divmod(left, 60)
                     cd = f"{h}:{m:02d}:{s:02d}" if h > 0 else f"{m}:{s:02d}"
-                    title += f" ({cd})"
+                    title += f"（{cd}）"
                 elif isinstance(result, str):
-                    title += f" ({result})"
+                    title += f"（{result}）"
             self.title_part_pool[module_name] = title
         parts = [part for part in self.title_part_pool.values() if part]
         suffix = " | ".join(parts)
