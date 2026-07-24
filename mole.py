@@ -1671,14 +1671,15 @@ def get_password(pwd: str):
 
 
 def send_lines(lines: list, interval: int = Interval.INSTANT):
-    for data in lines:
+    last_index = len(lines) - 1
+    for index, data in enumerate(lines):
         if len(data) < 17:
             if 0 < len(data) < 5:
                 if (delay := int(data)) > 0:
                     sleep(delay / 1000)
             continue
         if isinstance(data, dict):
-            packet = Packet(**data)
+            packet = Packet(cmd_id=data["cmd_id"], body=data["body"])
         elif isinstance(data, (tuple, list)):
             packet = Packet(cmd_id=data[0], body=data[1])
         else:
@@ -1689,7 +1690,7 @@ def send_lines(lines: list, interval: int = Interval.INSTANT):
         packet.decrypt()
         if is_show_send:
             show_data(Show.SEND, login_socket_num, packet)
-        if interval > 0:
+        if interval > 0 and index < last_index:
             sleep(interval / 1000)
 
 
