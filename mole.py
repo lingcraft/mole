@@ -717,16 +717,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 收集每个勾选中的项（复选框 + 抽奖互斥单选组）的封包，按项分组以便统计进度。
         self.reward_items: list[list] = []
         self.reward_names: list[str] = []
-        hex_super_lamu_level = get_hex(super_lamu_level + 22)
         for cb in self.reward_widgets:
             if cb.isChecked():
                 packets = cb.property("packets") or []
-                self.reward_items.append(
-                    [
-                        {cmd_id: body.replace("{super_lamu_level}", hex_super_lamu_level)}
-                        for packet in packets for cmd_id, body in packet.items()
-                    ]
-                )
+                if any("{super_lamu_level}" in body for packet in packets for body in packet.values()):
+                    self.reward_items.append(
+                        [
+                            {cmd_id: body.replace("{super_lamu_level}", get_hex(super_lamu_level + 22))}
+                            for packet in packets for cmd_id, body in packet.items()
+                        ]
+                    )
+                else:
+                    self.reward_items.append(packets)
                 self.reward_names.append(cb.text())
         self.reward_total = len(self.reward_items)
         self.reward_packet_sent = 0
