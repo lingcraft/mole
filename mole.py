@@ -455,6 +455,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def enable_kll_button(self, enable):
         self.kllFinishButton.setEnabled(enable)
 
+    def enable_mrjl_button(self, enable):
+        self.rewardSelectAllButton.setEnabled(enable)
+        self.rewardInvertButton.setEnabled(enable)
+        self.rewardGetButton.setEnabled(enable)
+
     def enable_all_buttons(self, enable):
         self.enable_lamu_button(enable)
         self.enable_mmg_button(enable)
@@ -464,6 +469,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_med_button(enable)
         self.enable_bh_button(enable)
         self.enable_kll_button(enable)
+        self.enable_mrjl_button(enable)
         if not enable:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
             self.stop_timer("拉姆")
@@ -597,16 +603,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         btn_layout = QHBoxLayout()
         self.rewardSelectAllButton = QPushButton("全选")
         self.rewardInvertButton = QPushButton("反选")
-        self.rewardExecuteButton = QPushButton("开始领取")
+        self.rewardGetButton = QPushButton("开始领取")
+        self.rewardSelectAllButton.setEnabled(False)
+        self.rewardInvertButton.setEnabled(False)
+        self.rewardGetButton.setEnabled(False)
         btn_layout.addWidget(self.rewardSelectAllButton)
         btn_layout.addWidget(self.rewardInvertButton)
-        btn_layout.addWidget(self.rewardExecuteButton)
+        btn_layout.addWidget(self.rewardGetButton)
         btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
         self.rewardSelectAllButton.clicked.connect(self.select_all_reward)
         self.rewardInvertButton.clicked.connect(self.invert_reward)
-        self.rewardExecuteButton.clicked.connect(self.start_reward)
+        self.rewardGetButton.clicked.connect(self.start_reward)
 
         # 默认：多选奖励全部勾选；互斥单选组默认选中第 1 个
         for cb in self.reward_checkboxes:
@@ -633,7 +642,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def reward_maybe_finish(self):
         # 完成判定基于“显示值”而非实际发包数：显示值节流后可能滞后于实际，
         # 追上总项数，追上才收尾，避免定时器被过早停掉导致标题只闪一下。
-        if self.reward_done_disp >= self.reward_total and self.rewardExecuteButton.text() == "停止":
+        if self.reward_done_disp >= self.reward_total and self.rewardGetButton.text() == "停止":
             # 保留一个刷新间隔，下一拍才真正收尾。
             if self.reward_finish_pending:
                 self.finish_reward()
@@ -683,11 +692,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.reward_radio_remember.setChecked(True)
 
     def start_reward(self):
-        if self.rewardExecuteButton.text() != "停止":
+        if self.rewardGetButton.text() != "停止":
             # 开始领取
             self.run_reward()
             if self.send_thread.isRunning():
-                self.rewardExecuteButton.setText("停止")
+                self.rewardGetButton.setText("停止")
                 # 标题显示领取进度（已完项/总项）
                 self.start_update_title(
                     "每日奖励",
@@ -737,9 +746,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def finish_reward(self):
         # 发送线程自然结束（含被中断）：恢复按钮文字并清除进度标题
-        if self.rewardExecuteButton.text() != "停止":
+        if self.rewardGetButton.text() != "停止":
             return
-        self.rewardExecuteButton.setText("开始领取")
+        self.rewardGetButton.setText("开始领取")
         self.stop_update_title("每日奖励")
         # 停止时弹窗提示已领取项数（按实际已完成的项数统计）
         sent = self.reward_packet_sent
