@@ -1292,7 +1292,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         now = monotonic()
         dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
-        dwell_timeout = ct_state_since is None or now - ct_state_since >= 3
+        dwell_timeout = ct_state_since is None or now - ct_state_since >= 4
 
         match ct_state:
             case State.COUNTDOWN:
