@@ -1292,6 +1292,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         now = monotonic()
         dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
+        dwell_timeout = ct_state_since is None or now - ct_state_since >= 3
 
         match ct_state:
             case State.COUNTDOWN:
@@ -1318,7 +1319,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     ct_state_since = now
                 return "登录成功"
             case State.COOKING:
-                if is_done and dwell_ok:
+                if (is_done and dwell_ok) or dwell_timeout:
                     is_done = False
                     ct_state = State.DONE
                     ct_state_since = now
