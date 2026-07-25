@@ -1,5 +1,6 @@
-from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt, QTranslator
-from PySide6.QtWidgets import QApplication, QHeaderView, QListWidgetItem, QTableWidgetItem, QTableWidget, QMessageBox, QMainWindow, QDialog
+from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt, QTranslator, QRect
+from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QDialog, QHBoxLayout, QHeaderView, QListWidgetItem, QMainWindow, QMessageBox, \
+    QPushButton, QRadioButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
 from ui_main import Ui_MainWindow
 from ui_advance import Ui_AdvanceDialog
@@ -157,7 +158,7 @@ class Button(IntFlag):
 
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    signal = Signal(str, int, int, str, str)
+    show_signal = Signal(str, int, int, str, str)
 
     def __init__(self):
         super().__init__()
@@ -201,6 +202,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.clear_table()
         self.tableWidget.setHorizontalHeaderLabels(["类型", "通信号", "命令号", "解析", "封包数据"])
         self.tableWidget.currentCellChanged.connect(self.change_row)
+        self.tab_geometry = QRect(self.tabWidget.geometry())  # tabWidget 原始位置、尺寸
+        self.tabWidget.currentChanged.connect(self.change_tab)
+        self.build_tab3()  # 构造"每日"奖励勾选列表
         # 界面菜单栏设置
         self.serverMenu = self.menubar.addMenu("切换版本")
         for server in server_dict:
@@ -224,7 +228,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_thread = UpdateThread()
         self.update_thread.result.connect(self.update_notice)
         self.advance_dialog = AdvanceDialog()
-        self.signal.connect(self.add_data)
+        self.show_signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
@@ -542,16 +546,240 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         suffix = " | ".join(parts)
         self.setWindowTitle(f"{self.title}{(" | " + suffix) if suffix else ""}")
 
-    def start_update_title(self, module_name, module_user_id=None, func_name=None, func_info=None, next_run_getter=None):
+    def start_update_title(self, module_name, module_user_id=None, func_name=None, func_info=None, next_run_getter=None, interval: int = 1000, on_tick=None):
+        def tick():
+            self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
+            if on_tick is not None:
+                on_tick()
         self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
         delay = (1000 - datetime.now().microsecond // 1000) % 1000  # 对齐到整秒
-        timer = RunTimer(lambda: self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter), delay=delay, is_precise=True)
-        timer.start()
+        timer = RunTimer(tick, delay=delay, is_precise=True, interval=interval).start()
         self.title_timer_pool[module_name] = timer
 
     def stop_update_title(self, module_name):
         self.title_timer_pool[module_name].stop()
         self.update_title(module_name)
+
+    def build_tab3(self):
+        self.reward_checkboxes: list[QCheckBox] = []
+        self.reward_widgets: list[QWidget] = []
+        self.reward_radio_group = QButtonGroup(self)
+        self.reward_radio_group.setExclusive(False)
+        self.reward_radio_remember = None  # 上次选中的单选项
+        self.reward_total = 0
+        self.reward_packet_sent = 0
+        self.reward_cum: list[int] = []
+        self.reward_names: list[str] = []
+        self.reward_done_disp = 0
+        self.reward_done_disp_t = 0.0
+        self.reward_finish_pending = False
+
+        layout = QVBoxLayout(self.tab3)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(4)
+
+        scroll = QScrollArea(self.tab3)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+        list_container = QWidget()
+        list_layout = QVBoxLayout(list_container)
+        list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        list_layout.setContentsMargins(4, 4, 4, 4)
+        list_layout.setSpacing(3)
+
+        for name, packets in reward_dict.items():
+            self.add_reward_checkbox(list_layout, name, packets)
+
+        scroll.setWidget(list_container)
+        layout.addWidget(scroll, stretch=1)
+
+        btn_layout = QHBoxLayout()
+        self.rewardSelectAllButton = QPushButton("全选")
+        self.rewardInvertButton = QPushButton("反选")
+        self.rewardExecuteButton = QPushButton("开始领取")
+        btn_layout.addWidget(self.rewardSelectAllButton)
+        btn_layout.addWidget(self.rewardInvertButton)
+        btn_layout.addWidget(self.rewardExecuteButton)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        self.rewardSelectAllButton.clicked.connect(self.select_all_reward)
+        self.rewardInvertButton.clicked.connect(self.invert_reward)
+        self.rewardExecuteButton.clicked.connect(self.start_reward)
+
+        # 默认：多选奖励全部勾选；互斥单选组默认选中第 1 个
+        for cb in self.reward_checkboxes:
+            cb.setChecked(True)
+        radio_buttons = self.reward_radio_group.buttons()
+        if radio_buttons:
+            radio_buttons[0].setChecked(True)
+            self.reward_radio_remember = radio_buttons[0]
+
+    def change_tab(self):
+        if self.tabWidget.currentWidget() is self.tab3:
+            # 切到 tab3：隐藏上方发包区域
+            self.groupBox.setVisible(False)
+            g = self.groupBox.geometry()
+            self.tabWidget.setGeometry(
+                g.x(), g.y(), g.width(),
+                self.tab_geometry.height() + g.height()
+            )
+        else:
+            # 切回其它页：恢复发包区域与 tabWidget 原始位置、尺寸
+            self.groupBox.setVisible(True)
+            self.tabWidget.setGeometry(self.tab_geometry)
+
+    def reward_maybe_finish(self):
+        # 完成判定基于“显示值”而非实际发包数：显示值节流后可能滞后于实际，
+        # 追上总项数，追上才收尾，避免定时器被过早停掉导致标题只闪一下。
+        if self.reward_done_disp >= self.reward_total and self.rewardExecuteButton.text() == "停止":
+            # 保留一个刷新间隔，下一拍才真正收尾。
+            if self.reward_finish_pending:
+                self.finish_reward()
+            else:
+                self.reward_finish_pending = True
+
+    def add_reward_checkbox(self, layout: QVBoxLayout, name: str, packets: list):
+        # 互斥抽奖单选组
+        if name.endswith("（抽奖）"):
+            cb = QRadioButton(name)
+            self.reward_radio_group.addButton(cb)
+            cb.toggled.connect(lambda checked, b=cb: self.toggle_radio(b, checked))
+        else:
+            cb = QCheckBox(name)
+            self.reward_checkboxes.append(cb)
+        cb.setProperty("packets", packets)
+        layout.addWidget(cb)
+        self.reward_widgets.append(cb)
+
+    def toggle_radio(self, btn: QRadioButton, checked: bool):
+        # 互斥选项、允许取消单选项
+        if checked:
+            for b in self.reward_radio_group.buttons():
+                if b is not btn:
+                    b.setChecked(False)
+            # 记住选中项
+            self.reward_radio_remember = btn
+
+    def select_all_reward(self):
+        for cb in self.reward_checkboxes:
+            cb.setChecked(True)
+        # 恢复上次记住的选中项
+        if self.reward_radio_remember is not None:
+            self.reward_radio_remember.setChecked(True)
+
+    def invert_reward(self):
+        for cb in self.reward_checkboxes:
+            cb.setChecked(not cb.isChecked())
+        # 单选组反选：有选中→取消，再次反选→恢复记住项
+        radios = self.reward_radio_group.buttons()
+        if not radios:
+            return
+        checked = self.reward_radio_group.checkedButton()
+        if checked is not None:
+            checked.setChecked(False)
+        elif self.reward_radio_remember is not None:
+            self.reward_radio_remember.setChecked(True)
+
+    def start_reward(self):
+        if self.rewardExecuteButton.text() != "停止":
+            # 开始领取
+            self.run_reward()
+            if self.send_thread.isRunning():
+                self.rewardExecuteButton.setText("停止")
+                # 标题显示领取进度（已完项/总项）
+                self.start_update_title(
+                    "每日奖励",
+                    None,
+                    "领取",
+                    "进度",
+                    self.reward_progress_getter,
+                    100,
+                    self.reward_maybe_finish
+                )
+        else:
+            # 手动停止：请求线程中断并等待结束，再走统一收尾（含停止弹窗提示）
+            self.send_thread.requestInterruption()
+            self.send_thread.wait()
+            self.finish_reward()
+
+    def run_reward(self):
+        # 收集每个勾选中的项（复选框 + 抽奖互斥单选组）的封包，按项分组以便统计进度。
+        self.reward_items: list[list] = []
+        self.reward_names: list[str] = []
+        hex_super_lamu_level = get_hex(super_lamu_level + 22)
+        for cb in self.reward_widgets:
+            if cb.isChecked():
+                packets = cb.property("packets") or []
+                self.reward_items.append(
+                    [
+                        {cmd_id: body.replace("{super_lamu_level}", hex_super_lamu_level)}
+                        for packet in packets for cmd_id, body in packet.items()
+                    ]
+                )
+                self.reward_names.append(cb.text())
+        self.reward_total = len(self.reward_items)
+        self.reward_packet_sent = 0
+        # 重置进度显示节流状态，新一轮从 0 开始、不沿用上一轮残留的显示值
+        self.reward_done_disp = 0
+        self.reward_done_disp_t = 0.0
+        self.reward_finish_pending = False
+        # 累计每项的包数，用于按“已完成项/总项”显示进度
+        self.reward_cum: list[int] = []
+        acc = 0
+        for item in self.reward_items:
+            acc += len(item)
+            self.reward_cum.append(acc)
+        lines = [p for item in self.reward_items for p in item]
+        if lines:
+            send_lines_back(lines, progress=self.reward_progress)
+
+    def finish_reward(self):
+        # 发送线程自然结束（含被中断）：恢复按钮文字并清除进度标题
+        if self.rewardExecuteButton.text() != "停止":
+            return
+        self.rewardExecuteButton.setText("开始领取")
+        self.stop_update_title("每日奖励")
+        # 停止时弹窗提示已领取项数（按实际已完成的项数统计）
+        sent = self.reward_packet_sent
+        cum = self.reward_cum
+        done = sum(1 for c in cum if sent >= c)
+        if done > 0:
+            alert_msg(f"今日奖励已领取{done}项")
+
+    def reward_progress(self, index: int):
+        self.reward_packet_sent = index + 1
+
+    def reward_progress_getter(self) -> str:
+        # 当前正在领取的勾选项名 + 已发送完的项数 / 总项数
+        total = self.reward_total
+        if total == 0:
+            return "0/0"
+        sent = self.reward_packet_sent
+        cum = self.reward_cum
+        done_actual = sum(1 for c in cum if sent >= c)
+        names = self.reward_names
+        # 不跳过中间数字，每项最少 0.1 秒，落后时逐步追平实际值。
+        now = monotonic()
+        disp = self.reward_done_disp
+        disp_t = self.reward_done_disp_t
+        if now - disp_t >= 0.1:
+            if disp < done_actual:
+                disp += 1
+                disp_t = now
+                self.reward_done_disp = disp
+                self.reward_done_disp_t = disp_t
+            elif disp > done_actual:
+                disp = done_actual
+                disp_t = now
+                self.reward_done_disp = disp
+                self.reward_done_disp_t = disp_t
+        done = disp
+        # 正在领取的项
+        current_idx = min(done, total - 1)
+        current_name = names[current_idx] if current_idx < len(names) else ""
+        return f"{done}/{total}：{current_name}"
 
     # =======================================上面是界面功能，下面是游戏功能============================================
 
@@ -564,7 +792,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_gift(self):
         send_lines([
             "00000000000000277500000000000000003B9ACA16",  # 超拉每日礼包
-            f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}"
+            f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}"  # 超拉星级礼包
         ])
 
     def lamu_learn(self):
@@ -1308,12 +1536,13 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
 
 
 class SendThread(QThread):
-    def set_data(self, lines: list, interval: int):
+    def set_data(self, lines: list, interval: int, progress=None):
         self.lines = lines
         self.interval = interval
+        self.progress = progress
 
     def run(self):
-        send_lines(self.lines, self.interval)
+        send_lines(self.lines, self.interval, self.progress)
 
 
 class SendExThread(SendThread):
@@ -1503,7 +1732,7 @@ def show_data(data_type: str, socket_num: int, packet: Packet):
         if QThread.currentThread() is QApplication.instance().thread():
             window.add_data(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
         else:
-            window.signal.emit(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
+            window.show_signal.emit(data_type, socket_num, packet.cmd_id, analyse(packet.cmd_id), packet.data().hex().upper())
 
 
 def info(parent, title: str, msg: str, buttons: int = Button.OK):
@@ -1670,18 +1899,18 @@ def get_password(pwd: str):
     return f"{pwd[8:16]}{pwd[0:8]}{pwd[24:32]}{pwd[16:24]}".encode().hex()
 
 
-def send_lines(lines: list, interval: int = Interval.INSTANT):
+def send_lines(lines: list, interval: int = Interval.INSTANT, progress=None):
     last_index = len(lines) - 1
     for index, data in enumerate(lines):
-        if len(data) < 17:
-            if 0 < len(data) < 5:
-                if (delay := int(data)) > 0:
-                    sleep(delay / 1000)
+        if QThread.currentThread().isInterruptionRequested():
+            break
+        if isinstance(data, str) and len(data) < 17:
+            if 0 < len(data) < 5 and data.isdigit():
+                sleep(int(data) / 1000)
             continue
         if isinstance(data, dict):
-            packet = Packet(cmd_id=data["cmd_id"], body=data["body"])
-        elif isinstance(data, (tuple, list)):
-            packet = Packet(cmd_id=data[0], body=data[1])
+            (cmd_id, body), = data.items()
+            packet = Packet(cmd_id=cmd_id, body=body)
         else:
             packet = Packet(data)
         with lock:
@@ -1690,13 +1919,15 @@ def send_lines(lines: list, interval: int = Interval.INSTANT):
         packet.decrypt()
         if is_show_send:
             show_data(Show.SEND, login_socket_num, packet)
+        if progress is not None:
+            progress(index)
         if interval > 0 and index < last_index:
             sleep(interval / 1000)
 
 
-def send_lines_back(lines: list, interval: int = Interval.NORMAL):
+def send_lines_back(lines: list, interval: int = Interval.NORMAL, progress=None):
     if not window.send_thread.isRunning():
-        window.send_thread.set_data(lines, interval)
+        window.send_thread.set_data(lines, interval, progress)
         window.send_thread.start()
 
 

@@ -15,7 +15,7 @@ lock = Lock()  # 发送锁
 
 
 class Client(Process):
-    def __init__(self, account: tuple[int, str], init_lines: list[str]):
+    def __init__(self, account: tuple[int, str], init_lines: list):
         super().__init__(daemon=True)
         self.login_socket = socket(AF_INET, SOCK_STREAM)
         self.main_socket = socket(AF_INET, SOCK_STREAM)
@@ -85,11 +85,15 @@ class Client(Process):
         else:
             return True
 
-    def send_line(self, data: str):
+    def send_line(self, data):
         if len(data) < 17:
             return True
         try:
-            packet = Packet(data)
+            if isinstance(data, dict):
+                (cmd_id, body), = data.items()
+                packet = Packet(cmd_id=cmd_id, body=body)
+            else:
+                packet = Packet(data)
             with lock:
                 packet.encrypt()
             self.main_socket.send(packet.data())
@@ -101,10 +105,8 @@ class Client(Process):
             self.is_done_signaled = False
             sleep(0.025)
             return True
-        finally:
-            print(f"[{"✅️" if self.is_connect else "❌️"}] ==> {data}")
 
-    def send_lines(self, lines: deque[str]):
+    def send_lines(self, lines: deque):
         while lines:
             if not self.is_connect:
                 if not self.login():
@@ -155,7 +157,6 @@ class Client(Process):
                                         ])
                                     elif dish_step == 3:
                                         self.recv_queue.put((dish_id, dish_pos))  # 传回主进程刷新菜ID
-                        print(f"[{"✅️" if packet.version == 0 else "❌️"}] <== {packet.data().hex().upper()}")
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break

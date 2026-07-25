@@ -220,7 +220,7 @@
     </property>
     <widget class="QWidget" name="tab1">
      <attribute name="title">
-      <string>第1页</string>
+      <string>摩摩怪/元素</string>
      </attribute>
      <widget class="QGroupBox" name="groupBox2">
       <property name="geometry">
@@ -622,7 +622,7 @@
     </widget>
     <widget class="QWidget" name="tab2">
      <attribute name="title">
-      <string>第2页</string>
+      <string>魔灵/餐厅/拉姆</string>
      </attribute>
      <widget class="QGroupBox" name="groupBox4">
       <property name="geometry">
@@ -876,6 +876,11 @@
       </widget>
      </widget>
     </widget>
+    <widget class="QWidget" name="tab3">
+     <attribute name="title">
+      <string>每日奖励</string>
+     </attribute>
+    </widget>
    </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -884,7 +889,7 @@
      <x>0</x>
      <y>0</y>
      <width>1480</width>
-     <height>21</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>

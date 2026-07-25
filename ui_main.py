@@ -240,10 +240,13 @@ class Ui_MainWindow(object):
         self.kllFinishButton.setEnabled(False)
         self.kllFinishButton.setGeometry(QRect(11, 24, 80, 31))
         self.tabWidget.addTab(self.tab2, "")
+        self.tab3 = QWidget()
+        self.tab3.setObjectName(u"tab3")
+        self.tabWidget.addTab(self.tab3, "")
         MainWindow.setCentralWidget(self.centralWidget)
         self.menubar = QMenuBar(MainWindow)
         self.menubar.setObjectName(u"menubar")
-        self.menubar.setGeometry(QRect(0, 0, 1480, 21))
+        self.menubar.setGeometry(QRect(0, 0, 1480, 20))
         MainWindow.setMenuBar(self.menubar)
 
         self.retranslateUi(MainWindow)
@@ -319,7 +322,7 @@ class Ui_MainWindow(object):
         self.mmgBossBox.setItemText(3, QCoreApplication.translate("MainWindow", u"萨尔冥王", None))
         self.mmgBossBox.setItemText(4, QCoreApplication.translate("MainWindow", u"独角萨摩", None))
 
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab1), QCoreApplication.translate("MainWindow", u"第1页", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab1), QCoreApplication.translate("MainWindow", u"摩摩怪/元素", None))
         self.groupBox4.setTitle(QCoreApplication.translate("MainWindow", u" 餐厅", None))
         self.ctSellButton.setText(QCoreApplication.translate("MainWindow", u"一键卖菜", None))
         self.ctHarvestButton.setText(QCoreApplication.translate("MainWindow", u"自动做菜", None))
@@ -336,6 +339,7 @@ class Ui_MainWindow(object):
         self.medGetButton.setText(QCoreApplication.translate("MainWindow", u"一键刷取", None))
         self.groupBox9.setTitle(QCoreApplication.translate("MainWindow", u" 卡罗拉幸运儿", None))
         self.kllFinishButton.setText(QCoreApplication.translate("MainWindow", u"一键完成", None))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab2), QCoreApplication.translate("MainWindow", u"第2页", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab2), QCoreApplication.translate("MainWindow", u"魔灵/餐厅/拉姆", None))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab3), QCoreApplication.translate("MainWindow", u"每日奖励", None))
     # retranslateUi
 
