@@ -1043,18 +1043,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         mmg_friends_state_dict[3].clear()
         mmg_friends_state_dict[4].clear()
         mmg_query_page = 0
+        friends_ids = [get_hex(friend_id) for friend_id, friend_level in mmg_friends]
         max_size = mmg_query_size_max
         max_page = mmg_friends_num // max_size
         last_size = mmg_friends_num % max_size
         mmg_query_page_max = max_page + (last_size > 0)
         lines = []
         for page in range(max_page):
-            friends = mmg_friends[page * max_size:(page + 1) * max_size]
-            ids = "".join([get_hex(friend[0]) for friend in friends])
+            ids = "".join(friends_ids[page * max_size:(page + 1) * max_size])
             lines.append(f"00000000000000201A0000000000000000{get_hex(max_size)}{ids}")
         if last_size > 0:
-            friends = mmg_friends[-last_size:]
-            ids = "".join([get_hex(friend[0]) for friend in friends])
+            ids = "".join(friends_ids[-last_size:])
             lines.append(f"00000000000000201A0000000000000000{get_hex(last_size)}{ids}")
         send_lines(lines)
 
@@ -1155,23 +1154,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 计算需要的材料卡牌
         material_ids = []
         for card_id, card_exp in ysqs_material_cards_dict.items():
-            material_ids.append(card_id)
+            material_ids.append(get_hex(card_id))
             required_exp -= card_exp
             if required_exp <= 0:
                 break
         # 分包处理，每个包最多30张材料
-        max_size = 30
         material_num = len(material_ids)
+        max_size = 30
         max_page = material_num // max_size
         last_size = material_num % max_size
         lines = []
         for page in range(max_page):
-            cards = material_ids[page * max_size: (page + 1) * max_size]
-            ids = "".join([get_hex(card_id) for card_id in cards])
+            ids = "".join(material_ids[page * max_size:(page + 1) * max_size])
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(max_size)}{ids}")
         if last_size > 0:
-            cards = material_ids[-last_size:]
-            ids = "".join([get_hex(card_id) for card_id in cards])
+            ids = "".join(material_ids[-last_size:])
             lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(last_size)}{ids}")
         if lines:
             lines.append("00000000000000231E000000000000000000000000")  # 获取元素骑士信息
@@ -1258,17 +1255,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later_expect(self.mlcs_sell_run, {0x2EE4: 1, 0x2EF2: 1})
 
     def mlcs_sell_run(self):
-        elves = [get_hex(elf_id) for elf_id in mlcs_elves_dict.keys()]
-        elves_num = len(mlcs_elves_dict)
-        max_page = elves_num // 10
-        last_size = elves_num % 10
+        elves_ids = [get_hex(elf_id) for elf_id in mlcs_elves_dict.keys()]
+        elves_num = len(elves_ids)
+        max_size = 10
+        max_page = elves_num // max_size
+        last_size = elves_num % max_size
         lines = []
         for page in range(max_page):
-            elf_ids = "".join(elves[page * 10:(page + 1) * 10])
-            lines.append(f"000000000000002F020000000000000000{get_hex(10)}{elf_ids}")
+            ids = "".join(elves_ids[page * max_size:(page + 1) * max_size])
+            lines.append(f"000000000000002F020000000000000000{get_hex(max_size)}{ids}")
         if last_size > 0:
-            elf_ids = "".join(elves[-last_size:])
-            lines.append(f"000000000000002F020000000000000000{get_hex(last_size)}{elf_ids}")
+            ids = "".join(elves_ids[-last_size:])
+            lines.append(f"000000000000002F020000000000000000{get_hex(last_size)}{ids}")
         send_lines_back(lines)
 
     def ct_sell_run(self):
