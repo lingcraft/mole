@@ -7,6 +7,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from ctypes import wintypes, WinDLL
 from urllib.parse import urlparse, parse_qs
+from json import loads
 
 # 根目录下的 *.swf 注入 ext.xml 并就地提供。
 # 注意：只放自定义 mod，勿放游戏官方 SWF（如 Client.swf），否则会覆盖上游。
@@ -17,8 +18,7 @@ def list_mod_swfs() -> list[Path]:
     """列出根目录下所有 *.swf（按文件名排序，保证加载顺序稳定）。"""
     if not base_dir.is_dir():
         return []
-    return sorted((p for p in base_dir.glob("*.swf") if p.is_file()),
-                  key=lambda p: p.name.lower())
+    return sorted((p for p in base_dir.glob("*.swf") if p.is_file()), key=lambda p: p.name.lower())
 
 
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
@@ -34,6 +34,15 @@ cmd_queue: list[str] = []  # SWF 命令队列（如 "alert|标题|内容"）
 def push_cmd(text: str) -> None:
     """向命令队列推入一条命令；socket 桥逐条下发给 SWF（统一加 send_prefix 前缀）。"""
     cmd_queue.append(f"{send_prefix}{text}")
+
+
+response_handler = None  # 结果回调函数
+
+
+def set_response_handler(func) -> None:
+    """注册 SWF 回传处理函数；收到 SWF 响应时以 (cmd, payload) 调用之。"""
+    global response_handler
+    response_handler = func
 
 
 def set_upstream(base: str) -> None:
@@ -140,8 +149,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)) or None
         target = upstream_base + url
         try:
-            resp = session.request(self.command, target, headers=headers, data=body,
-                                   stream=True, timeout=30)
+            resp = session.request(self.command, target, headers=headers, data=body, stream=True, timeout=30)
         except Exception:
             self.send_response(502)
             self.end_headers()
@@ -166,8 +174,7 @@ class InjectHandler(BaseHTTPRequestHandler):
             data = resp.content
             self.send_response(resp.status_code)
             for k, v in resp.headers.items():
-                if k.lower() in ("transfer-encoding", "connection", "content-encoding",
-                                 "content-length"):
+                if k.lower() in ("transfer-encoding", "connection", "content-encoding", "content-length"):
                     continue
                 self.send_header(k, v)
             self.send_header("Content-Length", str(len(data)))
@@ -290,6 +297,7 @@ def sock_serve(conn):
 
     # 数据通道主循环：recv 设 0.25s 超时，超时则回到顶部下发命令
     conn.settimeout(0.25)
+    sock_buf = ""  # 跨 recv 的行缓冲，保证大 JSON 不被 TCP 分段切断
     while True:
         # 若已被更新的连接取代（如再次刷新），立即退出，不再服务于命令
         with conn_lock:
@@ -313,10 +321,34 @@ def sock_serve(conn):
             break
         if not data:
             break
-        for line in data.decode("utf-8", "ignore").split("\n"):
+        # 跨 recv 累积缓冲，只处理以 \n 结尾的完整行：
+        # 大 JSON 响应会被 TCP 分段，若逐次 split 会把半截 JSON 当完整行解析失败。
+        sock_buf += data.decode("utf-8", "ignore")
+        while "\n" in sock_buf:
+            line, sock_buf = sock_buf.split("\n", 1)
             line = line.rstrip("\r")
             if not line:
                 continue
+            # SWF 回传统一带 "R <==" 前缀，去掉后再解析
+            if line.startswith(recv_prefix):
+                line = line[len(recv_prefix):]
+            # 拆分为 "cmd|payload"
+            if "|" in line:
+                cmd, payload = line.split("|", 1)
+            else:
+                cmd, payload = line, ""
+            # getItemInfo 回传是 JSON 字符串，解析成 dict 便于使用
+            if cmd == "getItemInfo":
+                try:
+                    payload = loads(payload)
+                except Exception:
+                    pass
+            # 交给 mole.py 注册的回调；未注册则对关键回传打印到控制台
+            if response_handler is not None:
+                try:
+                    response_handler(cmd, payload)
+                except Exception:
+                    pass
     release_active(conn)
     conn.close()
 
@@ -327,7 +359,7 @@ def start_socket_bridge():
     global bridge_port
     srv = socket(AF_INET, SOCK_STREAM)
     srv.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", 0))          # 0 = 由 OS 分配空闲端口
+    srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
     bridge_port = srv.getsockname()[1]
     print(f"[bridge] 命令桥监听端口: {bridge_port}")
     srv.listen(8)

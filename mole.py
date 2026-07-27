@@ -28,7 +28,7 @@ from packaging.version import parse
 from pyamf import sol
 from collections import deque
 from client import Client
-from bridge import start_bridge, set_upstream, injector_url, push_cmd
+from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
 from re import sub
 
@@ -43,6 +43,7 @@ is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包�
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否显示过消息
 pending_waits = []  # 等待中的请求
+item_info_callbacks = {} # getItemInfo 回传分发表
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
 lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
@@ -65,11 +66,23 @@ mmg_friends_state_dict = {1: [], 2: [], 3: [], 4: []}  # 4种状态的好友字�
 mmg_friends_num, mmg_query_size_max, mmg_query_page_max, mmg_query_page = 0, 14, 0, 0  # 好友数、最大可查询好友数、最大查询页码、查询页码
 # 魔灵传说
 mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞技场可挑战次数、经验之路可挑战次数
-mlcs_fight_elves_dict, mlcs_elves_dict = {}, {}  # 出战魔灵、全部魔灵
+mlcs_fight_sprites_dict, mlcs_material_sprites_dict, mlcs_sprites_dict = {}, {}, {}  # 出战魔灵、可删除/材料魔灵、全部魔灵
+# 不可作为升级材料的魔灵类型：进阶材料魔灵家族（豆丁/果子/能量/宝石，最高等级均为 1）+ 烈焰剑齿虎
+mlcs_non_material_sprites_types = frozenset({
+    0x1A3F6A,  # 烈焰剑齿虎
+    0x1A3F04, 0x1A3F05, 0x1A3F06, 0x1A3F07, 0x1A3F08  # 5种宝石进化材料
+})
+mlcs_factors = (1000000, 1500000, 2000000, 2500000, 3000000, 4000000, 5000000)  # 经验上限计算因子
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
 can_fight_wjsy, can_fight_ssmy, is_equip_card = False, False, True  # 能否挑战无尽深渊、莎士摩亚、是否装备卡牌
 ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
+# 不可作为升级材料的卡牌类型：奥丁、汉青、洛基（5星及以下各形态）
+ysqs_non_material_cards_types = frozenset({
+    0x1962A0,  # 奥丁⭐5
+    0x196277,  # 汉青⭐5
+    0x19628E, 0x19628F, 0x196290  # 洛基⭐3/4/5
+})
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdown_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
 ct_state: "State | None" = None  # 餐厅做菜状态
@@ -191,6 +204,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 界面主区域设置
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         start_bridge()  # 注入服务、命令桥，端口自适应
+        set_response_handler(dispatch_item_info)  # 注册回传分发器
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.set_scale_mode()
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
@@ -204,7 +218,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.currentCellChanged.connect(self.change_row)
         self.tab_geometry = QRect(self.tabWidget.geometry())  # tabWidget 原始位置、尺寸
         self.tabWidget.currentChanged.connect(self.change_tab)
-        self.build_tab3()  # 构造"每日"奖励勾选列表
+        self.add_mrjl_tab()  # 添加"每日奖励"勾选列表
         # 界面菜单栏设置
         self.serverMenu = self.menubar.addMenu("切换版本")
         for server in server_dict:
@@ -242,6 +256,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ysqsAdvanceButton.clicked.connect(self.ysqs_advance_start)
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
+        self.mlcsUpgradeButton.clicked.connect(self.mlcs_upgrade_start)
         # 多次运行功能
         self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, Interval.FAST, self.sendLoopButton))
         self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, Interval.IDLE, self.lamuGrowButton, self.lamu_start))
@@ -433,7 +448,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def enable_mlcs_button(self, enable):
         self.mlcsFightButton.setEnabled(enable)
+        self.mlcsUpgradeButton.setEnabled(enable)
         self.mlcsSellButton.setEnabled(enable)
+        self.mlcsSpriteBox.setEnabled(enable)
 
     def enable_ct_button(self, enable):
         self.ctSellButton.setEnabled(enable)
@@ -566,7 +583,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.title_timer_pool[module_name].stop()
         self.update_title(module_name)
 
-    def build_tab3(self):
+    def add_mrjl_tab(self):
+        self.mrjl_tab = QWidget()
+        self.tabWidget.addTab(self.mrjl_tab, "每日奖励")
         self.reward_checkboxes: list[QCheckBox] = []
         self.reward_widgets: list[QWidget] = []
         self.reward_radio_group = QButtonGroup(self)
@@ -580,11 +599,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.reward_done_disp_t = 0.0
         self.reward_finish_pending = False
 
-        layout = QVBoxLayout(self.tab3)
+        layout = QVBoxLayout(self.mrjl_tab)
         layout.setContentsMargins(5, 5, 5, 5)
         layout.setSpacing(4)
 
-        scroll = QScrollArea(self.tab3)
+        scroll = QScrollArea(self.mrjl_tab)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
@@ -626,7 +645,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.reward_radio_remember = radio_buttons[0]
 
     def change_tab(self):
-        if self.tabWidget.currentWidget() is self.tab3:
+        if self.tabWidget.currentWidget() is self.mrjl_tab:
             # 切到 tab3：隐藏上方发包区域
             self.groupBox.setVisible(False)
             g = self.groupBox.geometry()
@@ -1044,17 +1063,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         mmg_friends_state_dict[4].clear()
         mmg_query_page = 0
         friends_ids = [get_hex(friend_id) for friend_id, friend_level in mmg_friends]
-        max_size = mmg_query_size_max
-        max_page = mmg_friends_num // max_size
-        last_size = mmg_friends_num % max_size
-        mmg_query_page_max = max_page + (last_size > 0)
         lines = []
-        for page in range(max_page):
-            ids = "".join(friends_ids[page * max_size:(page + 1) * max_size])
-            lines.append(f"00000000000000201A0000000000000000{get_hex(max_size)}{ids}")
-        if last_size > 0:
-            ids = "".join(friends_ids[-last_size:])
-            lines.append(f"00000000000000201A0000000000000000{get_hex(last_size)}{ids}")
+        for index in range(0, len(friends_ids), mmg_query_size_max):
+            ids = friends_ids[index:index + mmg_query_size_max]
+            lines.append(f"00000000000000201A0000000000000000{get_hex(len(ids))}{"".join(ids)}")
+        mmg_query_page_max = len(lines)
         send_lines(lines)
 
     def mmg_stop(self):
@@ -1158,18 +1171,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             required_exp -= card_exp
             if required_exp <= 0:
                 break
-        # 分包处理，每个包最多30张材料
-        material_num = len(material_ids)
-        max_size = 30
-        max_page = material_num // max_size
-        last_size = material_num % max_size
+        max_size = 30  # 每个包最多30张材料
         lines = []
-        for page in range(max_page):
-            ids = "".join(material_ids[page * max_size:(page + 1) * max_size])
-            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(max_size)}{ids}")
-        if last_size > 0:
-            ids = "".join(material_ids[-last_size:])
-            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(last_size)}{ids}")
+        for index in range(0, len(material_ids), max_size):
+            ids = material_ids[index:index + max_size]
+            lines.append(f"00000000000000231B0000000000000000{get_hex(card_data["ID"])}{get_hex(len(ids))}{"".join(ids)}")
         if lines:
             lines.append("00000000000000231E000000000000000000000000")  # 获取元素骑士信息
         send_lines(lines)
@@ -1255,18 +1261,42 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         run_later_expect(self.mlcs_sell_run, {0x2EE4: 1, 0x2EF2: 1})
 
     def mlcs_sell_run(self):
-        elves_ids = [get_hex(elf_id) for elf_id in mlcs_elves_dict.keys()]
-        elves_num = len(elves_ids)
-        max_size = 10
-        max_page = elves_num // max_size
-        last_size = elves_num % max_size
+        material_ids = [get_hex(sprite_id) for sprite_id in mlcs_material_sprites_dict]
+        max_size = 100  # 每个包最多100只材料
         lines = []
-        for page in range(max_page):
-            ids = "".join(elves_ids[page * max_size:(page + 1) * max_size])
-            lines.append(f"000000000000002F020000000000000000{get_hex(max_size)}{ids}")
-        if last_size > 0:
-            ids = "".join(elves_ids[-last_size:])
-            lines.append(f"000000000000002F020000000000000000{get_hex(last_size)}{ids}")
+        for index in range(0, len(material_ids), max_size):
+            ids = material_ids[index:index + max_size]
+            lines.append(f"000000000000002F020000000000000000{get_hex(len(ids))}{"".join(ids)}")
+        if lines:
+            lines.append("000000000000002EF2000000000000000000000000")  # 魔灵背包信息
+        send_lines_back(lines)
+
+    def mlcs_upgrade_start(self):
+        send_lines([
+            f"000000000000002EE40000000000000000{get_hex(user_id)}",  # 魔灵用户信息
+            "000000000000002EF2000000000000000000000000"  # 魔灵背包信息
+        ])
+        run_later_expect(self.mlcs_upgrade_run, {0x2EE4: 1, 0x2EF2: 1})
+
+    def mlcs_upgrade_run(self):
+        sprite_data = mlcs_sprites_dict[self.mlcsSpriteBox.currentData()]
+        mlcs_material_sprites_dict.pop(sprite_data["ID"], None)
+        required_exp = get_sprite_max_exp(sprite_data["星级"], sprite_data["最高等级"]) - sprite_data["经验"]
+        # 计算需要的材料魔灵
+        material_ids = []
+        for sprite_id, sprite_exp in mlcs_material_sprites_dict.items():
+            sprite_attr = mlcs_sprites_dict[sprite_id]["属性"]
+            material_ids.append(get_hex(sprite_id))
+            required_exp -= sprite_exp * (1.5 if sprite_attr == sprite_data["属性"] else 1)
+            if required_exp <= 0:
+                break
+        max_size = 5  # 每个包最多5只材料
+        lines = []
+        for index in range(0, len(material_ids), max_size):
+            ids = material_ids[index:index + max_size]
+            lines.append(f"000000000000002EF50000000000000000{get_hex(sprite_data["ID"])}{get_hex(len(ids))}{"".join(ids)}")
+        if lines:
+            lines.append("000000000000002EF2000000000000000000000000")  # 魔灵背包信息
         send_lines_back(lines)
 
     def ct_sell_run(self):
@@ -1467,8 +1497,8 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-        for key in card_advance_dict.keys():
-            item = QListWidgetItem(key)
+        for card_name in card_advance_dict:
+            item = QListWidgetItem(card_name)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.listWidget.addItem(item)
         self.lineEdit.textChanged.connect(self.on_filter)
@@ -1680,7 +1710,6 @@ class Packet:
             return bytearray.fromhex(data)
         return bytearray(data)
 
-
     @staticmethod
     def from_hex(packet: str):
         packet = bytearray.fromhex(packet)
@@ -1755,13 +1784,30 @@ def alert_msg(msg: str):
 
 def alert_reward(data: tuple | int):
     if isinstance(data, tuple):
-        push_cmd(f"alertReward|{",".join(str(num) for num in data)}")
+        push_cmd(f"alertReward|{",".join(str(item) for item in data)}")
     else:
         push_cmd(f"alertReward|{data},1")
 
 
 def enter_map(map_id: int):
     push_cmd(f"enterMap|{map_id}")
+
+
+def get_item_info(item_id: int, func=None):
+    if func is not None:
+        item_info_callbacks[item_id] = func
+    push_cmd(f"getItemInfo|{item_id}")
+
+
+def dispatch_item_info(cmd, payload):
+    if cmd != "getItemInfo":
+        return
+    if not isinstance(payload, dict) or "id" not in payload:
+        return
+    item_id = int(payload["id"])
+    func = item_info_callbacks.pop(item_id, None)
+    if func is not None:
+        func(payload)
 
 
 def run_later(func, delay: int = 300):
@@ -1859,6 +1905,11 @@ def get_card_level(star, exp):
     star = min(star, 6)
     base = 2 * star + 5
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
+
+
+def get_sprite_max_exp(star, max_level):
+    # n星魔灵经验上限
+    return mlcs_factors[star - 1] * pow(max_level / 98, 2.5)
 
 
 def clamp(value, lower, upper):
@@ -2015,10 +2066,6 @@ def is_running(name: str):
     return isinstance(timer, QTimer) and timer.isActive()
 
 
-def is_sending():
-    return window.send_thread.isRunning()
-
-
 def is_harvest_running():
     return window.ctHarvestButton.text() == "停止"
 
@@ -2084,8 +2131,8 @@ def process_recv_packet(socket_num, buf, length):
     global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, \
         is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
-        mlcs_exp_times, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, can_fight_wjsy, \
-        can_fight_ssmy, is_equip_card
+        mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, \
+        can_fight_wjsy, can_fight_ssmy, is_equip_card
     if get_remote_info(socket_num) == 0:
         return
     raw_buf = ffi.buffer(buf, length)
@@ -2207,25 +2254,61 @@ def process_recv_packet(socket_num, buf, length):
                                     window.mmg_start()
                             case 12004:  # 魔灵用户信息
                                 mlcs_energy = get_int(packet.body, 13, 2)  # 剩余体力值
-                                mlcs_fight_elves_dict.clear()
+                                mlcs_fight_sprites_dict.clear()
                                 start = 24
                                 size = 1 * 4
                                 for page in range(15):  # 出战魔灵信息
-                                    elf_id = get_int(packet.body, start + page * size)
-                                    if elf_id != 0:
-                                        mlcs_fight_elves_dict[elf_id] = elf_id
-                            case 12018 if not is_sending():  # 魔灵背包信息
-                                mlcs_elves_dict.clear()
-                                elves_num = get_int(packet.body)
+                                    sprite_id = get_int(packet.body, start + page * size)
+                                    if sprite_id != 0:
+                                        mlcs_fight_sprites_dict[sprite_id] = sprite_id
+                            case 12018:  # 魔灵背包信息
+                                mlcs_sprites_dict.clear()
+                                mlcs_material_sprites_dict.clear()
+                                sprites_num = get_int(packet.body)
                                 start = 4
                                 size = 7 * 4
-                                for page in range(elves_num):
-                                    elf_id = get_int(packet.body, start + page * size)
-                                    elf_type = get_int(packet.body, start + page * size + 4)
-                                    elf_level = get_int(packet.body, start + page * size + 9, 1)
-                                    # 非出战魔灵、烈焰剑齿虎且等级为1的可删除
-                                    if elf_id not in mlcs_fight_elves_dict and elf_type != 0x1A3F6A and elf_level == 1:
-                                        mlcs_elves_dict[elf_id] = elf_id
+                                for page in range(sprites_num):
+                                    sprite_id = get_int(packet.body, start + page * size)  # 魔灵ID
+                                    sprite_type = get_int(packet.body, start + page * size + 4)  # 魔灵类型
+                                    sprite_attr = get_int(packet.body, start + page * size + 8, 1)  # 魔灵属性
+                                    sprite_level = get_int(packet.body, start + page * size + 9, 1)  # 魔灵等级
+                                    sprite_exp = get_int(packet.body, start + page * size + 10)  # 魔灵经验
+                                    sprite_info = get_sprite_info(sprite_type)
+                                    mlcs_sprites_dict[sprite_id] = {
+                                        "名称": f"{sprite_info["名称"]} Lv.{sprite_level}",
+                                        "ID": sprite_id,
+                                        "类型": sprite_type,
+                                        "属性": sprite_attr,
+                                        "等级": sprite_level,
+                                        "经验": sprite_exp,
+                                        "星级": sprite_info["星级"],
+                                        "最高等级": sprite_info["最高等级"]
+                                    }
+                                    # 非出战魔灵、烈焰剑齿虎、进阶材料魔灵的0经验魔灵可为升级材料或出售
+                                    if sprite_id not in mlcs_fight_sprites_dict and sprite_type not in mlcs_non_material_sprites_types and sprite_exp == 0:
+                                        mlcs_material_sprites_dict[sprite_id] = sprite_info["提供经验"]
+                                mlcs_sprites_dict = dict(
+                                    sorted(
+                                        mlcs_sprites_dict.items(),
+                                        key=lambda item: (
+                                            item[1]["星级"],
+                                            item[1]["经验"]
+                                        ),
+                                        reverse=True
+                                    )
+                                )
+                                # 更新数据并重新选中之前的魔灵
+                                window.mlcsSpriteBox.blockSignals(True)
+                                old_sprite_id = window.mlcsSpriteBox.currentData()
+                                window.mlcsSpriteBox.clear()
+                                for sprite_id, sprite_data in mlcs_sprites_dict.items():
+                                    if sprite_data["经验"] < get_sprite_max_exp(sprite_data["星级"], sprite_data["最高等级"]):
+                                        window.mlcsSpriteBox.addItem(sprite_data["名称"], sprite_id)
+                                if old_sprite_id is not None:
+                                    index = window.mlcsSpriteBox.findData(old_sprite_id)
+                                    if index != -1:
+                                        window.mlcsSpriteBox.setCurrentIndex(index)
+                                window.mlcsSpriteBox.blockSignals(False)
                             case 11009:  # 魔灵竞技场信息
                                 info_type = get_int(packet.body)
                                 if info_type == 5:  # 竞技场信息
@@ -2255,15 +2338,15 @@ def process_recv_packet(socket_num, buf, length):
                                     card_star = card_info["星级"]
                                     card_level = get_card_level(card_star, card_exp)
                                     ysqs_cards_dict[card_id] = {
+                                        "名称": f"{card_info["名称"]} Lv.{card_level}",
                                         "ID": card_id,
                                         "类型": card_type,
-                                        "名称": f"{card_info["名称"]} Lv.{card_level}",
-                                        "星级": card_star,
                                         "经验": card_exp,
-                                        "已装备": card_is_equip
+                                        "已装备": card_is_equip,
+                                        "星级": card_star
                                     }
                                     # 6星蛋蛋或者6星以下不是奥丁、汉青和洛基的0经验卡牌可为升级材料
-                                    if (card_star < 6 and card_type not in (0x1962A0, 0x196277, 0x19628E, 0x19628F, 0x196290) or card_type == 0x19627A) and card_exp == 0:
+                                    if (card_star < 6 and card_type not in ysqs_non_material_cards_types or card_type == 0x19627A) and card_exp == 0:
                                         ysqs_material_cards_dict[card_id] = get_card_provided_exp(card_star)
                                 ysqs_cards_dict = dict(
                                     sorted(
@@ -2347,7 +2430,7 @@ def process_recv_packet(socket_num, buf, length):
                                 window.ctDishBox.blockSignals(True)
                                 old_dish_name = window.ctDishBox.currentText()
                                 window.ctDishBox.clear()
-                                window.ctDishBox.addItems(ct_cooked_dishes_dict.keys())
+                                window.ctDishBox.addItems(ct_cooked_dishes_dict)
                                 if old_dish_name is not None:
                                     index = window.ctDishBox.findText(old_dish_name)
                                     if index != -1:

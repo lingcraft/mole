@@ -203,7 +203,6 @@ class Packet:
             return bytearray.fromhex(data)
         return bytearray(data)
 
-
     @staticmethod
     def from_hex(packet: str):
         packet = bytearray.fromhex(packet)
