@@ -1210,6 +1210,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             need_times = (double_start_energy - 60) // 10  # 保留经验之路体力后的可挑战次数
             remain_times = mlcs_energy // 10  # 当前体力可挑战次数
             fight_times = min(need_times, remain_times)
+            is_fight = fight_times > 0  # 是否挑战
             send_lines_back(
                 [
                     f"000000000000002EE70000000000000000{get_hex(get_level_info("希望之光5"))}",
@@ -1226,9 +1227,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     "000000000000002B3000000000000000000000000300000001000000002621D1EF",  # 挑战玩家
                     "000000000000002B3D000000000000000000000000",  # 消除冷却
                 ] * mlcs_arena_times  # 竞技场
+                +
+                [
+                    "000000000000002EF2000000000000000000000000"  # 魔灵背包信息
+                ] * is_fight
             )
         else:
             fight_times = (mlcs_energy - mlcs_exp_times * 20) // 10
+            is_fight = fight_times > 0  # 是否挑战
             send_lines_back(
                 [
                     f"000000000000002EE70000000000000000{get_hex(get_level_info("经验之路"))}",
@@ -1251,6 +1257,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     "000000000000002B3000000000000000000000000300000001000000002621D1EF",  # 挑战玩家
                     "000000000000002B3D000000000000000000000000",  # 消除冷却
                 ] * mlcs_arena_times  # 竞技场
+                +
+                [
+                    "000000000000002EF2000000000000000000000000"  # 魔灵背包信息
+                ] * is_fight
             )
 
     def mlcs_sell_start(self):
