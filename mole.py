@@ -1919,7 +1919,7 @@ def get_card_level(star, exp):
 
 def get_sprite_max_exp(star, max_level):
     # n星魔灵经验上限
-    return mlcs_factors[star - 1] * pow(max_level / 98, 2.5)
+    return mlcs_factors[star - 1] * pow((max_level - 1) / 98, 2.5)
 
 
 def clamp(value, lower, upper):
@@ -2312,7 +2312,7 @@ def process_recv_packet(socket_num, buf, length):
                                 old_sprite_id = window.mlcsSpriteBox.currentData()
                                 window.mlcsSpriteBox.clear()
                                 for sprite_id, sprite_data in mlcs_sprites_dict.items():
-                                    if sprite_data["经验"] < get_sprite_max_exp(sprite_data["星级"], sprite_data["最高等级"]):
+                                    if sprite_data["等级"] < sprite_data["最高等级"]:
                                         window.mlcsSpriteBox.addItem(sprite_data["名称"], sprite_id)
                                 if old_sprite_id is not None:
                                     index = window.mlcsSpriteBox.findData(old_sprite_id)
