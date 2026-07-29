@@ -1,13 +1,10 @@
 [project]
 name = "mole"
-version = "1.11.2"
+version = "1.11.3"
 description = """
-- 新增：魔灵传说新增一键升级魔灵功能，材料充足的情况下可一键升至满级，升级材料排除烈焰剑齿虎、4星进阶材料和经验值大于0的
-- 优化：魔灵传说一键出售的单个包上限提高为100只魔灵，减少总发包次数
-- 优化：分包分页循环处理逻辑优化
-- 新增：新增 get_item_info() 函数，调用游戏内的 GoodsInfo.getInfoById() 函数来查询物品信息并通过 socket 返回给客户端
-- 修复：修复 getItemFullURL() 反射的游戏内函数名，纠正为 GoodsInfo.GetFullURLByItemId()
-- 优化：材料排除列表使用 frozenset 优化效率
+- 优化：魔灵传说挑战完后更新待升级魔灵列表信息
+- 修复：魔灵满级经验上限计算问题修复
+- 优化：摩摩怪挑战稳定性优化
 """
 readme = "README.md"
 requires-python = ">=3.12"

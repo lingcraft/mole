@@ -266,7 +266,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.kllFinishButton.clicked.connect(lambda: self.start_task("卡罗拉幸运儿", self.kll_run, Interval.IDLE, self.kllFinishButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": RunTimer(self.mmg_run, delay=500),
+            "摩摩怪": RunTimer(self.mmg_run),
             "餐厅": {pos: RunTimer() for pos in range(1, 8)}
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
@@ -948,12 +948,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def mmg_start(self, fight_type=0):
         def start():  # 开始执行
-            global mmg_energy, mmg_type
+            global mmg_energy
             if self.mmgLevelBox.currentText().endswith("疯狂"):
                 mmg_energy /= 2
-            send_lines([
-                "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000"  # 获取地图信息
-            ])
             self.enable_mmg_button(False)
             self.timer_pool["摩摩怪"].start()
 
@@ -963,18 +960,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             global mmg_type, mmg_times
             mmg_type, mmg_times = fight_type, 0
             enter_map(228)
-            send_lines(
-                [
-                    "0000000000000020200000000000000000"  # 查询Boss已挑战次数
-                ] * (fight_type == 1)
-                +
-                [
-                    f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取基础信息
-                    "0000000000000020090000000000000000"  # 获取背包信息
-                ]
-            )
+            send_lines([
+                "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000",  # 获取地图信息
+                f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取能量、活力、等级
+                "0000000000000020200000000000000000",  # 获取Boss已挑战次数
+                "0000000000000020090000000000000000"  # 获取摩摩挑战卡数量
+            ])
             if fight_type < 3:
-                run_later_expect(start, {0x2008: 1, 0x2009: 1})
+                run_later_expect(start, {0x2008: 1, 0x2020: 1, 0x2009: 1})
             else:
                 friends = self.friend_dict[user_id]
                 ids = "".join([get_hex(friend) for friend in friends])
