@@ -266,7 +266,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.kllFinishButton.clicked.connect(lambda: self.start_task("卡罗拉幸运儿", self.kll_run, Interval.IDLE, self.kllFinishButton))
         # 摩摩怪功能
         self.timer_pool = {
-            "摩摩怪": RunTimer(self.mmg_run),
+            "摩摩怪": RunTimer(self.mmg_run, delay=500),
             "餐厅": {pos: RunTimer() for pos in range(1, 8)}
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
@@ -576,7 +576,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 on_tick()
         self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
         delay = (1000 - datetime.now().microsecond // 1000) % 1000  # 对齐到整秒
-        timer = RunTimer(tick, delay=delay, is_precise=True, interval=interval).start()
+        timer = RunTimer(tick, interval, delay, True).start()
         self.title_timer_pool[module_name] = timer
 
     def stop_update_title(self, module_name):
