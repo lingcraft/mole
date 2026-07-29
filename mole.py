@@ -27,6 +27,7 @@ from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
 from pyamf import sol
 from collections import deque
+from typing import Callable
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
@@ -264,6 +265,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.medGetButton.clicked.connect(lambda: self.start_task("摩尔豆", self.med_run, Interval.FAST, self.medGetButton))
         self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton, self.bh_start))
         self.kllFinishButton.clicked.connect(lambda: self.start_task("卡罗拉幸运儿", self.kll_run, Interval.IDLE, self.kllFinishButton))
+        self.is_show_recv = None # 记录启动任务前是否显示recv包
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": RunTimer(self.mmg_run),
@@ -275,7 +277,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 餐厅功能
         self.ctSellButton.clicked.connect(lambda: self.start_task("餐厅卖菜", self.ct_sell_run, Interval.FAST, self.ctSellButton))
         self.ctHarvestButton.clicked.connect(self.ct_harvest_start)
-        self.user_id = None
+        self.user_id = None  # 记录启动自动做菜时的用户id
         # 标题功能提示信息
         self.title = self.windowTitle()
         self.title_timer_pool: dict[str, RunTimer] = {}
@@ -292,21 +294,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.config.write(file)
         if log.exists():
             log.unlink()
+        self.stop_send()
         super(MainWindow, self).closeEvent(event)
-
-    def stop_timer(self, name):
-        if name in self.timer_pool:
-            timer = self.timer_pool[name]
-            if isinstance(timer, dict):
-                for item in timer.values():
-                    if isinstance(item, QTimer) and item.isActive():
-                        item.stop()
-            elif isinstance(timer, tuple):
-                for item in timer:
-                    if isinstance(item, QTimer) and item.isActive():
-                        item.stop()
-            elif isinstance(timer, QTimer) and timer.isActive():
-                timer.stop()
 
     def url(self):
         prefix = "" if self.server == "官服" else f"/server{list(server_dict).index(self.server)}"
@@ -498,8 +487,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
                 button.setText(text)
-                if interval <= Interval.FAST:
+                if interval < Interval.NORMAL and self.is_show_recv:
                     self.recvCheckBox.setChecked(True)
+                if name == "循环发送":
+                    self.send_ex_thread.stop()
                 timer.stop()
                 return
         else:  # 创建
@@ -510,8 +501,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             start_func()
         if button.isEnabled():
             button.setText(stop_text)
-        if interval <= Interval.FAST:
-            self.recvCheckBox.setChecked(False)
+        if interval < Interval.NORMAL:
+            self.is_show_recv = is_show_recv
+            if is_show_recv:
+                self.recvCheckBox.setChecked(False)
         timer.start()
 
     def stop_task(self, name):
@@ -520,6 +513,24 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if timer.isActive():  # 停止
                 button.setText(text)
                 timer.stop()
+
+    def stop_timer(self, name):
+        if name in self.timer_pool:
+            timer = self.timer_pool[name]
+            if isinstance(timer, dict):
+                for item in timer.values():
+                    if isinstance(item, QTimer) and item.isActive():
+                        item.stop()
+            elif isinstance(timer, tuple):
+                for item in timer:
+                    if isinstance(item, QTimer) and item.isActive():
+                        item.stop()
+            elif isinstance(timer, QTimer) and timer.isActive():
+                timer.stop()
+
+    def stop_send(self):
+        self.send_thread.stop()
+        self.send_ex_thread.stop()
 
     def check_update(self):
         if not self.update_thread.isRunning():
@@ -728,8 +739,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 )
         else:
             # 手动停止：请求线程中断并等待结束，再走统一收尾（含停止弹窗提示）
-            self.send_thread.requestInterruption()
-            self.send_thread.wait()
+            self.send_thread.stop()
             self.finish_reward()
 
     def run_reward(self):
@@ -1323,7 +1333,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         now = monotonic()
         dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
-        dwell_timeout = ct_state_since is None or now - ct_state_since >= 4
+        dwell_timeout = ct_state_since is None or now - ct_state_since >= 3
 
         match ct_state:
             case State.COUNTDOWN:
@@ -1472,16 +1482,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
     def med_run(self):
-        send_lines_back([
+        send_lines([
             f"000000000000002B1A0000000000000000{get_hex(num)}" for num in range(1, 11)
-        ], Interval.FAST)
+        ])
 
     def bh_start(self):
         global is_show_msg
         is_show_msg = False
 
     def bh_run(self):
-        send_lines_back([
+        send_lines([
             "0000000000000022F9000000000000000000003E95"
         ])
 
@@ -1579,21 +1589,47 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
 
 
 class SendThread(QThread):
-    def set_data(self, lines: list, interval: int, progress=None):
-        self.lines = lines
-        self.interval = interval
-        self.progress = progress
+    # 非驻留线程：启动后消费队列，连续 3 秒无新任务即自动退出；也可调用 stop() 提前终止
+    def __init__(self):
+        super().__init__()
+        self.lock = Lock()
+        self.max_size = 1000
+        self.queue: deque[tuple[list, int, Callable | None]] = deque()  # 待发任务：(lines, interval, progress)
+
+    def stop(self):
+        with self.lock:
+            self.queue.clear()
+        self.requestInterruption()
+        self.wait()
+
+    def put_data(self, lines: list, interval: int, progress: Callable | None = None):
+        if len(self.queue) < self.max_size:
+            with self.lock:
+                self.queue.append((lines, interval, progress))
+
+    def send_lines(self, lines: list, interval: int, progress: Callable | None = None):
+        send_lines(lines, interval, progress)
 
     def run(self):
-        send_lines(self.lines, self.interval, self.progress)
+        last_send = monotonic()
+        while not self.isInterruptionRequested():
+            with self.lock:
+                data = self.queue.popleft() if self.queue else None
+            if data is not None:
+                self.send_lines(*data)
+                last_send = monotonic()
+            elif monotonic() - last_send >= 3:
+                break
+            else:
+                sleep(0.1)  # 空闲休眠，不忙等；被中断或超时后退出
 
 
 class SendExThread(SendThread):
-    def run(self):
+    def send_lines(self, lines: list, interval: int, progress: Callable | None = None):
         if not window.socketCheckBox.isChecked():
-            send_lines(self.lines, self.interval)
+            send_lines(lines, interval, progress)
         else:
-            send_lines_to_socket(self.lines, self.interval)
+            send_lines_to_socket(lines, interval)
 
 
 class SendToServerThread(QThread):
@@ -1963,7 +1999,7 @@ def get_password(pwd: str):
     return f"{pwd[8:16]}{pwd[0:8]}{pwd[24:32]}{pwd[16:24]}".encode().hex()
 
 
-def send_lines(lines: list, interval: int = Interval.INSTANT, progress=None):
+def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable | None = None):
     last_index = len(lines) - 1
     for index, data in enumerate(lines):
         if QThread.currentThread().isInterruptionRequested():
@@ -1989,18 +2025,6 @@ def send_lines(lines: list, interval: int = Interval.INSTANT, progress=None):
             sleep(interval / 1000)
 
 
-def send_lines_back(lines: list, interval: int = Interval.NORMAL, progress=None):
-    if not window.send_thread.isRunning():
-        window.send_thread.set_data(lines, interval, progress)
-        window.send_thread.start()
-
-
-def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL):
-    if not window.send_ex_thread.isRunning():
-        window.send_ex_thread.set_data(lines, interval)
-        window.send_ex_thread.start()
-
-
 def send_lines_to_server(address: tuple[str, int], lines: list, wait_recv_nums: list | None = None):
     need_wait_recv = wait_recv_nums is not None
     with socket(AF_INET, SOCK_STREAM) as s:
@@ -2017,12 +2041,6 @@ def send_lines_to_server(address: tuple[str, int], lines: list, wait_recv_nums: 
                     except:
                         return False
     return True
-
-
-def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_nums: list | None = None):
-    if not window.send_to_server_thread.isRunning():
-        window.send_to_server_thread.set_data(address, lines, wait_recv_nums)
-        window.send_to_server_thread.start()
 
 
 def send_lines_to_socket(lines: list, interval: int = Interval.INSTANT):
@@ -2058,6 +2076,24 @@ def update_cooking_info(client):
         except:
             continue
         ct_cooking_dishes_dict[dish_pos]["ID"] = dish_id
+
+
+def send_lines_back(lines: list, interval: int = Interval.NORMAL, progress: Callable | None = None):
+    window.send_thread.put_data(lines, interval, progress)
+    if not window.send_thread.isRunning():
+        window.send_thread.start()
+
+
+def send_lines_back_ex(lines: list, interval: int = Interval.NORMAL, progress: Callable | None = None):
+    window.send_ex_thread.put_data(lines, interval, progress)
+    if not window.send_ex_thread.isRunning():
+        window.send_ex_thread.start()
+
+
+def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_nums: list | None = None):
+    if not window.send_to_server_thread.isRunning():
+        window.send_to_server_thread.set_data(address, lines, wait_recv_nums)
+        window.send_to_server_thread.start()
 
 
 def is_running(name: str):

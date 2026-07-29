@@ -124,7 +124,7 @@ class Client(Process):
     def done_monitor(self):
         while self.is_connect:
             sleep(0.1)
-            if not self.is_done_signaled and monotonic() - self.last_send > 1:
+            if not self.is_done_signaled and monotonic() - self.last_send >= 1:
                 self.state_queue.put("done")
                 self.is_done_signaled = True
 
