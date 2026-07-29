@@ -1310,7 +1310,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lines.append(f"000000000000002EF50000000000000000{get_hex(sprite_data["ID"])}{get_hex(len(ids))}{"".join(ids)}")
         if lines:
             lines.append("000000000000002EF2000000000000000000000000")  # 魔灵背包信息
-        send_lines_back(lines)
+        send_lines_back(lines, Interval.SLOW)
 
     def ct_sell_run(self):
         send_lines([

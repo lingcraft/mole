@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.11.4"
+version = "1.11.5"
 description = """
-- 优化：send_lines_back() 后台线程发包函数优化，使用队列处理发送数据，防止快速循环调用时频繁启动线程以及间隔过短时部分数据被丢弃
+- 修复：修复魔灵一键升级的每个包间隔过短导致部分升级包发送失败，从而材料充足的情况下没有一键升到满级的问题，现在调整间隔为50ms
 """
 readme = "README.md"
 requires-python = ">=3.12"
