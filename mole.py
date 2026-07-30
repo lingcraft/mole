@@ -1999,6 +1999,13 @@ def get_password(pwd: str):
     return f"{pwd[8:16]}{pwd[0:8]}{pwd[24:32]}{pwd[16:24]}".encode().hex()
 
 
+def process_data(packet: Packet):
+    match packet.cmd_id:
+        case 407:  # 提交游戏分数
+            score = get_int(packet.body, 4)
+            set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
+
+
 def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable | None = None):
     last_index = len(lines) - 1
     for index, data in enumerate(lines):
@@ -2013,6 +2020,7 @@ def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable
             packet = Packet(cmd_id=cmd_id, body=body)
         else:
             packet = Packet(data)
+        process_data(packet)
         with lock:
             packet.encrypt()
         send(login_socket_num, packet.data(), packet.length)
