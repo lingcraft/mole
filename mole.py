@@ -40,7 +40,7 @@ login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Po
 user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 buf_index = 0  # 数据索引
-is_show_send, is_show_recv, is_write_recv = True, True, False  # 显示send包、recv包、写回recv包
+is_show_send, is_show_recv = True, True  # 显示send包、recv包
 lock = Lock()  # 发送锁
 is_show_msg = False  # 是否显示过消息
 pending_waits = []  # 等待中的请求
@@ -2134,6 +2134,10 @@ def get_remote_info(socket_num: int):
             return 1
 
 
+def write_back(buf, index, packet):
+    buf[index:index + packet.length] = packet.encrypt(False).data()
+
+
 def send(socket_num, buf, length):
     return hook.Send(socket_num, ffi.from_buffer(buf), length)
 
@@ -2527,8 +2531,6 @@ def process_recv_packet(socket_num, buf, length):
                                     window.stop_task("卡罗拉幸运儿")
                                     alert_msg("今日卡罗拉幸运儿游戏已完成")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
-                        if is_write_recv:  # 修改原始数据模式
-                            raw_buf[buf_index:buf_index + packet_len] = packet.encrypt(False).data()
                     else:  # 错误包
                         match packet.cmd_id:
                             case 1209 if is_running("拉姆"):  # 拉姆变身获得物品
