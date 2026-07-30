@@ -1324,7 +1324,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ct_harvest_state(self):
         global ct_state, is_connect, is_done, ct_state_since
-        if self.client is None:
+        if self.client is None or not self.client.is_alive():
             is_connect = False
         else:
             try:
@@ -1338,7 +1338,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         now = monotonic()
         dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
-        dwell_timeout = ct_state_since is None or now - ct_state_since >= 3
 
         match ct_state:
             case State.COUNTDOWN:
@@ -1365,7 +1364,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     ct_state_since = now
                 return "登录成功"
             case State.COOKING:
-                if (is_done and dwell_ok) or dwell_timeout:
+                if is_done and dwell_ok:
                     is_done = False
                     ct_state = State.DONE
                     ct_state_since = now
