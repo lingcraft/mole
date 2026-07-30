@@ -110,8 +110,13 @@ node_dict = {
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/pyproject.toml"
 # 链接加速前缀
 cdn_prefixs = [
-    "https://v6.gh-proxy.org/",
-    "https://github.cnxiaobai.com/"
+    "https://v4.gh-proxy.org/",
+    "https://github.cnxiaobai.com/",
+    "https://wget.la/",
+    "https://ghfast.top/",
+    "https://ghproxy.net/",
+    "https://github.boki.moe/",
+    "https://gh.ddlc.top/"
 ]
 available_cdn_prefix = ""
 # Hook文件
