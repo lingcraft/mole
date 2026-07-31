@@ -1347,7 +1347,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     self.title_timer_pool["餐厅"].set_interval(50)
                     ct_state_since = now
-                    if self.client is not None and self.client.is_alive():
+                    if is_connect:
                         ct_state = State.COOKING
                         return "做菜中"
                     else:
