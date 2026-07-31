@@ -2123,10 +2123,6 @@ def is_harvest_running():
     return window.ctHarvestButton.text() == "停止"
 
 
-def is_current_user():
-    return not is_harvest_running() or window.user_id == user_id
-
-
 def get_ip_port(socket_num: int):
     try:
         with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
@@ -2436,7 +2432,7 @@ def process_recv_packet(socket_num, buf, length):
                                     if index != -1:
                                         window.ysqsCardBox.setCurrentIndex(index)
                                 window.ysqsCardBox.blockSignals(False)
-                            case 1014 if is_current_user():  # 餐厅信息
+                            case 1014 if not is_harvest_running():  # 餐厅信息
                                 ct_cooked_dishes_dict.clear()
                                 ct_cooking_dishes_dict.clear()
                                 house_type = get_int(packet.body, 36)  # 内部装潢类型
@@ -2501,7 +2497,7 @@ def process_recv_packet(socket_num, buf, length):
                                 dish_step = get_int(packet.body, 12)
                                 if dish_step < 3:
                                     window.ct_cook_after(dish_id, dish_type, dish_step)
-                                elif dish_step == 3 and is_current_user():  # 做菜步骤完成后，更新灶台信息
+                                elif dish_step == 3 and not is_harvest_running():  # 做菜步骤完成后，更新灶台信息
                                     ct_cooking_dishes_dict[dish_pos] = {
                                         "ID": dish_id,
                                         "类型": dish_type,
@@ -2514,7 +2510,7 @@ def process_recv_packet(socket_num, buf, length):
                                 dish_pos = get_int(packet.body, 12)
                                 dish_num = get_int(packet.body, 16)
                                 dish_info = get_dish_info(dish_type)
-                                if dish_info["名称"] not in ct_cooked_dishes_dict and is_current_user():  # 新收的菜
+                                if dish_info["名称"] not in ct_cooked_dishes_dict and not is_harvest_running():  # 新收的菜
                                     ct_cooked_dishes_dict[dish_info["名称"]] = {
                                         "ID": dish_id,
                                         "类型": dish_type,
