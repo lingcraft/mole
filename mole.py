@@ -1331,6 +1331,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 state = self.client.state_queue.get_nowait()
                 if state == "connected":
                     is_connect = True
+                elif state == "disconnected":
+                    is_connect = False
                 elif state == "done":
                     is_done = True
             except Empty:

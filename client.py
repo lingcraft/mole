@@ -157,6 +157,9 @@ class Client(Process):
                                         ])
                                     elif dish_step == 3:
                                         self.recv_queue.put((dish_id, dish_pos))  # 传回主进程刷新菜ID
+                                case 10001:  # 被挤下线
+                                    self.is_connect = False
+                                    self.state_queue.put("disconnected")
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
