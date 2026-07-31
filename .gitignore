@@ -1,4 +1,5 @@
 .idea
+.codebuddy
 __pycache__
 test*
-.codebuddy
+*.log
