@@ -32,6 +32,7 @@ from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
 from re import sub
+from loguru import logger
 
 
 # 封包
@@ -132,7 +133,8 @@ void LoadFlash();
 # 路径
 config = Path(environ["appdata"]) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
-log = base_dir / "hook.log"
+hook_log = base_dir / "hook.log"
+mole_log = base_dir / "mole.log"
 login_cache = next(
     (
         cache_dir / "127.0.0.1" / "#mole" / "login.sol"
@@ -297,8 +299,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             config.parent.mkdir()
         with open(config, "w", encoding="utf-8") as file:
             self.config.write(file)
-        if log.exists():
-            log.unlink()
+        if hook_log.exists():
+            hook_log.unlink()
+        if mole_log.exists():
+            logger.remove()
+            mole_log.unlink()
         self.stop_send()
         super(MainWindow, self).closeEvent(event)
 
@@ -1343,7 +1348,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         match ct_state:
             case State.COUNTDOWN:
-                next_run = min(item["next_run"] for item in ct_cooking_countdown_dict.values())
+                next_run = min(item["下次运行时间"] for item in ct_cooking_countdown_dict.values())
                 if int((next_run - datetime.now()).total_seconds()) > 0:
                     return next_run
                 else:
@@ -1425,20 +1430,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             timer = timer_dict[dish_pos]
             now = datetime.now()
             delay = 0
-            if dish_info.get("灶台为空", False):
-                dish_info["跳过一次收菜"] = True
+            if dish_info.get("下次不收菜", False):
                 if now.hour < 6:
-                    cook_start = datetime(now.year, now.month, now.day, 6, 5)
+                    cook_start = datetime(now.year, now.month, now.day, 6, 1)
                     delay = (cook_start - now).total_seconds()
             else:
                 cook_time = dish_info["时间"]
                 if cook_time < need_time:  # 未成熟的菜
                     delay = need_time - cook_time
                 elif cook_time >= expire_time:  # 已糊的菜
-                    dish_info["已糊"] = True
+                    dish_info["菜已糊"] = True
             ct_cooking_countdown_dict[dish_pos] = {
-                "interval": timedelta(seconds=interval),
-                "next_run": now + timedelta(seconds=delay)
+                "运行间隔": timedelta(seconds=interval),
+                "下次运行时间": now + timedelta(seconds=delay)
             }
             ct_state = State.LOGGING_IN if delay == 0 else State.COUNTDOWN
             timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay * 1000).start()
@@ -1454,19 +1458,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000003F60000000000000000{get_hex(self.user_id)}0000001F"  # 获取餐厅信息
         ]
         lines = []
-        if not dish_info.pop("跳过一次收菜", False):
-            if dish_info.pop("已糊", False):
+        if not dish_info.pop("下次不收菜", False):
+            if dish_info.pop("菜已糊", False):
                 lines.append(f"0000000000000003FB0000000000000000{get_hex(dish_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}")  # 处理糊菜
             else:
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
             lines.append(f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}")  # 做菜
-            countdown_info["next_run"] += countdown_info["interval"]
+            countdown_info["下次运行时间"] += countdown_info["运行间隔"]
         else:
-            dish_info["跳过一次收菜"] = True
-            cook_start = datetime(now.year, now.month, now.day, 6, 5)
+            dish_info["下次不收菜"] = True
+            cook_start = datetime(now.year, now.month, now.day, 6, 1)
             self.timer_pool["餐厅"][pos].restart(cook_start)
-            countdown_info["next_run"] = cook_start
+            countdown_info["下次运行时间"] = cook_start
         send_lines_by_client((self.user_id, self.password), init_lines, lines)
 
     def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
@@ -2480,7 +2484,7 @@ def process_recv_packet(socket_num, buf, length):
                                     ct_cooking_dishes_dict.setdefault(dish_pos, {
                                         "类型": 0x147267,
                                         "位置": dish_pos,
-                                        "灶台为空": True
+                                        "下次不收菜": True
                                     })
                                 # 更新数据并重新选中之前的菜
                                 window.ctDishBox.blockSignals(True)
@@ -2586,18 +2590,26 @@ def process_recv_packet(socket_num, buf, length):
 
 
 if __name__ == "__main__":
+    # 设置 DPI 感知级别
+    windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))
+    # 设置日志
+    logger.add(mole_log, format="[{time:YYYY-MM-DD HH:mm:ss}] {message}", encoding="utf-8", enqueue=True)
+    # 加载 hook.dll、设置回调、加载 Flash
     hook = ffi.dlopen("hook.dll")
     hook.SetSendCallBack(process_send_packet)
     hook.SetRecvCallBack(process_recv_packet)
     hook.LoadFlash()
-    windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))  # 设置DPI感知级别
+    # 设置 Qt
     app = QApplication([])
-    app.setStyle("Fusion")  # 样式
+    app.setStyle("Fusion")
     trans = QTranslator()
     trans.load(path("zh_CN.qm"))
     app.installTranslator(trans)
+    # 加载主窗口
     window = MainWindow()
     is_window_init = True
     window.show()
+    # 检查更新
     window.check_update()
+    # 进入事件循环
     app.exec()

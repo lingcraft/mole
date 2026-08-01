@@ -1,14 +1,15 @@
 [project]
 name = "mole"
-version = "1.11.6"
+version = "1.11.7"
 description = """
-- 新增：增加6项元素骑士相关的每日奖励
-- 新增：增加process_data()方法，用于处理send_lines()中批量发送的数据，目前增加了407提交游戏分数包的处理，对包体的第3个4字节的游戏校验字段进行处理
+- 修复：修复0点之前启动做菜任务，若0-6点间进过餐厅，则6点餐厅开启后的第1次做菜一直卡在做菜中的问题
+- 新增：增加mole.log日志文件，记录日志
 """
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "cffi~=2.1.0",
+    "loguru~=0.7.3",
     "nuitka~=4.1.3",
     "packaging~=26.2",
     "py3amf~=0.9.1",
