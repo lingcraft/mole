@@ -2111,12 +2111,15 @@ def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_n
 
 
 def is_running(name: str):
-    timer = window.timer_pool[name]
-    if isinstance(timer, dict):
-        return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
-    elif isinstance(timer, tuple):
-        return any(isinstance(item, QTimer) and item.isActive() for item in timer)
-    return isinstance(timer, QTimer) and timer.isActive()
+    if name in window.timer_pool:
+        timer = window.timer_pool[name]
+        if isinstance(timer, dict):
+            return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
+        elif isinstance(timer, tuple):
+            return any(isinstance(item, QTimer) and item.isActive() for item in timer)
+        return isinstance(timer, QTimer) and timer.isActive()
+    else:
+        return False
 
 
 def is_harvest_running():
