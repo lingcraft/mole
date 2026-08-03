@@ -183,7 +183,7 @@ class Ui_MainWindow(object):
         self.ctSellButton = QPushButton(self.groupBox5)
         self.ctSellButton.setObjectName(u"ctSellButton")
         self.ctSellButton.setEnabled(False)
-        self.ctSellButton.setGeometry(QRect(212, 24, 80, 31))
+        self.ctSellButton.setGeometry(QRect(211, 24, 80, 31))
         self.ctDishBox = QComboBox(self.groupBox5)
         self.ctDishBox.setObjectName(u"ctDishBox")
         self.ctDishBox.setEnabled(False)
