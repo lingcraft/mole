@@ -240,9 +240,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>109</x>
+         <x>108</x>
          <y>24</y>
-         <width>86</width>
+         <width>85</width>
          <height>31</height>
         </rect>
        </property>
@@ -292,7 +292,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>204</x>
+         <x>201</x>
          <y>27</y>
          <width>110</width>
          <height>25</height>
@@ -308,9 +308,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>322</x>
+         <x>319</x>
          <y>24</y>
-         <width>80</width>
+         <width>85</width>
          <height>31</height>
         </rect>
        </property>
@@ -324,7 +324,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>410</x>
+         <x>412</x>
          <y>24</y>
          <width>80</width>
          <height>31</height>
@@ -355,7 +355,7 @@
         <rect>
          <x>404</x>
          <y>24</y>
-         <width>89</width>
+         <width>90</width>
          <height>31</height>
         </rect>
        </property>
@@ -369,9 +369,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>107</x>
+         <x>106</x>
          <y>24</y>
-         <width>89</width>
+         <width>90</width>
          <height>31</height>
         </rect>
        </property>
@@ -385,9 +385,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>203</x>
+         <x>202</x>
          <y>27</y>
-         <width>98</width>
+         <width>100</width>
          <height>25</height>
         </rect>
        </property>
@@ -566,7 +566,7 @@
         <rect>
          <x>308</x>
          <y>24</y>
-         <width>89</width>
+         <width>90</width>
          <height>31</height>
         </rect>
        </property>
@@ -629,7 +629,7 @@
        <rect>
         <x>-2</x>
         <y>63</y>
-        <width>302</width>
+        <width>301</width>
         <height>61</height>
        </rect>
       </property>
@@ -642,7 +642,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>120</x>
+         <x>212</x>
          <y>24</y>
          <width>80</width>
          <height>31</height>
@@ -658,7 +658,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>11</x>
+         <x>10</x>
          <y>27</y>
          <width>100</width>
          <height>25</height>
@@ -674,9 +674,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>210</x>
+         <x>118</x>
          <y>24</y>
-         <width>80</width>
+         <width>85</width>
          <height>31</height>
         </rect>
        </property>
@@ -685,41 +685,12 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox7">
-      <property name="geometry">
-       <rect>
-        <x>398</x>
-        <y>63</y>
-        <width>101</width>
-        <height>61</height>
-       </rect>
-      </property>
-      <property name="title">
-       <string> 缤纷七彩宝盒</string>
-      </property>
-      <widget class="QPushButton" name="bhOpenButton">
-       <property name="enabled">
-        <bool>false</bool>
-       </property>
-       <property name="geometry">
-        <rect>
-         <x>11</x>
-         <y>24</y>
-         <width>80</width>
-         <height>31</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>一键开启</string>
-       </property>
-      </widget>
-     </widget>
      <widget class="QGroupBox" name="groupBox3">
       <property name="geometry">
        <rect>
         <x>-2</x>
         <y>1</y>
-        <width>404</width>
+        <width>401</width>
         <height>61</height>
        </rect>
       </property>
@@ -732,9 +703,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>11</x>
+         <x>10</x>
          <y>24</y>
-         <width>85</width>
+         <width>80</width>
          <height>31</height>
         </rect>
        </property>
@@ -748,9 +719,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>310</x>
+         <x>312</x>
          <y>24</y>
-         <width>85</width>
+         <width>80</width>
          <height>31</height>
         </rect>
        </property>
@@ -764,9 +735,9 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>104</x>
+         <x>97</x>
          <y>27</y>
-         <width>110</width>
+         <width>120</width>
          <height>25</height>
         </rect>
        </property>
@@ -780,7 +751,7 @@
        </property>
        <property name="geometry">
         <rect>
-         <x>222</x>
+         <x>224</x>
          <y>24</y>
          <width>80</width>
          <height>31</height>
@@ -798,7 +769,7 @@
      <widget class="QGroupBox" name="groupBox4">
       <property name="geometry">
        <rect>
-        <x>400</x>
+        <x>397</x>
         <y>1</y>
         <width>102</width>
         <height>61</height>
@@ -827,7 +798,7 @@
      <widget class="QGroupBox" name="groupBox6">
       <property name="geometry">
        <rect>
-        <x>298</x>
+        <x>297</x>
         <y>63</y>
         <width>102</width>
         <height>61</height>
@@ -853,12 +824,41 @@
        </property>
       </widget>
      </widget>
+     <widget class="QGroupBox" name="groupBox9">
+      <property name="geometry">
+       <rect>
+        <x>397</x>
+        <y>63</y>
+        <width>102</width>
+        <height>61</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string> 缤纷七彩宝盒</string>
+      </property>
+      <widget class="QPushButton" name="bhOpenButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>11</x>
+         <y>24</y>
+         <width>80</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>一键开启</string>
+       </property>
+      </widget>
+     </widget>
     </widget>
     <widget class="QWidget" name="tab3">
      <attribute name="title">
       <string>点点豆/摩尔豆</string>
      </attribute>
-     <widget class="QGroupBox" name="groupBox8">
+     <widget class="QGroupBox" name="groupBox7">
       <property name="geometry">
        <rect>
         <x>-2</x>
@@ -883,11 +883,11 @@
         </rect>
        </property>
        <property name="text">
-        <string>一键刷取</string>
+        <string>一键获取</string>
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox9">
+     <widget class="QGroupBox" name="groupBox8">
       <property name="geometry">
        <rect>
         <x>98</x>
@@ -912,7 +912,7 @@
         </rect>
        </property>
        <property name="text">
-        <string>一键刷取</string>
+        <string>一键获取</string>
        </property>
       </widget>
      </widget>
