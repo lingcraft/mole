@@ -307,7 +307,7 @@ def sock_serve(conn):
         while cmd_queue:
             cmd = cmd_queue.pop(0)
             try:
-                conn.sendall((cmd + "\n").encode("utf-8"))
+                conn.sendall((cmd + "\x01").encode("utf-8"))
             except Exception:
                 release_active(conn)
                 conn.close()
@@ -324,9 +324,8 @@ def sock_serve(conn):
         # 跨 recv 累积缓冲，只处理以 \n 结尾的完整行：
         # 大 JSON 响应会被 TCP 分段，若逐次 split 会把半截 JSON 当完整行解析失败。
         sock_buf += data.decode("utf-8", "ignore")
-        while "\n" in sock_buf:
-            line, sock_buf = sock_buf.split("\n", 1)
-            line = line.rstrip("\r")
+        while "\x01" in sock_buf:
+            line, sock_buf = sock_buf.split("\x01", 1)
             if not line:
                 continue
             # SWF 回传统一带 "R <==" 前缀，去掉后再解析

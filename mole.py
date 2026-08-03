@@ -57,7 +57,7 @@ lamu_last_type_index, lamu_max_type_index = 0, 0  # 拿取的物品类型索引
 lamu_last_item_index, lamu_max_item_index = 0, 0  # 拿取的物品索引
 lamu_limit_item_dict, limit_data = {}, {}  # 已经拿到上限的物品
 is_max_skill_success, is_last_skill_success = True, True  # 最大技能拿取物品是否成功、次大技能拿取物品是否成功
-lamu_pick_result_dict = {}  # 拉姆拿取物品结果
+lamu_pick_result = []  # 拉姆采集物品结果
 super_lamu_value, super_lamu_level = 0, 0  # 超拉成长值、等级
 # 摩摩怪
 mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_game_id = 0, 0, 0, 0, ""  # 能量、活力、等级、摩摩挑战卡、游戏ID
@@ -681,7 +681,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def reward_maybe_finish(self):
         # 完成判定基于“显示值”而非实际发包数：显示值节流后可能滞后于实际，
-        # 追上总项数，追上才收尾，避免定时器被过早停掉导致标题只闪一下。
+        # 追上总个数，追上才收尾，避免定时器被过早停掉导致标题只闪一下。
         if self.reward_done_disp >= self.reward_total and self.rewardGetButton.text() == "停止":
             # 保留一个刷新间隔，下一拍才真正收尾。
             if self.reward_finish_pending:
@@ -791,18 +791,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return
         self.rewardGetButton.setText("开始领取")
         self.stop_update_title("每日奖励")
-        # 停止时弹窗提示已领取项数（按实际已完成的项数统计）
+        # 停止时弹窗提示已领取个数（按实际已完成的个数统计）
         sent = self.reward_packet_sent
         cum = self.reward_cum
         done = sum(1 for c in cum if sent >= c)
         if done > 0:
-            alert_msg(f"今日奖励已领取{done}项")
+            alert_msg(f"已领取{done}个今日奖励")
 
     def reward_progress(self, index: int):
         self.reward_packet_sent = index + 1
 
     def reward_progress_getter(self) -> str:
-        # 当前正在领取的勾选项名 + 已发送完的项数 / 总项数
+        # 当前正在领取的勾选项名 + 已发送完的个数 / 总个数
         total = self.reward_total
         if total == 0:
             return "0/0"
@@ -882,20 +882,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_name = items[item_index][0]
         if is_skill_success:
-            if item_name in lamu_pick_result_dict:
-                lamu_pick_result_dict[item_name] += 1
-            else:
-                lamu_pick_result_dict[item_name] = 1
+            lamu_pick_result.append(item_name)
 
     def lamu_show_result(self):
-        if len(lamu_pick_result_dict) > 0:
-            text = ""
-            for key, value in lamu_pick_result_dict.items():
-                text += f"{key}：{value}，"
-            text = text[:-1]
-            info(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
+        if len(lamu_pick_result) > 0:
+            pick_count = Counter(lamu_pick_result)
+            text = "，".join(f"{item_name}：{item_count}" for item_name, item_count in pick_count.items())
+            info(self, "一键获取拉姆变身值完毕", f"拉姆（{lamu_name}）成功采集以下物品：\n{text}")
         else:
-            info(self, "一键获取拉姆变身值结束", f"拉姆（{lamu_name}）今天可采集物品已达上限")
+            info(self, "一键获取拉姆变身值完毕", f"拉姆（{lamu_name}）今天可采集物品已达上限")
 
     def lamu_start(self):
         global lamu_times, is_max_skill_success, is_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
@@ -912,7 +907,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         lamu_max_item_level, lamu_last_item_level = lamu_max_skill_level, lamu_last_skill_level
         lamu_max_type_index, lamu_last_type_index = 0, 0
         lamu_max_item_index, lamu_last_item_index = 0, 0
-        lamu_pick_result_dict.clear()
+        lamu_pick_result.clear()
         now = datetime.now()
         refresh_time = datetime(now.year, now.month, now.day, 3)
         limit_data = lamu_limit_item_dict.setdefault(
@@ -1569,8 +1564,8 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
         if can_advance:
             consume_count = Counter(consume_cards)
             consume_text = "\n".join(
-                f"{card_name} 共计 {consume_count[card_name]} 张"
-                for card_name in consume_count
+                f"{card_name} 共计 {card_count} 张"
+                for card_name, card_count in consume_count.items()
             )
             if info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 将消耗：\n{consume_text}", Button.OK_CANCEL) == Button.OK:
                 self.accept()
@@ -1584,8 +1579,8 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
             need_count = Counter(need_card_types)
             owned_count = {card_type: len(ysqs_max_level_cards_dict.get(card_type, deque())) for card_type in need_count}
             need_text = "\n".join(
-                f"{get_card_info(card_type)["名称"]} Lv.{get_card_max_level(get_card_info(card_type)["星级"])} 需要 {need_count[card_type]} 张，拥有 {owned_count[card_type]} 张"
-                for card_type in need_count
+                f"{get_card_info(card_type)["名称"]} Lv.{get_card_max_level(get_card_info(card_type)["星级"])} 需要 {card_count} 张，拥有 {owned_count[card_type]} 张"
+                for card_type, card_count in need_count.items()
             )
             info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 材料不足：\n{need_text}")
 
@@ -2532,7 +2527,7 @@ def process_recv_packet(socket_num, buf, length):
                                 elif item_id == 0 and not is_show_msg:
                                     is_show_msg = True
                                     window.stop_task("缤纷七彩宝盒")
-                                    alert_msg("宝盒已开完，暂未获得火龙珠")
+                                    alert_msg("已开完宝盒，暂未获得火龙珠")
                             case 8402:  # 卡罗拉幸运儿游戏开始
                                 window.kll_finish(packet.body.hex())
                             case 8403:  # 卡罗拉幸运儿游戏结果
@@ -2542,7 +2537,7 @@ def process_recv_packet(socket_num, buf, length):
                                     alert_reward((item_id, item_num))
                                 else:
                                     window.stop_task("卡罗拉幸运儿")
-                                    alert_msg("今日卡罗拉幸运儿游戏已完成")
+                                    alert_msg("已完成今日卡罗拉幸运儿游戏")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                     else:  # 错误包
                         match packet.cmd_id:
