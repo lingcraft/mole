@@ -1,12 +1,10 @@
 [project]
 name = "mole"
-version = "1.11.7"
+version = "1.11.8"
 description = """
-- 修复：修复0点之前启动做菜任务，若0-6点间进过餐厅，则6点餐厅开启后的第1次做菜一直卡在做菜中的问题
-- 新增：增加mole.log日志文件，记录日志
-- 新增：做菜子进程client.py中增加10001被挤下线包的判断，若收到被挤下线包，则重新登录
-- 优化：现在只有在做菜任务停止时，收到餐厅信息包，才会更新餐厅信息，防止做菜任务启动时，做菜信息被修改导致做菜任务部分情况下异常的问题
-- 修复：is_running()判断定时器是否在运行的方法修复若指定名的定时器未创建过时判断有误的问题
+- 新增：BridgeDLL.swf 增加 switchMapLogic 切换地图类的反射
+- 优化：进入餐厅改为调用游戏内 switchMapLogic 的 switchMapLogicHandler 方法，避免通过发包方式多次进入后会卡顿的问题
+- 优化：enter_map() 方法增加 map_type 参数，更加灵活调用，同时增加 switch_map() 方法，调用游戏内 switchMapLogicHandler 方法
 """
 readme = "README.md"
 requires-python = ">=3.12"

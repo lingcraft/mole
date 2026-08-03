@@ -979,7 +979,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             global mmg_type, mmg_times
             mmg_type, mmg_times = fight_type, 0
-            enter_map(228)
+            enter_map(0xE4)
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000",  # 获取地图信息
                 f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取能量、活力、等级
@@ -1399,11 +1399,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.ctDishBox.currentText(),
                 self.ct_harvest_state,
             )
-            send_lines([
-                f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
-                f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
-            ])
-            run_later_expect(self.ct_harvest_run, {0x03F6: 1})
+            switch_map(user_id, 0x1F)
+            run_later_expect(self.ct_harvest_run, {0x3F6: 1})  # 获取餐厅信息
         else:  # 停止
             self.ctHarvestButton.setText(self.harvest_button_text)
             self.ctDishBox.setEnabled(True)
@@ -1414,10 +1411,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.client = None
             if self.user_id != user_id:
                 self.user_id = user_id
-                send_lines([
-                    f"0000000000000001910000000000000000{get_hex(user_id)}0000001F00000000000000000000000000000000",  # 获取地图信息
-                    f"0000000000000003F60000000000000000{get_hex(user_id)}0000001F"  # 获取餐厅信息
-                ])
+            switch_map(user_id, 0x1F)
 
     def ct_harvest_run(self):
         global ct_state
@@ -1838,8 +1832,12 @@ def alert_reward(data: tuple | int):
         push_cmd(f"alertReward|{data},1")
 
 
-def enter_map(map_id: int):
-    push_cmd(f"enterMap|{map_id}")
+def enter_map(map_id: int, map_type: int = 0):
+    push_cmd(f"enterMap|{map_id},{map_type}")  # 进地图，已在地图时不会重新进，不会提示已在地图
+
+
+def switch_map(map_id: int, map_type: int = 0):
+    push_cmd(f"switchMap|{map_id},{map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
 
 
 def get_item_info(item_id: int, func=None):
