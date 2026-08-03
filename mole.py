@@ -1409,8 +1409,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.client is not None and self.client.is_alive():
                 self.client.close()
                 self.client = None
-            if self.user_id != user_id:
-                self.user_id = user_id
             switch_map(user_id, 0x1F)
 
     def ct_harvest_run(self):
