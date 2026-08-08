@@ -33,12 +33,12 @@ from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_respo
 from ctypes import windll, c_void_p
 from re import sub
 from loguru import logger
-
+from ppl import Bot
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-login_socket_num, login_ip, login_port = 0, 0, 0  # 登录后的socket、IP、Port
-user_id, serial_num, packet_index = 0, 0, 0  # 米米号、发送包序列号、封包序号索引
+login_socket_num, game_socket_num, login_ip, login_port = 0, 0, 0, 0  # 摩尔主服务器、游戏服务器、IP、Port
+user_id, map_id, serial_num, packet_index = 0, 0, 0, 0  # 米米号、地图号、发送包序列号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 buf_index = 0  # 数据索引
 is_show_send, is_show_recv = True, True  # 显示send包、recv包
@@ -252,6 +252,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.advance_dialog = AdvanceDialog()
         self.show_signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
+        self.ppl_thread = PPLThread()
         # 单次运行功能
         self.sendButton.clicked.connect(self.send)
         self.sendClearButton.clicked.connect(self.send_clear)
@@ -265,6 +266,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.mlcsFightButton.clicked.connect(self.mlcs_start)
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
         self.mlcsUpgradeButton.clicked.connect(self.mlcs_upgrade_start)
+        self.pplPlayButton.clicked.connect(self.ppl_start)
         # 多次运行功能
         self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, Interval.FAST, self.sendLoopButton))
         self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, Interval.IDLE, self.lamuGrowButton, self.lamu_start))
@@ -290,6 +292,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.title_timer_pool: dict[str, RunTimer] = {}
         self.title_part_pool = {}
 
+    # ================================================== 界面功能方法 ==================================================
     def closeEvent(self, event):
         if not self.config.has_section("Settings"):
             self.config.add_section("Settings")
@@ -303,7 +306,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             hook_log.unlink()
         if mole_log.exists():
             logger.remove()
-            mole_log.unlink()
+            try:
+                mole_log.unlink()
+            except:
+                pass
         self.stop_send()
         super(MainWindow, self).closeEvent(event)
 
@@ -374,6 +380,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def refresh(self):
         self.check_menu()
+        self.ppl_thread.stop()
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.set_scale_mode()
@@ -476,6 +483,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.rewardInvertButton.setEnabled(enable)
         self.rewardGetButton.setEnabled(enable)
 
+    def enable_ppl_button(self, enable):
+        self.pplPlayButton.setEnabled(enable)
+
     def enable_all_buttons(self, enable):
         self.enable_lamu_button(enable)
         self.enable_mmg_button(enable)
@@ -486,6 +496,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_bh_button(enable)
         self.enable_kll_button(enable)
         self.enable_mrjl_button(enable)
+        self.enable_ppl_button(enable)
         if not enable:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
             self.stop_timer("拉姆")
@@ -831,8 +842,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         current_name = names[current_idx] if current_idx < len(names) else ""
         return f"{done}/{total}：{current_name}"
 
-    # =======================================上面是界面功能，下面是游戏功能============================================
-
+    # ================================================== 游戏功能方法 ==================================================
     def lamu_get_info(self):
         send_lines([
             f"0000000000000000D40000000000000000{get_hex(user_id)}{get_hex(lamu_id)}00",  # 获取拉姆信息
@@ -1502,6 +1512,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000020D30000000000000000{body}"
         ])
 
+    def ppl_start(self):
+        if not is_ppl_running():  # 启动
+            self.ppl_button_text = self.pplPlayButton.text()
+            self.ppl_thread.start()
+        else:  # 停止
+            self.ppl_thread.stop()
+
 
 class AdvanceDialog(QDialog, Ui_AdvanceDialog):
     def __init__(self):
@@ -1583,6 +1600,93 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
                 for card_type, card_count in need_count.items()
             )
             info(self, "提示", f"{self.card_name} 进阶到 {self.target_card_name} 材料不足：\n{need_text}")
+
+
+class PPLThread(QThread):
+    def __init__(self):
+        super().__init__()
+        self.bot = None
+        self.is_user_wanted = False  # 下一关复活判断用
+        self.game_socket = None  # 复用的游戏 socket 副本（fromfd dup），断连/stop 置 None 时重建
+
+    def init(self):
+        if self.bot is None:
+            self.bot = Bot(self.send, user_id)
+            self.bot.listen()
+            self.bot.on_end_callback = self.stop
+            self.bot.on_level_start_callback = self.resume
+
+    def send(self, data: bytes):
+        if game_socket_num == 0:
+            return
+        if self.game_socket is None:
+            try:
+                self.game_socket = fromfd(game_socket_num, AF_INET, SOCK_STREAM)
+                self.game_socket.settimeout(1.0)
+            except Exception as e:
+                logger.error(f"[泡泡龙] 创建 socket 失败(已跳过): {e}")
+                return
+        try:
+            self.game_socket.send(data)
+        except (ConnectionResetError, BrokenPipeError, ConnectionAbortedError, OSError) as e:
+            # 连接已断开：丢弃副本，下次 send 自动重建
+            logger.error(f"[泡泡龙] 发包失败，重置 socket: {e}")
+            try:
+                self.game_socket.close()
+            except Exception:
+                pass
+            self.game_socket = None
+        except TimeoutError as e:
+            # 仅 1s 内未发完，连接仍有效，保留副本供复用
+            logger.error(f"[泡泡龙] 发包超时(已跳过，不阻塞UI): {e}")
+        except Exception as e:
+            logger.error(f"[泡泡龙] 发包失败(已跳过，不阻塞UI): {e}")
+
+    def run(self):
+        while not self.isInterruptionRequested():
+            if self.bot is None or not self.is_user_wanted:
+                sleep(0.05)  # 未就绪/暂停时空转，避免忙等
+                continue
+            logger.info(f"[泡泡龙] maybe_shoot 进入（seq≈{getattr(self.bot, "seq", 0)}）")
+            try:
+                self.bot.maybe_shoot()
+            except:
+                logger.error("[泡泡龙] maybe_shoot 抛出异常已被隔离，本拍跳过")
+            finally:
+                logger.info(f"[泡泡龙] maybe_shoot 退出")
+            sleep(0.5)
+
+    def start(self):
+        if game_socket_num == 0:
+            logger.info("[泡泡龙] 尚未识别游戏服务器 socket（请先手动进入泡泡龙并开始游戏）")
+            return
+        self.is_user_wanted = True  # ★ 用户意图：想要自动打（用于 31114 软过渡后下一关复活判断）
+        self.bot.start()
+        window.pplPlayButton.setText("停止")
+        if not self.isRunning():
+            super().start()  # 启动 QThread 的 run 循环
+
+    def stop(self):
+        if is_ppl_running():
+            self.is_user_wanted = False  # ★ 用户主动停止：下一关 797E 不再自动复活
+            window.pplPlayButton.setText(window.ppl_button_text)
+            if self.bot is not None:
+                self.bot.running = False
+            if self.game_socket is not None:
+                try:
+                    self.game_socket.close()
+                except Exception:
+                    pass
+                self.game_socket = None
+            logger.info("[泡泡龙] 自动通关已停止")
+
+    def resume(self):
+        if not self.is_user_wanted or self.bot is None:
+            return
+        if not self.isRunning():
+            super().start()  # 线程已退出则重新拉起
+        self.bot.running = True
+        logger.info("[泡泡龙] 下一关开始：自动复活发射循环")
 
 
 class SendThread(QThread):
@@ -1798,6 +1902,65 @@ class Packet:
         return self
 
 
+# ================================================== 游戏功能方法 ==================================================
+def get_lamu_level(value: int):
+    return bisect_right(lamu_thresholds, value) + 1
+
+
+def get_max_skill_level(level: int):
+    return (level + 1) // 2
+
+
+def get_last_skill_level(level: int):
+    if level < 3:
+        return 1
+    else:
+        return get_max_skill_level(level) - 1
+
+
+def get_skill_id(skill_level: int, skill_type):
+    match skill_type:
+        case "火":
+            return 3 * skill_level - 2
+        case "水":
+            return 3 * skill_level - 1
+        case "木":
+            return 3 * skill_level
+        case _:
+            return 1
+
+
+def get_card_max_exp(star):
+    # n星卡牌经验上限
+    star = min(star, 6)
+    return 120 * star ** 2 + 28 * star - 4
+
+
+def get_card_max_level(star):
+    # n星卡牌等级上限
+    star = min(star, 6)
+    return 10 * star
+
+
+def get_card_provided_exp(star):
+    # n星1级卡牌提供的经验值
+    star = min(star, 6)
+    return 5 * star - 2
+
+
+def get_card_level(star, exp):
+    # n星卡牌根据总经验计算等级
+    star = min(star, 6)
+    base = 2 * star + 5
+    return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
+
+
+def get_sprite_max_exp(star, max_level):
+    # n星魔灵经验上限
+    return mlcs_factors[star - 1] * pow((max_level - 1) / 98, 2.5)
+
+
+# ================================================== 常规功能方法 ==================================================
 def path(file: str):
     return str(base_dir / file)
 
@@ -1895,63 +2058,6 @@ def check_waiting_packets(packet):
                 pending_waits.pop(index)
 
 
-def get_lamu_level(value: int):
-    return bisect_right(lamu_thresholds, value) + 1
-
-
-def get_max_skill_level(level: int):
-    return (level + 1) // 2
-
-
-def get_last_skill_level(level: int):
-    if level < 3:
-        return 1
-    else:
-        return get_max_skill_level(level) - 1
-
-
-def get_skill_id(skill_level: int, skill_type):
-    match skill_type:
-        case "火":
-            return 3 * skill_level - 2
-        case "水":
-            return 3 * skill_level - 1
-        case "木":
-            return 3 * skill_level
-        case _:
-            return 1
-
-
-def get_card_max_exp(star):
-    # n星卡牌经验上限
-    star = min(star, 6)
-    return 120 * star ** 2 + 28 * star - 4
-
-
-def get_card_max_level(star):
-    # n星卡牌等级上限
-    star = min(star, 6)
-    return 10 * star
-
-
-def get_card_provided_exp(star):
-    # n星1级卡牌提供的经验值
-    star = min(star, 6)
-    return 5 * star - 2
-
-
-def get_card_level(star, exp):
-    # n星卡牌根据总经验计算等级
-    star = min(star, 6)
-    base = 2 * star + 5
-    return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
-
-
-def get_sprite_max_exp(star, max_level):
-    # n星魔灵经验上限
-    return mlcs_factors[star - 1] * pow((max_level - 1) / 98, 2.5)
-
-
 def clamp(value, lower, upper):
     return min(max(int(value), lower), upper)
 
@@ -2001,10 +2107,9 @@ def get_password(pwd: str):
 
 
 def process_data(packet: Packet):
-    match packet.cmd_id:
-        case 407:  # 提交游戏分数
-            score = get_int(packet.body, 4)
-            set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
+    if packet.cmd_id == 407:  # 提交游戏分数
+        score = get_int(packet.body, 4)
+        set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
 
 
 def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable | None = None):
@@ -2121,6 +2226,10 @@ def is_harvest_running():
     return window.ctHarvestButton.text() == "停止"
 
 
+def is_ppl_running():
+    return window.pplPlayButton.text() == "停止"
+
+
 def get_ip_port(socket_num: int):
     try:
         with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
@@ -2152,7 +2261,7 @@ def send(socket_num, buf, length):
 
 @ffi.callback("int(ULONG64, PCHAR, INT)")
 def process_send_packet(socket_num, buf, length):
-    global login_socket_num, login_ip, login_port, user_id, can_get_lamu_info
+    global login_socket_num, game_socket_num, login_ip, login_port, user_id, can_get_lamu_info
     raw_buf = ffi.buffer(buf, length)
     # 摩尔主服务器包
     if get_remote_info(socket_num) > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
@@ -2163,6 +2272,9 @@ def process_send_packet(socket_num, buf, length):
             user_id = packet.user_id
             can_get_lamu_info = True
             window.enable_all_buttons(True)
+        elif packet.cmd_id == 30001 and map_id == 21:  # 进入泡泡龙游戏包
+            game_socket_num = socket_num
+            window.ppl_thread.init()
         if socket_num == login_socket_num:
             packet.decrypt()
             if is_show_send:
@@ -2183,7 +2295,7 @@ def process_recv_packet(socket_num, buf, length):
         is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
         mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, \
-        can_fight_wjsy, can_fight_ssmy, is_equip_card
+        can_fight_wjsy, can_fight_ssmy, is_equip_card, map_id
     if get_remote_info(socket_num) == 0:
         return
     raw_buf = ffi.buffer(buf, length)
@@ -2538,6 +2650,8 @@ def process_recv_packet(socket_num, buf, length):
                                 else:
                                     window.stop_task("卡罗拉幸运儿")
                                     alert_msg("已完成今日卡罗拉幸运儿游戏")
+                            case 406:  # 进入地图
+                                map_id = get_int(packet.body)
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                     else:  # 错误包
                         match packet.cmd_id:
@@ -2564,8 +2678,11 @@ def process_recv_packet(socket_num, buf, length):
                     if len(recv_buf) >= packet_len:
                         # 不是断包
                         cipher = recv_buf[:packet_len]
+                        packet = Packet(cipher)
+                        if socket_num == game_socket_num and map_id == 21:
+                            window.ppl_thread.bot.feed(packet.cmd_id, packet.body)
                         if is_show_recv:
-                            show_data(Show.RECV, socket_num, Packet(cipher))  # 界面显示recv数据
+                            show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break

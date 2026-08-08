@@ -1,13 +1,8 @@
 [project]
 name = "mole"
-version = "1.11.10"
+version = "1.12.0"
 description = """
-- 新增：BridgeDLL.swf 增加 switchMapLogic 切换地图类的反射
-- 优化：进入餐厅改为调用游戏内 switchMapLogic 的 switchMapLogicHandler 方法，避免通过发包方式多次进入后会卡顿的问题
-- 优化：enter_map() 方法增加 map_type 参数，更加灵活调用，同时增加 switch_map() 方法，调用游戏内 switchMapLogicHandler 方法
-- 优化：待升级魔灵下拉框增加宽度，显示信息更全
-- 优化：拉姆变身值采集的物品统计功能优化
-- 优化：命令桥格式优化，取消以\\n来分割每条命令，改为使用\\u0001，从而解决命令内容中有\\n换行符时会被吞的问题
+- 新增：新增泡泡龙游戏一键通关功能，在进入游戏后开启功能，Bot 会自动计算并通关当前关卡，进入下一关需用户手动点击
 """
 readme = "README.md"
 requires-python = ">=3.12"

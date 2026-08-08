@@ -8,6 +8,7 @@ from pathlib import Path
 from ctypes import wintypes, WinDLL
 from urllib.parse import urlparse, parse_qs
 from json import loads
+from loguru import logger
 
 # 根目录下的 *.swf 注入 ext.xml 并就地提供。
 # 注意：只放自定义 mod，勿放游戏官方 SWF（如 Client.swf），否则会覆盖上游。
@@ -121,9 +122,8 @@ class InjectHandler(BaseHTTPRequestHandler):
         # BridgeDLL 诊断回传：把 SWF 内部状态打印到控制台，便于排查连桥问题
         if url.split("?", 1)[0] == "/log":
             try:
-
                 q = parse_qs(urlparse(self.path).query)
-                print(f"[bridgedll] {q.get('m', [''])[0]}")
+                logger.info(f"[bridgedll] {q.get('m', [''])[0]}")
             except Exception:
                 pass
             self.serve_local(b"ok", "text/plain; charset=utf-8")
@@ -202,9 +202,9 @@ class InjectHandler(BaseHTTPRequestHandler):
                 for p in mods
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
-            print(f"[ext.xml] 注入 {len(mods)} 个 mod: {[p.name for p in mods]}")
+            logger.info(f"[ext.xml] 注入 {len(mods)} 个 mod: {[p.name for p in mods]}")
         else:
-            print(f"[ext.xml] 未注入 mod（mods={len(mods)}, has</ext>={'</ext>' in text}）")
+            logger.info(f"[ext.xml] 未注入 mod（mods={len(mods)}, has</ext>={'</ext>' in text}）")
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
 
@@ -221,7 +221,7 @@ def start_bridge():
     global injecter_port
     http_srv = ThreadingHTTPServer(("127.0.0.1", 0), InjectHandler)
     injecter_port = http_srv.server_address[1]
-    print(f"[bridge] 注入服务监听端口: {injecter_port}")
+    logger.info(f"[bridge] 注入服务监听端口: {injecter_port}")
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge()
@@ -248,7 +248,7 @@ def set_active(conn):
     if old is not None and old is not conn:
         try:
             old.close()
-            print("[bridge] 新连接已取代旧连接，旧连接已关闭")
+            logger.info("[bridge] 新连接已取代旧连接，旧连接已关闭")
         except Exception:
             pass
 
@@ -360,7 +360,7 @@ def start_socket_bridge():
     srv.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
     bridge_port = srv.getsockname()[1]
-    print(f"[bridge] 命令桥监听端口: {bridge_port}")
+    logger.info(f"[bridge] 命令桥监听端口: {bridge_port}")
     srv.listen(8)
 
     def loop():

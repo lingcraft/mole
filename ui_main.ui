@@ -824,7 +824,7 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox9">
+     <widget class="QGroupBox" name="groupBox7">
       <property name="geometry">
        <rect>
         <x>397</x>
@@ -856,9 +856,9 @@
     </widget>
     <widget class="QWidget" name="tab3">
      <attribute name="title">
-      <string>点点豆/摩尔豆</string>
+      <string>点点豆/摩尔豆/泡泡龙</string>
      </attribute>
-     <widget class="QGroupBox" name="groupBox7">
+     <widget class="QGroupBox" name="groupBox8">
       <property name="geometry">
        <rect>
         <x>-2</x>
@@ -887,7 +887,7 @@
        </property>
       </widget>
      </widget>
-     <widget class="QGroupBox" name="groupBox8">
+     <widget class="QGroupBox" name="groupBox9">
       <property name="geometry">
        <rect>
         <x>98</x>
@@ -913,6 +913,35 @@
        </property>
        <property name="text">
         <string>一键获取</string>
+       </property>
+      </widget>
+     </widget>
+     <widget class="QGroupBox" name="groupBox10">
+      <property name="geometry">
+       <rect>
+        <x>198</x>
+        <y>1</y>
+        <width>102</width>
+        <height>61</height>
+       </rect>
+      </property>
+      <property name="title">
+       <string> 泡泡龙</string>
+      </property>
+      <widget class="QPushButton" name="pplPlayButton">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="geometry">
+        <rect>
+         <x>11</x>
+         <y>24</y>
+         <width>80</width>
+         <height>31</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>一键通关</string>
        </property>
       </widget>
      </widget>
