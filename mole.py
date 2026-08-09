@@ -37,7 +37,7 @@ from ppl import Bot
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-login_socket_num, game_socket_num, login_ip, login_port = 0, 0, 0, 0  # 摩尔主服务器、游戏服务器、IP、Port
+login_socket_num, game_socket_num, login_ip, login_port = 0, 0, 0, 0  # 摩尔主服务器通信号、游戏服务器通信号、IP、Port
 user_id, map_id, serial_num, packet_index = 0, 0, 0, 0  # 米米号、地图号、发送包序列号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 buf_index = 0  # 数据索引
@@ -103,9 +103,9 @@ server_dict = {
 # 平行服节点
 node_dict = {
     "主节点": "mole.61player.com",
-    "备用节点": "mole-sub.61player.com",
     "亚洲节点": "mole-asia.61player.com",
-    "国内节点": "175.178.55.57"
+    "备用节点": "mole-sub.61player.com",
+    "特殊节点": "175.178.55.57"
 }
 # 版本文件地址
 version_url = "https://raw.githubusercontent.com/lingcraft/mole/master/pyproject.toml"
@@ -359,7 +359,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.server == "官服":
                 self.node = "主节点"
             elif last_server == "官服":
-                self.node = "国内节点"
+                self.node = "亚洲节点"
             self.refresh()
         else:
             self.sender().setChecked(True)
@@ -1988,12 +1988,12 @@ def alert_reward(data: tuple | int):
         push_cmd(f"alertReward|{data},1")
 
 
-def enter_map(map_id: int, map_type: int = 0):
-    push_cmd(f"enterMap|{map_id},{map_type}")  # 进地图，已在地图时不会重新进，不会提示已在地图
+def enter_map(_map_id: int, _map_type: int = 0):
+    push_cmd(f"enterMap|{_map_id},{_map_type}")  # 进地图，已在地图时不会重新进，不会提示已在地图
 
 
-def switch_map(map_id: int, map_type: int = 0):
-    push_cmd(f"switchMap|{map_id},{map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
+def switch_map(_map_id: int, _map_type: int = 0):
+    push_cmd(f"switchMap|{_map_id},{_map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
 
 
 def get_item_info(item_id: int, func=None):
@@ -2107,9 +2107,10 @@ def get_password(pwd: str):
 
 
 def process_data(packet: Packet):
-    if packet.cmd_id == 407:  # 提交游戏分数
-        score = get_int(packet.body, 4)
-        set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
+    match packet.cmd_id:
+        case 407:
+            score = get_int(packet.body, 4)
+            set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
 
 
 def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable | None = None):
@@ -2130,8 +2131,8 @@ def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable
         with lock:
             packet.encrypt()
         send(login_socket_num, packet.data(), packet.length)
-        packet.decrypt()
         if is_show_send:
+            packet.decrypt()
             show_data(Show.SEND, login_socket_num, packet)
         if progress is not None:
             progress(index)
@@ -2263,7 +2264,7 @@ def send(socket_num, buf, length):
 def process_send_packet(socket_num, buf, length):
     global login_socket_num, game_socket_num, login_ip, login_port, user_id, can_get_lamu_info
     raw_buf = ffi.buffer(buf, length)
-    # 摩尔主服务器包
+    # 摩尔包
     if get_remote_info(socket_num) > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
         packet = Packet(raw_buf)
         if packet.cmd_id == 201:  # 登录包
@@ -2272,18 +2273,20 @@ def process_send_packet(socket_num, buf, length):
             user_id = packet.user_id
             can_get_lamu_info = True
             window.enable_all_buttons(True)
-        elif packet.cmd_id == 30001 and map_id == 21:  # 进入泡泡龙游戏包
-            game_socket_num = socket_num
-            window.ppl_thread.init()
-        if socket_num == login_socket_num:
+        if socket_num == login_socket_num:  # 摩尔主服务器包
+            # 必须全部先解密再加密，因为只要手动发过包，后面的序列号就全都变了
             packet.decrypt()
             if is_show_send:
                 show_data(Show.SEND, socket_num, packet)  # 界面显示send数据
             with lock:
                 packet.encrypt()
-        else:
+        else:  # 其他服务器包
             if is_show_send:
                 show_data(Show.SEND, socket_num, packet)  # 界面显示send数据
+            match packet.cmd_id:
+                case 30001 if map_id == 21:  # 进入泡泡龙游戏包
+                    game_socket_num = socket_num
+                    window.ppl_thread.init()
         return send(socket_num, packet.data(), length)
     else:
         return send(socket_num, raw_buf, length)
@@ -2669,7 +2672,7 @@ def process_recv_packet(socket_num, buf, length):
                     break
             else:
                 break
-    # 其他包
+    # 其他服务器包
     else:
         while True:
             if recv_buf.startswith(b"\x00\x00"):
@@ -2679,10 +2682,10 @@ def process_recv_packet(socket_num, buf, length):
                         # 不是断包
                         cipher = recv_buf[:packet_len]
                         packet = Packet(cipher)
-                        if socket_num == game_socket_num and map_id == 21:
-                            window.ppl_thread.bot.feed(packet.cmd_id, packet.body)
                         if is_show_recv:
                             show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
+                        if socket_num == game_socket_num and map_id == 21:
+                            window.ppl_thread.bot.feed(packet.cmd_id, packet.body)
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
