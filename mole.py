@@ -2108,7 +2108,7 @@ def get_password(pwd: str):
 
 def process_data(packet: Packet):
     match packet.cmd_id:
-        case 407:
+        case 407:  # 小游戏提交分数
             score = get_int(packet.body, 4)
             set_int(packet.body, int(score ** 2 + datetime.now().day ** 2), 8)
 
