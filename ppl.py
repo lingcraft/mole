@@ -1301,7 +1301,7 @@ class Bot:
             region = cells_within_radius(x, y, BOMB_RADIUS)
             in_region = sum(1 for (rx, ry) in region if (rx, ry) in served_b)
             n_cands = len(proxy_b.candidate_landings())
-            logger.info(f"[发射] seq={self.seq} 球色=炸弹 落点=({x},{y}) 31106包={body.hex()}"
+            logger.info(f"[发射] 炸弹 落点：({x},{y}) seq：{self.seq}"
                   f" 半径内球={in_region} 候选落点数={n_cands} 落点is_supported={proxy_b.is_supported(x, y)}"
                   f" 落点空格={((x, y) not in served_b)}")
         else:
@@ -1340,7 +1340,7 @@ class Bot:
                     #   写回 cells 也未入 shot_landed → 棋盘错位、下一拍重选同格 → 31115。记下待确认
                     #   落点，等 on_7983 回包时若 n=0 则补录占位球（见 on_7983）。
                     self._pending_rf = (self.seq, x, y, self.current[1] if self.current else None)
-            logger.info(f"[发射] seq={self.seq} 落点=({x},{y}) 球色={COLOR_NAME.get(self.current[1] if self.current else None, str(self.current))}"
+            logger.info(f"[发射] {COLOR_NAME.get(self.current[1] if self.current else None, str(self.current))} 落点：({x},{y}) seq：{self.seq}"
                   + ("" if record else "（即时消除，不写回本地）"))
 
     def use_bomb_prop(self):
@@ -1450,7 +1450,7 @@ class Bot:
             #     wood_row-1（=顶排，球最多停到这一行，其上方一格即木板天花板）。
             max_y = max(y for _, y in cells)
             self.board.wood_row = max_y + 1
-            logger.info(f"[797E] 顶排 y={max_y}，木板在其上方 wood_row={self.board.wood_row}"
+            logger.info(f"[797E] 顶排 y={max_y}，木板 y={self.board.wood_row}"
                   f"（木板从屏幕最上方压下来，落点不得越过）")
         self.bomb_target_override = None  # 新关清空炸弹落点 override，避免跨关残留
         self.bomb_armed = False            # 新关重置炸弹激活状态机，避免跨关残留导致卡死
@@ -1521,8 +1521,8 @@ class Bot:
         self.current = self.queue[0] if self.queue else None
         cur = self.current
         cur_name = f'{"炸" if cur[0] == BOMB_PROP_TYPE else ""}{COLOR_NAME.get(cur[1], str(cur[1]))}' if cur else "?"
-        names = [f'{"炸" if t == BOMB_PROP_TYPE else ""}{COLOR_NAME.get(c, str(c))}' for t, c in self.queue]
-        logger.info(f"[79A3] 当前：{cur_name} 队列：{names}")
+        names = [f"{"炸" if t == BOMB_PROP_TYPE else ""}{COLOR_NAME.get(c, str(c))}" for t, c in self.queue]
+        logger.info(f"[更新] 下个球：{cur_name} 队列：{names}")
 
     def on_31104(self, body):
         # 31104(7980) 道具数量更新：[Type:1B][Num:1B]
@@ -1544,7 +1544,7 @@ class Bot:
         idx = body[0]
         if self.initial_buttom_index is None:
             self.initial_buttom_index = idx
-            logger.info(f"[7987] 初始 ButtomRowIndex={idx}（死亡线：落点 y 必须 >= {idx}）")
+            logger.info(f"[7987] 初始死亡线：y={idx}（死亡线：落点 y 必须 >= {idx}）")
         # idx 相对上一拍【严格变大】= 真正下降（连续相同 idx 为冗余推送，不计）。
         # 注意：idx 可能一次跳多行（如实测 seq=33：ButtomRowIndex 由 4 跳 6，一次降 2 行），
         # 必须按差值累加，不能只 +1，否则 visible_top 会与实际下降次数偏差。
@@ -1555,12 +1555,12 @@ class Bot:
             # 显示框顶部多露 delta 行：顶行号 +delta（不再做 shift_down / 坐标位移）
             if self.visible_top is not None:
                 self.visible_top += delta
-            logger.info(f"[7987] 死亡线下移：ButtomRowIndex {self.prev_buttom_index}→{idx}（降{delta}行），落点 y 下限收紧到 {idx}")
+            logger.info(f"[7987] 死亡线下移：y={self.prev_buttom_index}→y={idx}（降{delta}行），落点 y 下限收紧到 {idx}")
         elif idx == self.prev_buttom_index:
             pass   # 冗余推送（同 idx），不计下降但需更新（不动）
         else:
             # idx 变小（罕见，如重开/回退）：以最新值为准
-            logger.info(f"[7987] ButtomRowIndex 异常回退 {self.prev_buttom_index}→{idx}，以最新值更新")
+            logger.info(f"[7987] 死亡线异常回退：y={self.prev_buttom_index}→y={idx}，以最新值更新")
         self.prev_buttom_index = idx
         self.buttom_row_index = idx
 
@@ -1604,13 +1604,13 @@ class Bot:
         #   允许后续救场分支重新评估（否则在乱序回包期间会重复激活 31112 导致双炸→第二枚悬空→31115）。
         if self.bomb_inflight:
             self.bomb_inflight = False
-            logger.info(f"[炸弹确认] 收到炸弹消除回包 seq={seq} 消除={len(coords)}个，解锁炸弹在途态")
+            logger.info(f"[炸弹确认] 收到炸弹消除回包 seq：{seq} 消除{len(coords)}个，解锁炸弹在途态")
         # 滑动窗口记录：本发消除=0 记 True（归位空转），否则 False；超 EMPTY_WIN 截断尾部
         self.recent_empty.append(len(coords) == 0)
         if len(self.recent_empty) > EMPTY_WIN:
             self.recent_empty.pop(0)
         empty_cnt = sum(1 for e in self.recent_empty if e)
-        logger.info(f"[7983] seq={seq} 消除={len(coords)} 个"
+        logger.info(f"[7983] seq：{seq} 消除{len(coords)} 个"
               + (f" (窗口空转{empty_cnt}/{len(self.recent_empty)})" if len(coords) == 0 else ""))
         # ★ 用户 2026-08-05：在 7983 显示消除几个之后，显示发射后的棋盘布局
         #   （落点已写入 + 本次同色消除已 remove，但可能还有 31108 悬空消除未到，故仅作中间态）。
@@ -1672,7 +1672,7 @@ class Bot:
         #   允许后续救场分支重新评估（否则在乱序回包期间会重复激活 31112 导致双炸→第二枚悬空→31115）。
         if self.bomb_inflight:
             self.bomb_inflight = False
-            logger.info(f"[炸弹确认] 收到炸弹消除回包 seq={seq} 消除={len(coords)}个，解锁炸弹在途态")
+            logger.info(f"[炸弹确认] 收到炸弹消除回包 seq：{seq} 消除{len(coords)}个，解锁炸弹在途态")
         # ★ 用户 2026-08-05：31108 悬空消除后的棋盘 = 本次发射的最终布局，打印一次。
         self.dump_board(f"发射后 seq={seq}（31108 悬空消除{len(coords)}个，最终布局）")
 
@@ -1797,7 +1797,7 @@ class Bot:
                                f"强制清闸（防卡死）")
                 self._await_seq = None
             else:
-                logger.info(f"[等回包闸] 等待 seq={self._await_seq} 结算回包，本拍跳过发射")
+                logger.info(f"[等回包闸] 等待 seq：{self._await_seq} 结算回包，本拍跳过发射")
                 return
         # ★ 落点绝对下限 death_floor：服务端权威死亡线 ButtomRowIndex（用户实测：落点 y < 它就 game over）。
         #   直接用 buttom_row_index（31111 下发），方向在 y 小侧，与 bot y 体系一致（y 小=下/炮口）。
@@ -1898,7 +1898,7 @@ class Bot:
                 bomb_target = self._choose_bomb_target()
             if bomb_target is not None:
                 bx, by, bcnt = bomb_target
-                logger.info(f"[提示] 当前炮筒为炸弹！落点=({bx},{by}) 可炸={bcnt}个")
+                logger.info(f"[提示] 当前炮筒为炸弹！落点：({bx},{by}) 可炸{bcnt}个")
                 self.send_ball(bx, by, is_bomb=True)
                 self.last_shot = now
                 self.queue.popleft()  # 炸弹已发射，弹出
@@ -1974,7 +1974,7 @@ class Bot:
             #   推进队列，绝不能干等（否则炸弹永不就位、队列停滞、下降累积 → 判负）。
             #   每拍发队首普通球，直到队列前方清出炸弹(cur_type==2)由上方炸弹分支真正发射 31106。
             if self.bomb_armed:
-                logger.info(f"[炸弹等待] 炸弹已激活，发射队首普通球推进队列（剩余炸弹={self.bomb_count}）")
+                logger.info(f"[炸弹等待] 炸弹已激活，发射队首普通球推进队列（剩余炸弹：{self.bomb_count}）")
                 self._advance_queue_normal(now)
                 return
             # 未 armed、且触发不了救场（无炸弹/未堆到木板底排）→ 本拍不发射，等下一拍棋盘变化
@@ -2417,7 +2417,7 @@ class Bot:
         self.last_shot = now
         self.queue.popleft()
         self.current = self.queue[0] if self.queue else None
-        logger.info(f"[炸弹等待] 推进发射 落点=({pt[0]},{pt[1]}) 球色={COLOR_NAME.get(color)} ({tag})"
+        logger.info(f"[炸弹等待] {COLOR_NAME.get(color)} 落点：({pt[0]},{pt[1]}) ({tag})"
               f" cnt={cnt_adv} 不写回(占位推进)")
 
     def _choose_bomb_target(self):
@@ -2519,4 +2519,4 @@ class Bot:
     def listen(self):
         """识别到游戏服务器 socket 后调用：持续接收并维护棋盘，但不发射。"""
         self.listening = True
-        logger.info(f"[自动] 泡泡龙自动通关已启动，user_id={self.user_id}")
+        logger.info(f"[自动] 泡泡龙自动通关已启动")
