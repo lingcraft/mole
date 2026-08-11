@@ -48,7 +48,8 @@ pending_waits = []  # 等待中的请求
 item_info_callbacks = {} # getItemInfo 回传分发表
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
-lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
+lamus_dict = {}  # 拉姆信息
+super_lamu_id, lamu_name, lamu_value, lamu_level, lamu_times = 0, "", 0, 0, 0  # 拉姆ID、名字、变身值、变身等级、变身获得物品成功次数
 lamu_thresholds = (40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700)  # 拉姆变身值阈值
 lamu_skill_types = ("火", "水", "木")  # 拉姆技能类型
 lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
@@ -845,7 +846,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     # ================================================== 游戏功能方法 ==================================================
     def lamu_get_info(self):
         send_lines([
-            f"0000000000000000D40000000000000000{get_hex(user_id)}{get_hex(lamu_id)}00",  # 获取拉姆信息
+            f"0000000000000000D40000000000000000{get_hex(user_id)}0000000001",  # 获取所有拉姆信息
             f"0000000000000000CC0000000000000000{get_hex(user_id)}"  # 获取超拉信息
         ])
 
@@ -857,16 +858,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def lamu_learn(self):
         send_lines([
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000001{get_hex(lamu_last_skill_level)}",  # 学习火系技能
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000002{get_hex(lamu_last_skill_level)}",  # 学习水系技能
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}00000003{get_hex(lamu_last_skill_level)}"  # 学习木系技能
+            f"0000000000000004670000000000000000{get_hex(super_lamu_id)}00000001{get_hex(lamu_last_skill_level)}",  # 学习火系技能
+            f"0000000000000004670000000000000000{get_hex(super_lamu_id)}00000002{get_hex(lamu_last_skill_level)}",  # 学习水系技能
+            f"0000000000000004670000000000000000{get_hex(super_lamu_id)}00000003{get_hex(lamu_last_skill_level)}"  # 学习木系技能
         ])
 
     def lamu_feed(self):
         send_lines([
             "0000000000000001F500000000000000000002BF2600000002",  # 买十字架
-            f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26",  # 喂十字架
-            f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26"  # 喂十字架
+            *[f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(super_lamu_id)}0002BF26"] * 2  # 喂十字架
         ])
 
     def lamu_get_vars(self):
@@ -959,8 +959,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.lamu_stop()
                 return
             send_lines([
-                f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}",  # 变身
-                f"0000000000000004B90000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}"  # 拿取物品
+                f"0000000000000004BC0000000000000000{get_hex(super_lamu_id)}{get_hex(skill_id)}",  # 变身
+                f"0000000000000004B90000000000000000{get_hex(super_lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}"  # 拿取物品
             ])
         else:
             self.lamu_stop()
@@ -984,7 +984,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             global mmg_type, mmg_times
             mmg_type, mmg_times = fight_type, 0
-            enter_map(0xE4)
             send_lines([
                 "0000000000000001910000000000000000000000E40000000000000000000000000000000000000000",  # 获取地图信息
                 f"0000000000000020080000000000000000{get_hex(user_id)}",  # 获取能量、活力、等级
@@ -1089,6 +1088,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         send_lines(lines)
 
     def mmg_stop(self):
+        enter_map(0xE4)
         self.enable_mmg_button(True)
         self.stop_timer("摩摩怪")
 
@@ -2294,11 +2294,11 @@ def process_send_packet(socket_num, buf, length):
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buf, length):
-    global recv_buf, buf_index, can_get_lamu_info, lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, \
+    global recv_buf, buf_index, can_get_lamu_info, super_lamu_id, lamu_name, lamu_value, lamu_level, lamu_times, is_last_skill_success, \
         is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
         mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, \
-        can_fight_wjsy, can_fight_ssmy, is_equip_card, map_id
+        can_fight_wjsy, can_fight_ssmy, is_equip_card, map_id, lamus_dict
     if get_remote_info(socket_num) == 0:
         return
     raw_buf = ffi.buffer(buf, length)
@@ -2319,15 +2319,32 @@ def process_recv_packet(socket_num, buf, length):
                         show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
                     if packet.version == 0:  # 正确包
                         match packet.cmd_id:
-                            case 228 if can_get_lamu_info:  # 第1次进入游戏时获取拉姆ID
+                            case 228 if can_get_lamu_info:  # 跟随的拉姆ID
                                 can_get_lamu_info = False
-                                lamu_id = get_int(packet.body)
+                                super_lamu_id = get_int(packet.body)
                                 window.lamu_get_info()
-                            case 212 if get_int(packet.body, 4) == 1:  # 获取拉姆信息
-                                lamu_id = get_int(packet.body, 8)
-                                lamu_name = get_name(packet.body, 24)
-                                lamu_value = get_int(packet.body, 79)
-                                lamu_level = get_lamu_level(lamu_value)
+                            case 212 if get_int(packet.body) == user_id:  # 获取拉姆信息
+                                # lamu_id = get_int(packet.body, 8)
+                                # lamu_name = get_name(packet.body, 24)
+                                # lamu_value = get_int(packet.body, 79)
+                                # lamu_level = get_lamu_level(lamu_value)
+                                lamus_dict.clear()
+                                lamus_num = get_int(packet.body, 4)
+                                start = 8
+                                size = 19 * 4 + 10
+                                for page in range(lamus_num):
+                                    lamu_id = get_int(packet.body, start + page * size)
+                                    lamu_name = get_name(packet.body, start + page * size + 16)
+                                    lamu_type = get_int(packet.body, start + page * size + 67)
+                                    lamu_value = get_int(packet.body, start + page * size + 71)
+                                    lamu_level = get_lamu_level(lamu_value)
+                                    lamus_dict[lamu_id] = {
+                                        "ID": lamu_id,
+                                        "名称": lamu_name,
+                                        "类型": "超拉" if lamu_id == super_lamu_id else lamu_skill_types[lamu_type.bit_length() - 1],
+                                        "等级": lamu_level
+                                    }
+                                lamus_dict = dict(sorted(lamus_dict.items(), key=lambda item: item[1]["类型"], reverse=True))
                             case 204 if get_int(packet.body) == user_id:  # 获取超拉信息
                                 super_lamu_level = get_int(packet.body, 92)
                                 super_lamu_value = get_int(packet.body, 100)
