@@ -48,12 +48,13 @@ pending_waits = []  # 等待中的请求
 item_info_callbacks = {} # getItemInfo 回传分发表
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
-lamus_dict = {}  # 拉姆信息
+lamus_num, lamus_dict = 0, {}  # 拉姆数量、信息
 super_lamu_id, lamu_times = 0, 0  # 超级拉姆ID、变身获得物品成功次数
 lamu_id, lamu_name, lamu_index, lamu_types = 0, "", 0, ()  # 当前拉姆ID、名字、索引、可使用技能类型
 lamu_thresholds = (40, 180, 660, 1340, 2660, 4280, 6840, 9800, 14000, 18700)  # 拉姆变身值阈值
 lamu_skill_types = ("火", "水", "木")  # 拉姆技能类型
 lamu_max_skill_level, lamu_last_skill_level, = 0, 0  # 拉姆最大技能等级、次大技能等级
+lamu_last_skill_id = 0 # 上次变身技能id
 lamu_last_item_level, lamu_max_item_level = 0, 0  # 拿取的物品等级
 lamu_last_type_index, lamu_max_type_index = 0, 0  # 拿取的物品类型索引
 lamu_last_item_index, lamu_max_item_index = 0, 0  # 拿取的物品索引
@@ -794,7 +795,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for item in self.reward_items:
             acc += len(item)
             self.reward_cum.append(acc)
-        lines = [p for item in self.reward_items for p in item]
+        lines = [line for item in self.reward_items for line in item]
         if lines:
             send_lines_back(lines, progress=self.reward_progress)
 
@@ -847,6 +848,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     # ================================================== 游戏功能方法 ==================================================
     def lamu_get_info(self):
         send_lines([
+            f"0000000000000000D60000000000000000{get_hex(user_id)}",  # 获取拉姆数量
             f"0000000000000000D40000000000000000{get_hex(user_id)}0000000001",  # 获取所有拉姆信息
             f"0000000000000000CC0000000000000000{get_hex(user_id)}"  # 获取超拉信息
         ])
@@ -857,11 +859,26 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}"  # 超拉星级礼包
         ])
 
-    def lamu_learn(self):
+    def lamu_follow(self):
         send_lines([
-            f"0000000000000004670000000000000000{get_hex(lamu_id)}{get_hex(lamu_skill_types.index(skill_type) + 1)}{get_hex(lamu_last_skill_level)}"  # 学习技能（火=1/水=2/木=3）
-            for skill_type in lamu_types
+            f"0000000000000000D70000000000000000{get_hex(super_lamu_id)}00000001"  # 超拉跟随
         ])
+
+    def lamu_learn(self):
+        send_lines(
+            [
+                f"0000000000000000D70000000000000000{get_hex(lamu_id)}00000001"  # 拉姆跟随
+            ]
+            +
+            [
+                f"0000000000000004670000000000000000{get_hex(lamu_id)}{get_hex(lamu_skill_types.index(skill_type) + 1)}{get_hex(lamu_last_skill_level)}"
+                for skill_type in lamu_types  # 学习技能
+            ]
+            +
+            [
+                f"0000000000000004C20000000000000000{get_hex(lamu_id)}{"".join(get_hex(get_skill_id(lamu_max_skill_level if skill_type in lamu_types else 1, skill_type), 1) for skill_type in lamu_skill_types)}"
+            ]  # 配置技能
+        )
 
     def lamu_feed(self):
         send_lines([
@@ -903,7 +920,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             items = lamu_pick_result.get(lamu_id, [])
             if items:
                 pick_count = Counter(items)
-                text = "、".join(f"{item_name}：{item_count}" for item_name, item_count in pick_count.items())
+                text = "，".join(f"{item_name}：{item_count}" for item_name, item_count in pick_count.items())
                 lines.append(f"拉姆（{lamu_info["名称"]}）成功采集物品：{text}")
             else:
                 lines.append(f"拉姆（{lamu_info["名称"]}）今天可采集物品已达上限")
@@ -919,7 +936,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_init(self):
         global lamu_index, lamu_times, is_max_skill_success, is_last_skill_success, lamu_max_skill_level, lamu_last_skill_level, \
             lamu_max_item_level, lamu_last_item_level, lamu_max_type_index, lamu_last_type_index, lamu_max_item_index, \
-            lamu_last_item_index, limit_data, lamu_id, lamu_name, lamu_types
+            lamu_last_item_index, limit_data, lamu_id, lamu_name, lamu_types, lamu_last_skill_id
         lamu_id = list(lamus_dict)[lamu_index]
         lamu_info = lamus_dict[lamu_id]
         lamu_name = lamu_info["名称"]
@@ -933,6 +950,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 lamu_types = (lamu_info["类型"],)
         lamu_max_skill_level = get_max_skill_level(lamu_info["等级"])
         lamu_last_skill_level = get_last_skill_level(lamu_info["等级"])
+        lamu_last_skill_id = 0
         lamu_times = 0
         is_max_skill_success, is_last_skill_success = True, True
         lamu_max_item_level, lamu_last_item_level = lamu_max_skill_level, lamu_last_skill_level
@@ -972,6 +990,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         return item_id, skill_id, skill_type
 
     def lamu_run(self):
+        global lamu_last_skill_id
         is_skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
         item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
@@ -982,10 +1001,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if item_id is None:
                 self.lamu_next()
                 return
-            send_lines([
-                f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}",  # 变身
-                f"0000000000000004B90000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}"  # 拿取物品
-            ])
+            if skill_id != lamu_last_skill_id:  # 变身技能与上次不同
+                lines = [f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}"]  # 变身
+                lamu_last_skill_id = skill_id
+            else:
+                lines = []
+            lines.append(f"0000000000000004B90000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}{get_hex(item_id)}")  # 采集物品
+            send_lines(lines)
         else:
             self.lamu_next()
 
@@ -999,6 +1021,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.lamu_stop()
 
     def lamu_stop(self):
+        self.lamu_follow()
         self.enable_lamu_button(True)
         self.lamu_show_result()
         self.stop_timer("拉姆")
@@ -1950,7 +1973,7 @@ def get_last_skill_level(level: int):
         return get_max_skill_level(level) - 1
 
 
-def get_skill_id(skill_level: int, skill_type):
+def get_skill_id(skill_level: int, skill_type: str):
     match skill_type:
         case "火":
             return 3 * skill_level - 2
@@ -2326,7 +2349,7 @@ def process_send_packet(socket_num, buf, length):
 
 @ffi.callback("void(ULONG64, PCHAR, INT)")
 def process_recv_packet(socket_num, buf, length):
-    global recv_buf, buf_index, can_get_lamu_info, super_lamu_id, lamus_dict, lamu_id, lamu_name, lamu_times, is_last_skill_success, \
+    global recv_buf, buf_index, can_get_lamu_info, super_lamu_id, lamus_num, lamus_dict, lamu_id, lamu_name, lamu_times, is_last_skill_success, \
         is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
         mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, \
@@ -2355,9 +2378,10 @@ def process_recv_packet(socket_num, buf, length):
                                 can_get_lamu_info = False
                                 super_lamu_id = get_int(packet.body)
                                 window.lamu_get_info()
-                            case 212 if get_int(packet.body) == user_id:  # 获取拉姆信息
+                            case 214: # 获取拉姆数量
+                                lamus_num = get_int(packet.body, 0, 1)
+                            case 212 if get_int(packet.body) == user_id and get_int(packet.body, 4) == lamus_num:  # 获取拉姆信息
                                 lamus_dict.clear()
-                                lamus_num = get_int(packet.body, 4)
                                 start = 8
                                 size = 19 * 4 + 10
                                 for page in range(lamus_num):
