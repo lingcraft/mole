@@ -362,7 +362,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.server == "官服":
                 self.node = "主节点"
             elif last_server == "官服":
-                self.node = "亚洲节点"
+                self.node = "特殊节点"
             self.refresh()
         else:
             self.sender().setChecked(True)
