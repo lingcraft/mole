@@ -1,5 +1,7 @@
 from os import environ
 from re import match
+import copy
+import xml.etree.ElementTree as ET
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, timeout
 from threading import Thread, Lock
 from requests import Session
@@ -10,16 +12,54 @@ from urllib.parse import urlparse, parse_qs
 from json import loads
 from loguru import logger
 
-# 根目录下的 *.swf 注入 ext.xml 并就地提供。
-# 注意：只放自定义 mod，勿放游戏官方 SWF（如 Client.swf），否则会覆盖上游。
+# swf/append 下的 *.swf 注入 ext.xml 让客户端额外加载；
+# swf/replace 下的同名 SWF 在客户端请求时就地替换为本地文件（覆盖上游官方 SWF）。
+# 注意：replace 仅放要覆盖的官方 SWF，append 仅放自定义 mod，勿混用。
 base_dir = Path(__file__).resolve().parent
+append_dir = base_dir / "swf" / "append"    # 追加加载的 mod（注入 ext.xml）
+replace_dir = base_dir / "swf" / "replace"  # 覆盖官方 SWF（按同名拦截替换）
 
 
-def list_mod_swfs() -> list[Path]:
-    """列出根目录下所有 *.swf（按文件名排序，保证加载顺序稳定）。"""
-    if not base_dir.is_dir():
+def list_append_swfs() -> list[Path]:
+    """列出 swf/append 下所有 *.swf（按文件名排序，保证加载顺序稳定）。"""
+    if not append_dir.is_dir():
         return []
-    return sorted((p for p in base_dir.glob("*.swf") if p.is_file()), key=lambda p: p.name.lower())
+    return sorted((p for p in append_dir.glob("*.swf") if p.is_file()), key=lambda p: p.name.lower())
+
+
+def merge_append(orig: ET.Element, append: ET.Element) -> None:
+    """将 append 子树合并进 orig：
+    - 同名/同 id 的元素：用 append 的属性覆盖 orig 的对应属性（orig 独有属性保留），再递归其子节点；
+    - 仅 append 独有的元素（容器或 item）：整棵子树追加；
+    - <remove> 标记：其下的 <item> 按 id 从当前层级删除，<remove> 节点本身不并入结果；
+    - 匹配规则：容器按 tag 名匹配，item 按 id 匹配。
+    例如原始 <shop info="原始info"> 与补充 <shop info="新info"> 合并后，info 被替换为「新info」。"""
+    # 用 append 的属性覆盖当前层匹配元素的属性（不删除 orig 独有属性）
+    for k, v in append.attrib.items():
+        orig.set(k, v)
+    for ac in list(append):
+        if not isinstance(ac.tag, str):
+            continue  # 跳过注释等非元素节点
+        if ac.tag == "remove":  # 删除标记：其下 item 按 id 从 orig 当前层级删除，<remove> 本身不并入
+            for di in ac:
+                if not isinstance(di.tag, str) or di.tag != "item":
+                    continue
+                did = di.get("id")
+                target = next(
+                    (c for c in orig if isinstance(c.tag, str) and c.tag == "item" and c.get("id") == did),
+                    None,
+                )
+                if target is not None:
+                    orig.remove(target)
+            continue
+        if ac.tag == "item":  # item 按 id 匹配
+            oc = next((c for c in orig if isinstance(c.tag, str) and c.tag == "item" and c.get("id") == ac.get("id")), None)
+        else:  # 容器按 tag 名匹配
+            oc = next((c for c in orig if isinstance(c.tag, str) and c.tag == ac.tag), None)
+        if oc is None:
+            orig.append(copy.deepcopy(ac))
+        else:
+            merge_append(oc, ac)
 
 
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
@@ -123,7 +163,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         if url.split("?", 1)[0] == "/log":
             try:
                 q = parse_qs(urlparse(self.path).query)
-                logger.info(f"[bridgedll] {q.get('m', [''])[0]}")
+                logger.info(f"[bridgedll] {q.get("m", [""])[0]}")
             except Exception:
                 pass
             self.serve_local(b"ok", "text/plain; charset=utf-8")
@@ -136,12 +176,24 @@ class InjectHandler(BaseHTTPRequestHandler):
         if self.command == "GET" and "ext.xml" in url:
             if self.serve_ext_xml(url):
                 return
-        # 额外 SWF：游戏按 ext.xml 追加的 path 请求，就地提供
+        # 额外资源：
+        # 1) swf/replace 中的同名 SWF/XML → 就地替换为本地文件，覆盖上游官方文件
+        # 2) swf/append 中的 .swf → 直接返回本地 mod 文件
+        # 3) swf/append 中的 .xml → 视为「新增内容」：拉取上游原始 xml 并合并新增节点后返回
         name = url.split("?", 1)[0].rsplit("/", 1)[-1]
-        if name.lower().endswith(".swf"):
-            local = base_dir / name
-            if local.is_file():
-                self.serve_local(local.read_bytes(), "application/x-shockwave-flash")
+        lower = name.lower()
+        if lower.endswith(".swf") or lower.endswith(".xml"):
+            replace_local = replace_dir / name  # 优先 replace：同名覆盖官方 SWF/XML
+            if replace_local.is_file():
+                ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
+                self.serve_local(replace_local.read_bytes(), ctype)
+                return
+            append_local = append_dir / name
+            if append_local.is_file():
+                if lower.endswith(".swf"):
+                    self.serve_local(append_local.read_bytes(), "application/x-shockwave-flash")
+                else:
+                    self.serve_merged_xml(url, append_local)
                 return
         # 其余请求透传上游（保留缓存头，流式转发压缩字节）
         headers = {k: v for k, v in self.headers.items()
@@ -186,9 +238,9 @@ class InjectHandler(BaseHTTPRequestHandler):
                 pass
 
     def serve_ext_xml(self, url: str) -> bool:
-        """取上游原版 ext.xml，把根目录下所有 *.swf 追加为 <item> 后返回。
+        """取上游原版 ext.xml，把 swf/append 下所有 *.swf 追加为 <item> 后返回。
         返回 True 表示已处理；False 表示放弃（如上游取回失败），交回 dispatch 走透传。"""
-        mods = list_mod_swfs()
+        mods = list_append_swfs()
         try:
             resp = session.get(upstream_base + url, timeout=30)
         except Exception:
@@ -198,15 +250,42 @@ class InjectHandler(BaseHTTPRequestHandler):
         text = resp.text
         if mods and "</ext>" in text:
             items = "".join(
-                f'\t\t<item name="摩尔拓展....." path="{p.name}" ver="081224"/>\n'
+                f"\t\t<item name=\"摩尔拓展.....\" path=\"{p.name}\" ver=\"081224\"/>\n"
                 for p in mods
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
-            logger.info(f"[ext.xml] 注入 {len(mods)} 个 mod: {[p.name for p in mods]}")
+            logger.info(f"[ext.xml] 注入: {"、".join(p.name for p in mods)}")
         else:
-            logger.info(f"[ext.xml] 未注入 mod（mods={len(mods)}, has</ext>={'</ext>' in text}）")
+            logger.info(f"[ext.xml] 未注入（mods={len(mods)}, has</ext>={"</ext>" in text}）")
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
+
+    def serve_merged_xml(self, url: str, append_path: Path) -> None:
+        """把 swf/append 下的「补充 xml」合并进上游原始 xml 后返回。
+        append xml 仅含新增节点（同根/同层级结构）；先取上游原版 xml，
+        再把补充 xml 中的节点按 id 去重后并入对应容器，最后返回合并结果。
+        若上游取回 / 解析失败，则回退为直接返回本地补充文件。"""
+        try:
+            resp = session.get(upstream_base + url, timeout=30)
+        except Exception:
+            logger.warning(f"[merge-xml] 取上游原始 xml 失败，回退返回本地补充文件: {url}")
+            self.serve_local(append_path.read_bytes(), "application/xml")
+            return
+        if resp.status_code != 200:
+            logger.warning(f"[merge-xml] 上游返回 {resp.status_code}，回退返回本地补充文件: {url}")
+            self.serve_local(append_path.read_bytes(), "application/xml")
+            return
+        try:
+            orig_root = ET.fromstring(resp.content.decode("utf-8-sig"))
+            append_root = ET.parse(append_path).getroot()
+        except Exception as e:
+            logger.warning(f"[merge-xml] 解析 xml 失败（{e}），回退返回本地补充文件")
+            self.serve_local(append_path.read_bytes(), "application/xml")
+            return
+        merge_append(orig_root, append_root)
+        merged = ET.tostring(orig_root, encoding="utf-8")
+        self.serve_local(merged, "application/xml")
+        logger.info(f"[merge-xml] 修改: {append_path.name}")
 
     do_GET = dispatch
     do_POST = dispatch
@@ -221,7 +300,7 @@ def start_bridge():
     global injecter_port
     http_srv = ThreadingHTTPServer(("127.0.0.1", 0), InjectHandler)
     injecter_port = http_srv.server_address[1]
-    logger.info(f"[bridge] 注入服务监听端口: {injecter_port}")
+    logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge()
@@ -267,12 +346,12 @@ recv_prefix = "R <=="
 
 # Flash socket 策略文件：允许任意域连接任意端口
 sock_policy = (
-    b'<?xml version="1.0"?>\r\n'
-    b'<!DOCTYPE cross-domain-policy SYSTEM '
-    b'"http://www.adobe.com/xml/dtds/cross-domain-policy.dtd">\r\n'
-    b'<cross-domain-policy>\r\n'
-    b'<allow-access-from domain="*" to-ports="*"/>\r\n'
-    b'</cross-domain-policy>\r\n'
+    b"<?xml version=\"1.0\"?>\r\n"
+    b"<!DOCTYPE cross-domain-policy SYSTEM "
+    b"\"http://www.adobe.com/xml/dtds/cross-domain-policy.dtd\">\r\n"
+    b"<cross-domain-policy>\r\n"
+    b"<allow-access-from domain=\"*\" to-ports=\"*\"/>\r\n"
+    b"</cross-domain-policy>\r\n"
 )
 
 
@@ -360,7 +439,7 @@ def start_socket_bridge():
     srv.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
     srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
     bridge_port = srv.getsockname()[1]
-    logger.info(f"[bridge] 命令桥监听端口: {bridge_port}")
+    logger.info(f"[bridge] 命令桥端口: {bridge_port}")
     srv.listen(8)
 
     def loop():
