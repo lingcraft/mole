@@ -85,7 +85,7 @@ class Client(Process):
         else:
             return True
 
-    def send_line(self, data):
+    def send_line(self, data: str | dict):
         if len(data) < 17:
             return True
         try:
@@ -226,7 +226,7 @@ class Packet:
             serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
         self.serial_num = serial_num
 
-    def encrypt(self, is_get_serial_num=True):
+    def encrypt(self, is_get_serial_num: bool = True):
         if is_get_serial_num:
             self.get_serial_num()
         res = bytearray(len(self.body) + 1)
@@ -298,11 +298,11 @@ def get_login_token(session: bytes):
     return get_md5(f"{get_int(session, 10)}hAo crAzy B{get_int(session, 3)}")[6:22].encode()
 
 
-def read_packet(s: socket):
-    packet = Packet(s.recv(17))
+def read_packet(_socket: socket):
+    packet = Packet(_socket.recv(17))
     body_len = packet.length - 17
     while len(packet.body) < body_len:
-        chunk = s.recv(body_len - len(packet.body))
+        chunk = _socket.recv(body_len - len(packet.body))
         if not chunk:
             break
         packet.body.extend(chunk)

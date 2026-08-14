@@ -1,7 +1,8 @@
 from PySide6.QtCore import QTimer, QThread, Signal, QUrl, Qt, QTranslator, QRect
 from PySide6.QtWidgets import QApplication, QButtonGroup, QCheckBox, QDialog, QHBoxLayout, QHeaderView, QListWidgetItem, QMainWindow, QMessageBox, \
     QPushButton, QRadioButton, QScrollArea, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
-from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction
+from PySide6.QtGui import QFont, QIcon, QDesktopServices, QAction, QCloseEvent
+from _cffi_backend import buffer
 from ui_main import Ui_MainWindow
 from ui_advance import Ui_AdvanceDialog
 from struct import pack, pack_into, unpack_from
@@ -27,7 +28,7 @@ from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
 from pyamf import sol
 from collections import deque
-from typing import Callable
+from collections.abc import Callable
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
@@ -296,7 +297,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.title_part_pool = {}
 
     # ================================================== 界面功能方法 ==================================================
-    def closeEvent(self, event):
+    def closeEvent(self, event: QCloseEvent):
         if not self.config.has_section("Settings"):
             self.config.add_section("Settings")
         self.config.set("Settings", "server", self.server)
@@ -330,15 +331,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         timer = RunTimer(apply, Interval.NORMAL, 0).start()
 
-    def change_show_send(self, state):
+    def change_show_send(self, state: int):
         global is_show_send
         is_show_send = state > 0
 
-    def change_show_recv(self, state):
+    def change_show_recv(self, state: int):
         global is_show_recv
         is_show_recv = state > 0
 
-    def change_set_socket(self, state):
+    def change_set_socket(self, state: int):
         self.socketLineEdit.setEnabled(state > 0)
         if state > 0 and len(self.socketLineEdit.text()) == 0 and login_socket_num != 0:
             self.socketLineEdit.setText(str(login_socket_num))
@@ -350,12 +351,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def send_clear(self):
         self.textEdit.clear()
 
-    def change_row(self, row, column):
+    def change_row(self, row: int, column: int):
         data = self.tableWidget.item(row, column if column < 2 else 4)
         if data is not None:
             self.textEdit.setPlainText(data.toolTip() if column == 0 else data.text())
 
-    def change_server(self, checked):
+    def change_server(self, checked: bool):
         if checked:
             last_server = self.server
             self.server = self.sender().text()
@@ -367,7 +368,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.sender().setChecked(True)
 
-    def change_node(self, checked):
+    def change_node(self, checked: bool):
         if checked:
             self.node = self.sender().text()
             self.refresh()
@@ -389,7 +390,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.set_scale_mode()
         self.enable_all_buttons(False)
 
-    def add_data(self, data_type, socket_num, cmd_id, cmd_analyse, data):
+    def add_data(self, data_type: str, socket_num: int, cmd_id: int, cmd_analyse: str, data: str):
         self.tableWidget.blockSignals(True)
         global packet_index
         if packet_index >= 10000:  # 已有数据10000条，清空
@@ -438,75 +439,75 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tableWidget.scrollToTop()  # 拖动到顶部
         self.tableWidget.blockSignals(False)
 
-    def enable_lamu_button(self, enable):
-        self.lamuGrowButton.setEnabled(enable)
+    def enable_lamu_button(self, is_enabled: bool):
+        self.lamuGrowButton.setEnabled(is_enabled)
 
-    def enable_mmg_button(self, enable):
-        self.mmgPVBButton.setEnabled(enable)
-        self.mmgPVEButton.setEnabled(enable)
-        self.mmgPVPButton.setEnabled(enable)
-        self.mmgLevelBox.setEnabled(enable)
-        self.mmgBossBox.setEnabled(enable)
+    def enable_mmg_button(self, is_enabled: bool):
+        self.mmgPVBButton.setEnabled(is_enabled)
+        self.mmgPVEButton.setEnabled(is_enabled)
+        self.mmgPVPButton.setEnabled(is_enabled)
+        self.mmgLevelBox.setEnabled(is_enabled)
+        self.mmgBossBox.setEnabled(is_enabled)
 
-    def enable_ysqs_button(self, enable):
-        self.ysqsFightButton.setEnabled(enable)
-        self.ysqsUpgradeButton.setEnabled(enable)
-        self.ysqsAdvanceButton.setEnabled(enable)
-        self.ysqsLevelBox.setEnabled(enable)
-        self.ysqsCardBox.setEnabled(enable)
+    def enable_ysqs_button(self, is_enabled: bool):
+        self.ysqsFightButton.setEnabled(is_enabled)
+        self.ysqsUpgradeButton.setEnabled(is_enabled)
+        self.ysqsAdvanceButton.setEnabled(is_enabled)
+        self.ysqsLevelBox.setEnabled(is_enabled)
+        self.ysqsCardBox.setEnabled(is_enabled)
 
-    def enable_mlcs_button(self, enable):
-        self.mlcsFightButton.setEnabled(enable)
-        self.mlcsUpgradeButton.setEnabled(enable)
-        self.mlcsSellButton.setEnabled(enable)
-        self.mlcsSpriteBox.setEnabled(enable)
+    def enable_mlcs_button(self, is_enabled: bool):
+        self.mlcsFightButton.setEnabled(is_enabled)
+        self.mlcsUpgradeButton.setEnabled(is_enabled)
+        self.mlcsSellButton.setEnabled(is_enabled)
+        self.mlcsSpriteBox.setEnabled(is_enabled)
 
-    def enable_ct_button(self, enable):
-        self.ctSellButton.setEnabled(enable)
+    def enable_ct_button(self, is_enabled: bool):
+        self.ctSellButton.setEnabled(is_enabled)
         if not is_harvest_running():
-            self.ctHarvestButton.setEnabled(enable)
-            self.ctDishBox.setEnabled(enable)
-        elif not enable:
-            self.ctDishBox.setEnabled(enable)
+            self.ctHarvestButton.setEnabled(is_enabled)
+            self.ctDishBox.setEnabled(is_enabled)
+        elif not is_enabled:
+            self.ctDishBox.setEnabled(is_enabled)
 
-    def enable_ddd_button(self, enable):
-        self.dddGetButton.setEnabled(enable)
+    def enable_ddd_button(self, is_enabled: bool):
+        self.dddGetButton.setEnabled(is_enabled)
 
-    def enable_med_button(self, enable):
-        self.medGetButton.setEnabled(enable)
+    def enable_med_button(self, is_enabled: bool):
+        self.medGetButton.setEnabled(is_enabled)
 
-    def enable_bh_button(self, enable):
-        self.bhOpenButton.setEnabled(enable)
+    def enable_bh_button(self, is_enabled: bool):
+        self.bhOpenButton.setEnabled(is_enabled)
 
-    def enable_kll_button(self, enable):
-        self.kllFinishButton.setEnabled(enable)
+    def enable_kll_button(self, is_enabled: bool):
+        self.kllFinishButton.setEnabled(is_enabled)
 
-    def enable_mrjl_button(self, enable):
-        self.rewardSelectAllButton.setEnabled(enable)
-        self.rewardInvertButton.setEnabled(enable)
-        self.rewardGetButton.setEnabled(enable)
+    def enable_mrjl_button(self, is_enabled: bool):
+        self.rewardSelectAllButton.setEnabled(is_enabled)
+        self.rewardInvertButton.setEnabled(is_enabled)
+        self.rewardGetButton.setEnabled(is_enabled)
 
-    def enable_ppl_button(self, enable):
-        self.pplPlayButton.setEnabled(enable)
+    def enable_ppl_button(self, is_enabled: bool):
+        self.pplPlayButton.setEnabled(is_enabled)
 
-    def enable_all_buttons(self, enable):
-        self.enable_lamu_button(enable)
-        self.enable_mmg_button(enable)
-        self.enable_ysqs_button(enable)
-        self.enable_mlcs_button(enable)
-        self.enable_ddd_button(enable)
-        self.enable_med_button(enable)
-        self.enable_bh_button(enable)
-        self.enable_kll_button(enable)
-        self.enable_mrjl_button(enable)
-        self.enable_ppl_button(enable)
-        if not enable:  # 刷新游戏后的操作
+    def enable_all_buttons(self, is_enabled: bool):
+        self.enable_lamu_button(is_enabled)
+        self.enable_mmg_button(is_enabled)
+        self.enable_ysqs_button(is_enabled)
+        self.enable_mlcs_button(is_enabled)
+        self.enable_ddd_button(is_enabled)
+        self.enable_med_button(is_enabled)
+        self.enable_bh_button(is_enabled)
+        self.enable_kll_button(is_enabled)
+        self.enable_mrjl_button(is_enabled)
+        self.enable_ppl_button(is_enabled)
+        if not is_enabled:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
             self.stop_timer("拉姆")
-            self.enable_ct_button(enable)
+            self.enable_ct_button(is_enabled)
 
     # 简单的多次任务
-    def start_task(self, name, func, interval, button=None, start_func=None, stop_text="停止"):
+    def start_task(self, name: str, func: Callable, interval: int, button: QPushButton | None = None, start_func: Callable | None = None, stop_text: str = "停止"):
         if name in self.timer_pool:
             timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
@@ -531,14 +532,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.recvCheckBox.setChecked(False)
         timer.start()
 
-    def stop_task(self, name):
+    def stop_task(self, name: str):
         if name in self.timer_pool:
             timer, text, button = self.timer_pool[name]
             if timer.isActive():  # 停止
                 button.setText(text)
                 timer.stop()
 
-    def stop_timer(self, name):
+    def stop_timer(self, name: str):
         if name in self.timer_pool:
             timer = self.timer_pool[name]
             if isinstance(timer, dict):
@@ -560,7 +561,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.update_thread.isRunning():
             self.update_thread.start()
 
-    def update_notice(self, is_first, version, description):
+    def update_notice(self, is_first: bool, version: str, description: str):
         is_latest_msg = f"当前版本 v{self.version} 已是最新！"
         is_expired_msg = f"发现新版本：v{version}，更新信息：\n{sub(r"(?m)^- ", "  ●  ", description)}"
         is_error_msg = "检查更新失败，是否前往下载页？"
@@ -604,7 +605,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         suffix = " | ".join(parts)
         self.setWindowTitle(f"{self.title}{(" | " + suffix) if suffix else ""}")
 
-    def start_update_title(self, module_name, module_user_id=None, func_name=None, func_info=None, next_run_getter=None, interval: int = 1000, on_tick=None):
+    def start_update_title(self, module_name: str, module_user_id: int | None = None, func_name: str | None = None, func_info: str | None = None,
+                           next_run_getter: Callable | None = None, interval: int = 1000, on_tick: Callable | None = None):
         def tick():
             self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
             if on_tick is not None:
@@ -614,7 +616,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         timer = RunTimer(tick, interval, delay, True).start()
         self.title_timer_pool[module_name] = timer
 
-    def stop_update_title(self, module_name):
+    def stop_update_title(self, module_name: str):
         self.title_timer_pool[module_name].stop()
         self.update_title(module_name)
 
@@ -815,7 +817,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def reward_progress(self, index: int):
         self.reward_packet_sent = index + 1
 
-    def reward_progress_getter(self) -> str:
+    def reward_progress_getter(self):
         # 当前正在领取的勾选项名 + 已发送完的个数 / 总个数
         total = self.reward_total
         if total == 0:
@@ -859,32 +861,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000027760000000000000000{get_hex(super_lamu_level + 22)}"  # 超拉星级礼包
         ])
 
-    def lamu_follow(self):
+    def lamu_feed(self, _lamu_id: int, food_num: int = 2):
         send_lines([
-            f"0000000000000000D70000000000000000{get_hex(super_lamu_id)}00000001"  # 超拉跟随
+            f"0000000000000001F500000000000000000002BF26{get_hex(food_num)}",  # 买十字架
+            *[f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(_lamu_id)}0002BF26"] * food_num  # 喂十字架
         ])
 
-    def lamu_learn(self):
+    def lamu_follow(self, _lamu_id: int):
+        send_lines([
+            f"0000000000000000D70000000000000000{get_hex(_lamu_id)}00000001"  # 拉姆跟随
+        ])
+
+    def lamu_learn(self, _lamu_id: int):
         send_lines(
             [
-                f"0000000000000000D70000000000000000{get_hex(lamu_id)}00000001"  # 拉姆跟随
-            ]
-            +
-            [
-                f"0000000000000004670000000000000000{get_hex(lamu_id)}{get_hex(lamu_skill_types.index(skill_type) + 1)}{get_hex(lamu_last_skill_level)}"
+                f"0000000000000004670000000000000000{get_hex(_lamu_id)}{get_hex(lamu_skill_types.index(skill_type) + 1)}{get_hex(lamu_last_skill_level)}"
                 for skill_type in lamu_types  # 学习技能
             ]
             +
             [
-                f"0000000000000004C20000000000000000{get_hex(lamu_id)}{"".join(get_hex(get_skill_id(lamu_max_skill_level if skill_type in lamu_types else 1, skill_type), 1) for skill_type in lamu_skill_types)}"
+                f"0000000000000004C20000000000000000{get_hex(_lamu_id)}{"".join(get_hex(get_skill_id(lamu_max_skill_level if skill_type in lamu_types else 1, skill_type), 1) for skill_type in lamu_skill_types)}"
             ]  # 配置技能
         )
-
-    def lamu_feed(self):
-        send_lines([
-            "0000000000000001F500000000000000000002BF2600000002",  # 买十字架
-            *[f"0000000000000001F90000000000000000{get_hex(user_id)}{get_hex(lamu_id)}0002BF26"] * 2  # 喂十字架
-        ])
 
     def lamu_get_vars(self):
         if lamu_times == 0:
@@ -892,14 +890,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             return is_max_skill_success, lamu_max_skill_level, lamu_max_item_level, lamu_max_type_index, lamu_max_item_index
 
-    def lamu_set_vars(self, item_level, type_index, item_index):
+    def lamu_set_vars(self, item_level: int, type_index: int, item_index: int):
         global lamu_last_item_level, lamu_last_type_index, lamu_last_item_index, lamu_max_item_level, lamu_max_type_index, lamu_max_item_index
         if lamu_times == 0:
             lamu_last_item_level, lamu_last_type_index, lamu_last_item_index = item_level, type_index, item_index
         else:
             lamu_max_item_level, lamu_max_type_index, lamu_max_item_index = item_level, type_index, item_index
 
-    def lamu_get_skill_info(self, skill_level, item_level, type_index):
+    def lamu_get_skill_info(self, skill_level: int, item_level: int, type_index: int):
         skill_type = lamu_types[type_index]
         return skill_type, get_skill_id(skill_level, skill_type), list(
             lamu_dict[item_level][skill_type].items())
@@ -913,11 +911,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def lamu_show_result(self):
         lines = []
-        for lamu_id, lamu_info in lamus_dict.items():
+        for _lamu_id, lamu_info in lamus_dict.items():
             if lamu_info["类型"] == "未进化":
                 lines.append(f"拉姆（{lamu_info["名称"]}）未进化，无法采集物品")
                 continue
-            items = lamu_pick_result.get(lamu_id, [])
+            items = lamu_pick_result.get(_lamu_id, [])
             if items:
                 pick_count = Counter(items)
                 text = "，".join(f"{item_name}：{item_count}" for item_name, item_count in pick_count.items())
@@ -966,10 +964,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             limit_data["时间"] = now
         if lamu_info["类型"] == "超拉":  # 超拉每日礼包/星级礼包仅超拉领取
             self.lamu_gift()
-        self.lamu_learn()
-        self.lamu_feed()
+        self.lamu_follow(lamu_id)
+        self.lamu_learn(lamu_id)
+        self.lamu_feed(lamu_id)
 
-    def lamu_get_item(self, skill_level, item_level, type_index, item_index):
+    def lamu_get_item(self, skill_level: int, item_level: int, type_index: int, item_index: int):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
         while item_id in limit_data["数据"][skill_type]:
@@ -1013,7 +1012,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def lamu_next(self):
         global lamu_index
-        self.lamu_feed()
+        self.lamu_feed(lamu_id)
         lamu_index += 1
         if lamu_index < len(lamus_dict):
             self.lamu_init()
@@ -1021,12 +1020,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.lamu_stop()
 
     def lamu_stop(self):
-        self.lamu_follow()
+        self.lamu_follow(super_lamu_id)
+        self.lamu_feed(super_lamu_id, 1)
         self.enable_lamu_button(True)
         self.lamu_show_result()
         self.stop_timer("拉姆")
 
-    def mmg_start(self, fight_type=0):
+    def mmg_start(self, fight_type: int = 0):
         def start():  # 开始执行
             global mmg_energy
             if self.mmgLevelBox.currentText().endswith("疯狂"):
@@ -1092,7 +1092,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     self.mmg_wish()
                     self.mmg_stop()
 
-    def mmg_fight(self, level_id, fight_type):
+    def mmg_fight(self, level_id: int, fight_type: int):
         send_lines([
             "00000000000000019300000000000000000000000100000000"  # 进入游戏
         ])
@@ -1108,7 +1108,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             [3, 1, 1, 2]
         ), {0x2717: 1})
 
-    def mmg_get_reward(self, is_success):
+    def mmg_get_reward(self, is_success: bool):
         if is_success:
             send_lines([
                 "0000000000000020140000000000000000"  # 校验能否翻牌
@@ -1164,7 +1164,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ])
             run_later_expect(self.ysqs_fight, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
 
-    def ysqs_fight(self, wjsy_info, ssmy_info):
+    def ysqs_fight(self, wjsy_info: tuple[int, int], ssmy_info: tuple[int, int]):
         hour = datetime.now().hour
         level_info = get_level_info(self.ysqsLevelBox.currentText())
         # 无尽深渊、莎士摩亚挑战次数计算
@@ -1499,7 +1499,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ct_state = State.LOGGING_IN if delay == 0 else State.COUNTDOWN
             timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay * 1000).start()
 
-    def ct_harvest_func(self, pos):
+    def ct_harvest_func(self, pos: int):
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         dish_info = ct_cooking_dishes_dict[pos]
         countdown_info = ct_cooking_countdown_dict[pos]
@@ -1525,7 +1525,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             countdown_info["下次运行时间"] = cook_start
         send_lines_by_client((self.user_id, self.password), init_lines, lines)
 
-    def ct_cook_after(self, dish_id, dish_type, step, is_refresh=False):
+    def ct_cook_after(self, dish_id: int, dish_type: int, step: int, is_refresh: bool = False):
         # 自动完成做菜后续步骤
         lines = [f"0000000000000003FC0000000000000000{get_hex(dish_type)}{get_hex(dish_id)}"]
         if is_refresh:  # 刷新餐厅信息时触发的
@@ -1829,14 +1829,14 @@ class UpdateThread(QThread):
 class RunTimer(QTimer):
     signal = Signal()
 
-    def __init__(self, func=None, interval: int | float = 1000, delay: int | float = 300, is_precise: bool = False):
+    def __init__(self, func: Callable | None = None, interval: int | float = 1000, delay: int | float = 300, is_precise: bool = False):
         super().__init__()
         super().timeout.connect(self.on_timeout)
         if is_precise:
             self.setTimerType(Qt.TimerType.PreciseTimer)
         self.set_data(func, interval, delay)
 
-    def set_data(self, func, interval: int | float, delay: int | float):
+    def set_data(self, func: Callable | None, interval: int | float, delay: int | float):
         if (old_func := getattr(self, "func", None)) is not None:
             try:
                 self.signal.disconnect(old_func)
@@ -1881,7 +1881,8 @@ class RunTimer(QTimer):
 
 
 class Packet:
-    def __init__(self, packet: str | bytearray | bytes | None = None, cmd_id: int | None = None, body: str | bytearray | bytes | None = None):
+    def __init__(self, packet: str | bytearray | bytes | buffer | None = None, cmd_id: int | None = None,
+                 body: str | bytearray | bytes | buffer | None = None):
         self.length = self.serial_num = self.cmd_id = self.user_id = self.version = 0
         self.body = bytearray()
         if packet is not None:
@@ -1898,7 +1899,7 @@ class Packet:
         return head + self.body
 
     @staticmethod
-    def to_bytearray(data: str | bytearray | bytes | None):
+    def to_bytearray(data: str | bytearray | bytes | buffer | None):
         if data is None:
             return bytearray()
         if isinstance(data, str):
@@ -1925,7 +1926,7 @@ class Packet:
             serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
         self.serial_num = serial_num
 
-    def encrypt(self, is_get_serial_num=True):
+    def encrypt(self, is_get_serial_num: bool = True):
         if is_get_serial_num:
             self.get_serial_num()
         res = bytearray(len(self.body) + 1)
@@ -1985,32 +1986,32 @@ def get_skill_id(skill_level: int, skill_type: str):
             return 1
 
 
-def get_card_max_exp(star):
+def get_card_max_exp(star: int):
     # n星卡牌经验上限
     star = min(star, 6)
     return 120 * star ** 2 + 28 * star - 4
 
 
-def get_card_max_level(star):
+def get_card_max_level(star: int):
     # n星卡牌等级上限
     star = min(star, 6)
     return 10 * star
 
 
-def get_card_provided_exp(star):
+def get_card_provided_exp(star: int):
     # n星1级卡牌提供的经验值
     star = min(star, 6)
     return 5 * star - 2
 
 
-def get_card_level(star, exp):
+def get_card_level(star: int, exp: int):
     # n星卡牌根据总经验计算等级
     star = min(star, 6)
     base = 2 * star + 5
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
 
 
-def get_sprite_max_exp(star, max_level):
+def get_sprite_max_exp(star: int, max_level: int):
     # n星魔灵经验上限
     return mlcs_factors[star - 1] * pow((max_level - 1) / 98, 2.5)
 
@@ -2043,21 +2044,21 @@ def alert_reward(data: tuple | int):
         push_cmd(f"alertReward|{data},1")
 
 
-def enter_map(_map_id: int, _map_type: int = 0):
-    push_cmd(f"enterMap|{_map_id},{_map_type}")  # 进地图，已在地图时不会重新进，不会提示已在地图
+def enter_map(_map_id: int, map_type: int = 0):
+    push_cmd(f"enterMap|{_map_id},{map_type}")  # 进地图，已在地图时不会重新进，不会提示已在地图
 
 
-def switch_map(_map_id: int, _map_type: int = 0):
-    push_cmd(f"switchMap|{_map_id},{_map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
+def switch_map(_map_id: int, map_type: int = 0):
+    push_cmd(f"switchMap|{_map_id},{map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
 
 
-def get_item_info(item_id: int, func=None):
+def get_item_info(item_id: int, func: Callable | None = None):
     if func is not None:
         item_info_callbacks[item_id] = func
     push_cmd(f"getItemInfo|{item_id}")
 
 
-def dispatch_item_info(cmd, payload):
+def dispatch_item_info(cmd: str, payload: dict):
     if cmd != "getItemInfo":
         return
     if not isinstance(payload, dict) or "id" not in payload:
@@ -2068,11 +2069,11 @@ def dispatch_item_info(cmd, payload):
         func(payload)
 
 
-def run_later(func, delay: int = 300):
+def run_later(func: Callable, delay: int = 300):
     QTimer.singleShot(delay, func)
 
 
-def run_later_expect(func, expect: dict):
+def run_later_expect(func: Callable, expect: dict):
     # 等待到期望包之后运行
     # expect：{cmd_id：{"num"：数量, "offsets"：[offset, ...], "need_data"：是否获取数据}}
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
@@ -2084,7 +2085,7 @@ def run_later_expect(func, expect: dict):
     })
 
 
-def check_waiting_packets(packet):
+def check_waiting_packets(packet: Packet):
     # 检查待匹配包
     for index in range(len(pending_waits) - 1, -1, -1):
         wait_info = pending_waits[index]
@@ -2113,8 +2114,8 @@ def check_waiting_packets(packet):
                 pending_waits.pop(index)
 
 
-def clamp(value, lower, upper):
-    return min(max(int(value), lower), upper)
+def clamp(value: int, lower: int, upper: int):
+    return min(max(value, lower), upper)
 
 
 def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):
@@ -2307,11 +2308,11 @@ def get_remote_info(socket_num: int):
             return 1
 
 
-def write_back(buf, index, packet):
+def write_back(buf: buffer, index: int, packet: Packet):
     buf[index:index + packet.length] = packet.encrypt(False).data()
 
 
-def send(socket_num, buf, length):
+def send(socket_num: int, buf: bytes | buffer, length: int):
     return hook.Send(socket_num, ffi.from_buffer(buf), length)
 
 
