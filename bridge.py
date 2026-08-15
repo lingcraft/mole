@@ -16,9 +16,9 @@ from loguru import logger
 # swf/replace 下的同名 SWF 在客户端请求时就地替换为本地文件（覆盖上游官方 SWF）。
 # 注意：replace 仅放要覆盖的官方 SWF，append 仅放自定义 mod，勿混用。
 base_dir = Path(__file__).resolve().parent
-config_dir = Path(environ["appdata"]) / "mole"  # 配置目录
-append_dir = base_dir / "swf" / "append"    # 追加加载的 mod（注入 ext.xml）
-replace_dir = base_dir / "swf" / "replace"  # 覆盖官方 SWF（按同名拦截替换）
+append_dir = base_dir / "swf" / "append"    # 追加 SWF
+replace_dir = base_dir / "swf" / "replace"  # 替换 SWF
+cache_dir = Path(environ["appdata"]) / "mole" / "cache"  # SWF 缓存
 
 
 def list_append_swfs() -> list[Path]:
@@ -71,7 +71,7 @@ parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上�
 def fallback_cache_path(url: str) -> Path:
     """官服 URL 路径 → 本地缓存文件绝对路径（镜像 URL 路径结构）。"""
     rel = url.split("?", 1)[0].lstrip("/")
-    return config_dir / rel
+    return cache_dir / rel
 
 
 def content_type_for(name: str) -> str:

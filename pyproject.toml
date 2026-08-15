@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.12.5"
+version = "1.12.6"
 description = """
-- 新增：新增显示官服不存在但平行服存在的衣服、坐骑等资源（官服请求的 swf 或 xml 资源不存在时改为请求平行服相应资源，并缓存到 %appdata%/mole/resource 目录下，加快加载速度）
+- 优化：新增显示官服不存在但平行服存在的衣服、坐骑等资源（官服请求的 swf 或 xml 资源不存在时改为请求平行服相应资源，并缓存到 %appdata%/mole/cache 目录下，加快加载速度）
 """
 readme = "README.md"
 requires-python = ">=3.12"
