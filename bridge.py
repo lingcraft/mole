@@ -16,6 +16,7 @@ from loguru import logger
 # swf/replace 下的同名 SWF 在客户端请求时就地替换为本地文件（覆盖上游官方 SWF）。
 # 注意：replace 仅放要覆盖的官方 SWF，append 仅放自定义 mod，勿混用。
 base_dir = Path(__file__).resolve().parent
+config_dir = Path(environ["appdata"]) / "mole"  # 配置目录
 append_dir = base_dir / "swf" / "append"    # 追加加载的 mod（注入 ext.xml）
 replace_dir = base_dir / "swf" / "replace"  # 覆盖官方 SWF（按同名拦截替换）
 
@@ -64,6 +65,23 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
 
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
 upstream_base = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按服/节点设置
+parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
+
+
+def fallback_cache_path(url: str) -> Path:
+    """官服 URL 路径 → 本地缓存文件绝对路径（镜像 URL 路径结构）。"""
+    rel = url.split("?", 1)[0].lstrip("/")
+    return config_dir / rel
+
+
+def content_type_for(name: str) -> str:
+    """按文件后缀推断回传的 Content-Type。"""
+    lower = name.lower()
+    if lower.endswith(".swf"):
+        return "application/x-shockwave-flash"
+    if lower.endswith(".xml"):
+        return "application/xml"
+    return "application/octet-stream"
 
 # 复用 TCP 连接；trust_env=False 强制不走系统代理，避免回环到本代理自身
 session = Session()
@@ -90,6 +108,11 @@ def set_upstream(base: str) -> None:
     """设置注入服务的真实服务器基址（切换服/节点时调用）。"""
     global upstream_base
     upstream_base = base.rstrip("/")
+
+
+def is_official_server() -> bool:
+    """当前上游是否为官服（mole.61.com）；非官服不启用平行服回退。"""
+    return urlparse(upstream_base).netloc == "mole.61.com"
 
 
 def injector_url(path: str = "/Client.swf") -> str:
@@ -152,6 +175,20 @@ class InjectHandler(BaseHTTPRequestHandler):
             # 客户端中途断开：静默结束
             pass
 
+    def serve_local_cacheable(self, data: bytes, content_type: str):
+        """以可缓存方式返回一段本地字节（带较长过期时间，不带 no-store/no-cache），
+        交由 Flash 存入本地 SWF 缓存目录，进一步减少重复加载。"""
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "max-age=2592000")
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except OSError:
+            # 客户端中途断开：静默结束
+            pass
+
     def dispatch(self):
         url = self.path
         # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器后，GET /cmd-port 取真实 socket 端口
@@ -194,6 +231,10 @@ class InjectHandler(BaseHTTPRequestHandler):
                     self.serve_local(append_local.read_bytes(), "application/x-shockwave-flash")
                 else:
                     self.serve_merged_xml(url, append_local)
+                return
+            # 官服：上游返回 0 字节的资源改用平行服资源（交由 Flash 本地缓存）
+            if is_official_server():
+                self.serve_fallback(url, name)
                 return
         # 其余请求透传上游（保留缓存头，流式转发压缩字节）
         headers = {k: v for k, v in self.headers.items()
@@ -286,6 +327,80 @@ class InjectHandler(BaseHTTPRequestHandler):
         merged = ET.tostring(orig_root, encoding="utf-8")
         self.serve_local(merged, "application/xml")
         logger.info(f"[merge-xml] 修改: {append_path.name}")
+
+    def relay_cacheable(self, resp) -> None:
+        """转发上游响应，剔除 hop-by-hop 头（transfer-encoding/connection/
+        content-encoding/content-length，长度由本方法按真实解压后字节重算）。
+        缓存相关头（cache-control/pragma/expires）原样保留——若上游本就带
+        no-store/no-cache，则遵循上游、不强行改为可缓存；仅当上游完全没有
+        任何缓存指令时，补一个 max-age=2592000 促使 Flash 缓存。"""
+        self.send_response(resp.status_code)
+        has_cache = False
+        for k, v in resp.headers.items():
+            lk = k.lower()
+            if lk in ("transfer-encoding", "connection", "content-encoding", "content-length"):
+                continue
+            if lk in ("cache-control", "pragma", "expires"):
+                has_cache = True  # 上游自带缓存指令（含 no-store/no-cache），原样遵循
+            self.send_header(k, v)
+        # 上游完全没有缓存指令时，补一个较长过期时间促使 Flash 缓存
+        if not has_cache:
+            self.send_header("Cache-Control", "max-age=2592000")
+        data = resp.content
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        try:
+            self.wfile.write(data)
+        except OSError:
+            pass
+
+    def serve_fallback(self, url: str, name: str) -> None:
+        """官服资源上游返回 0 字节（或取回失败）时，改用平行服同路径资源，
+        并缓存到本地 %appdata%/mole/resource（镜像 URL 路径）。流程（本地缓存优先，最大化提速）：
+        - 本地缓存命中 → 直接返回，跳过一切网络请求（官服/平行服都不问）；
+        - 本地无缓存 → 先问官服，有内容直接转发官服（不缓存，便于官服恢复资源即时生效）；
+        - 官服为空/失败 → 取平行服同路径资源并写入本地缓存，否则退回官服响应或 502。
+        注：本地缓存存在时不再校验官服，若官服日后补回资源需手动删除缓存文件以切回官服真版。"""
+        # 1) 本地缓存优先：命中直接返回，完全跳过网络请求（提速关键）
+        cache_path = fallback_cache_path(url)
+        if cache_path.is_file():
+            data = cache_path.read_bytes()
+            logger.info(f"[fallback] 加载缓存: {name}")
+            self.serve_local_cacheable(data, content_type_for(name))
+            return
+        # 2) 无缓存 → 先问官服，有内容直接转发官服（不缓存）
+        try:
+            resp = session.get(upstream_base + url, timeout=30)
+            official_ok = resp.status_code == 200 and len(resp.content) > 0
+        except Exception:
+            resp = None
+            official_ok = False
+        if official_ok:
+            self.relay_cacheable(resp)
+            return
+        # 3) 官服为空/失败 → 取平行服同路径资源并写入本地缓存供下次使用
+        try:
+            presp = session.get(parallel_base + url, timeout=30)
+            parallel_ok = presp.status_code == 200 and len(presp.content) > 0
+        except Exception:
+            presp = None
+            parallel_ok = False
+        if parallel_ok:
+            data = presp.content
+            try:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_bytes(data)
+            except Exception as e:
+                logger.warning(f"[fallback] 写入本地缓存失败: {e}")
+            logger.info(f"[fallback] 缓存: {name}")
+            self.relay_cacheable(presp)
+            return
+        # 4) 平行服也取不到 → 退回官服响应（哪怕 0 字节），否则 502
+        if resp is not None:
+            self.relay_cacheable(resp)
+        else:
+            self.send_response(502)
+            self.end_headers()
 
     do_GET = dispatch
     do_POST = dispatch
