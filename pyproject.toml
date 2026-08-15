@@ -1,8 +1,12 @@
 [project]
 name = "mole"
-version = "1.12.6"
+version = "1.12.7"
 description = """
-- 优化：新增显示官服不存在但平行服存在的衣服、坐骑等资源（官服请求的 swf 或 xml 资源不存在时改为请求平行服相应资源，并缓存到 %appdata%/mole/cache 目录下，加快加载速度）
+- 新增：bridge.py 新增 replace_list 替换资源列表，里面的文件如果官服请求则会替换为平行服的对应资源并缓存
+- 优化：官服请求的 JDGoodsXmlData.xml 礼包详情配置文件替换为平行服资源，因为官服的部分礼包数据有问题
+- 优化：MoleShop.swf 商店的商品全局共享队列改为每个商品用单独队列
+- 修复：MoleShop.swf 修复商店的礼包有散件资源不存在时，会打断全局共享队列，导致再点击查看别的礼包内容时散件也都变为空白的问题
+- 修复：MoleShop.swf 修复商店的1页礼包商品中，若有1个礼包有散件资源不存在时，它后面的礼包商品即使资源存在也会图标和散件内容都为空白的问题
 """
 readme = "README.md"
 requires-python = ">=3.12"

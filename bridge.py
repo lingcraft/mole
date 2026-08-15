@@ -66,6 +66,7 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
 upstream_base = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按服/节点设置
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
+replace_list = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
 
 
 def fallback_cache_path(url: str) -> Path:
@@ -232,6 +233,10 @@ class InjectHandler(BaseHTTPRequestHandler):
                 else:
                     self.serve_merged_xml(url, append_local)
                 return
+            # 官服：replace_list 命中的资源强制替换为平行服对应资源并允许缓存
+            if is_official_server() and name in replace_list:
+                self.serve_parallel_replace(url, name)
+                return
             # 官服：上游返回 0 字节的资源改用平行服资源（交由 Flash 本地缓存）
             if is_official_server():
                 self.serve_fallback(url, name)
@@ -295,9 +300,9 @@ class InjectHandler(BaseHTTPRequestHandler):
                 for p in mods
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
-            logger.info(f"[ext.xml] 注入: {"、".join(p.name for p in mods)}")
+            logger.info(f"[ext.xml] 注入: {"，".join(p.name for p in mods)}")
         else:
-            logger.info(f"[ext.xml] 未注入（mods={len(mods)}, has</ext>={"</ext>" in text}）")
+            logger.info(f"[ext.xml] 注入失败，ext.xml 中未找到 <ext> 节点")
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
 
@@ -309,24 +314,24 @@ class InjectHandler(BaseHTTPRequestHandler):
         try:
             resp = session.get(upstream_base + url, timeout=30)
         except Exception:
-            logger.warning(f"[merge-xml] 取上游原始 xml 失败，回退返回本地补充文件: {url}")
+            logger.warning(f"[resource] 取上游原始 xml 失败，回退返回本地补充文件: {url}")
             self.serve_local(append_path.read_bytes(), "application/xml")
             return
         if resp.status_code != 200:
-            logger.warning(f"[merge-xml] 上游返回 {resp.status_code}，回退返回本地补充文件: {url}")
+            logger.warning(f"[resource] 上游返回 {resp.status_code}，回退返回本地补充文件: {url}")
             self.serve_local(append_path.read_bytes(), "application/xml")
             return
         try:
             orig_root = ET.fromstring(resp.content.decode("utf-8-sig"))
             append_root = ET.parse(append_path).getroot()
         except Exception as e:
-            logger.warning(f"[merge-xml] 解析 xml 失败（{e}），回退返回本地补充文件")
+            logger.warning(f"[resource] 解析 xml 失败（{e}），回退返回本地补充文件")
             self.serve_local(append_path.read_bytes(), "application/xml")
             return
         merge_append(orig_root, append_root)
         merged = ET.tostring(orig_root, encoding="utf-8")
         self.serve_local(merged, "application/xml")
-        logger.info(f"[merge-xml] 修改: {append_path.name}")
+        logger.info(f"[resource] 修改: {append_path.name}")
 
     def relay_cacheable(self, resp) -> None:
         """转发上游响应，剔除 hop-by-hop 头（transfer-encoding/connection/
@@ -354,53 +359,60 @@ class InjectHandler(BaseHTTPRequestHandler):
         except OSError:
             pass
 
-    def serve_fallback(self, url: str, name: str) -> None:
-        """官服资源上游返回 0 字节（或取回失败）时，改用平行服同路径资源，
-        并缓存到本地 %appdata%/mole/resource（镜像 URL 路径）。流程（本地缓存优先，最大化提速）：
-        - 本地缓存命中 → 直接返回，跳过一切网络请求（官服/平行服都不问）；
-        - 本地无缓存 → 先问官服，有内容直接转发官服（不缓存，便于官服恢复资源即时生效）；
-        - 官服为空/失败 → 取平行服同路径资源并写入本地缓存，否则退回官服响应或 502。
-        注：本地缓存存在时不再校验官服，若官服日后补回资源需手动删除缓存文件以切回官服真版。"""
-        # 1) 本地缓存优先：命中直接返回，完全跳过网络请求（提速关键）
+    def serve_resource(self, url: str, name: str, prefer_parallel: bool) -> None:
+        """官服/平行服资源统一获取与缓存（serve_fallback 与 serve_parallel_replace 的公共实现）。
+        - prefer_parallel=False (fallback)：官服优先；官服为空/失败再回退平行服。采用官服时不缓存（便于官服恢复即时生效）；
+          仅当采用平行服时写本地缓存。两服皆空时退回官服响应（哪怕 0 字节），否则 502。
+        - prefer_parallel=True (replace)：平行服优先，强制替换官服；采用平行服时写本地缓存并以可缓存方式返回；
+          平行服取不到才回退官服透传，否则 502。
+        本地缓存命中时直接可缓存返回，跳过网络。"""
         cache_path = fallback_cache_path(url)
         if cache_path.is_file():
             data = cache_path.read_bytes()
-            logger.info(f"[fallback] 加载缓存: {name}")
+            logger.info(f"[resource] 加载: {name}")
             self.serve_local_cacheable(data, content_type_for(name))
             return
-        # 2) 无缓存 → 先问官服，有内容直接转发官服（不缓存）
-        try:
-            resp = session.get(upstream_base + url, timeout=30)
-            official_ok = resp.status_code == 200 and len(resp.content) > 0
-        except Exception:
-            resp = None
-            official_ok = False
-        if official_ok:
-            self.relay_cacheable(resp)
+        primary, secondary = (parallel_base, upstream_base) if prefer_parallel else (upstream_base, parallel_base)
+        last_official = None  # 官服响应（含 0 字节），仅 fallback 双空兜底用
+        resp = source = None
+        for base in (primary, secondary):
+            try:
+                r = session.get(base + url, timeout=30)
+            except Exception:
+                r = None
+            if r is not None and r.status_code == 200 and len(r.content) > 0:
+                resp, source = r, base
+                break
+            if base is upstream_base:
+                last_official = r
+        else:
+            # 官服与平行服都无有效内容
+            if not prefer_parallel and last_official is not None:
+                self.relay_cacheable(last_official)  # 退回官服响应（哪怕 0 字节）
+            else:
+                self.send_response(502)
+                self.end_headers()
             return
-        # 3) 官服为空/失败 → 取平行服同路径资源并写入本地缓存供下次使用
-        try:
-            presp = session.get(parallel_base + url, timeout=30)
-            parallel_ok = presp.status_code == 200 and len(presp.content) > 0
-        except Exception:
-            presp = None
-            parallel_ok = False
-        if parallel_ok:
-            data = presp.content
+        if source is parallel_base:
+            # 采用平行服：写本地缓存并以可缓存方式返回
             try:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
-                cache_path.write_bytes(data)
+                cache_path.write_bytes(resp.content)
             except Exception as e:
-                logger.warning(f"[fallback] 写入本地缓存失败: {e}")
-            logger.info(f"[fallback] 缓存: {name}")
-            self.relay_cacheable(presp)
-            return
-        # 4) 平行服也取不到 → 退回官服响应（哪怕 0 字节），否则 502
-        if resp is not None:
-            self.relay_cacheable(resp)
+                logger.warning(f"[resource] 写入本地缓存失败: {e}")
+            logger.info(f"[resource] 缓存: {name}")
+            self.serve_local_cacheable(resp.content, content_type_for(name))
         else:
-            self.send_response(502)
-            self.end_headers()
+            # 采用官服：透传上游缓存头，不写本地缓存
+            self.relay_cacheable(resp)
+
+    def serve_fallback(self, url: str, name: str) -> None:
+        """官服资源上游返回 0 字节（或取回失败）时，改用平行服同路径资源（详见 _serve_resource）。"""
+        self.serve_resource(url, name, False)
+
+    def serve_parallel_replace(self, url: str, name: str) -> None:
+        """replace_list 命中：官服资源强制替换为平行服同路径资源并允许缓存（详见 _serve_resource）。"""
+        self.serve_resource(url, name, True)
 
     do_GET = dispatch
     do_POST = dispatch
