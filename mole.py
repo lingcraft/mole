@@ -1903,10 +1903,9 @@ class Packet:
         if data is None:
             return bytearray()
         if isinstance(data, str):
-            # 支持带标注的输入，如「绿：0000... {00003E81:药水ID}{0001869F:药水数量}」
-            text = data.split("：", 1)[-1] if "：" in data else data
-            text = sub(r"{([^}:]*)(?::[^}]*)?}", r"\1", text)
-            return bytearray.fromhex(text)
+            # 支持带标注的输入，如：“绿：0000... {00003E81:药水ID}{0001869F:药水数量}”
+            data = sub(r"{([^}:]*)(?::[^}]*)?}", r"\1", data.split("：", 1)[-1])
+            return bytearray.fromhex(data)
         return bytearray(data)
 
     @staticmethod
