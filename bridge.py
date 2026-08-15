@@ -66,7 +66,7 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
 upstream_base = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按服/节点设置
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
-replace_list = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
+replace_resources = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
 
 
 def fallback_cache_path(url: str) -> Path:
@@ -234,7 +234,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                     self.serve_merged_xml(url, append_local)
                 return
             # 官服：replace_list 命中的资源强制替换为平行服对应资源并允许缓存
-            if is_official_server() and name in replace_list:
+            if is_official_server() and name in replace_resources:
                 self.serve_parallel_replace(url, name)
                 return
             # 官服：上游返回 0 字节的资源改用平行服资源（交由 Flash 本地缓存）
