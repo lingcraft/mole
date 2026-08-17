@@ -44,9 +44,10 @@ recv_buf = bytearray()  # 接收封包的数据缓冲区
 buf_index = 0  # 数据索引
 is_show_send, is_show_recv = True, True  # 显示send包、recv包
 lock = Lock()  # 发送锁
-is_show_msg = False  # 是否显示过消息
 pending_waits = []  # 等待中的请求
 item_info_callbacks = {} # getItemInfo 回传分发表
+msg_show_states = {}  # 是否显示过消息
+min_show_time = 0.4  # 最小显示时间
 # 拉姆
 can_get_lamu_info = True  # 能否获取拉姆信息
 lamus_num, lamus_dict = 0, {}  # 拉姆数量、信息
@@ -89,10 +90,17 @@ ysqs_non_material_cards_types = frozenset({
     0x196277,  # 汉青⭐5
     0x19628E, 0x19628F, 0x196290  # 洛基⭐3/4/5
 })
+ysqs_countdown_info = {}  # 元素骑士竞技倒计时信息
+ysqs_state: "State | None" = None  # 状态
+ysqs_state_since = None  # 上一状态时间
 # 餐厅
-ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdown_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
-ct_state: "State | None" = None  # 餐厅做菜状态
+ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdowns_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
+ct_state: "State | None" = None  # 状态
 ct_state_since, is_connect, is_done = None, False, False  # 上一状态时间、客户端是否连接、做菜是否完成
+# 化石
+hs_countdown_info = {}  # 化石鉴定倒计时信息
+hs_state: "State | None" = None  # 状态
+hs_state_since = None  # 上一状态时间
 # 游戏版本
 server_dict = {
     "官服": "http://mole.61.com",
@@ -174,6 +182,7 @@ class State(IntEnum):
     LOGIN_OK = 3  # 登录成功
     COOKING = 4  # 做菜中
     DONE = 5  # 做菜完成
+    RUNNING = 6  # 运行中
 
 
 class Button(IntFlag):
@@ -271,18 +280,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.mlcsSellButton.clicked.connect(self.mlcs_sell_start)
         self.mlcsUpgradeButton.clicked.connect(self.mlcs_upgrade_start)
         self.pplPlayButton.clicked.connect(self.ppl_start)
+        self.hsIdentifyButton.clicked.connect(self.hs_start)
+        self.ysqsArenaFightButton.clicked.connect(self.ysqs_arena_start)
         # 多次运行功能
         self.sendLoopButton.clicked.connect(lambda: self.start_task("循环发送", self.send, Interval.FAST, self.sendLoopButton))
         self.lamuGrowButton.clicked.connect(lambda: self.start_task("拉姆", self.lamu_run, Interval.IDLE, self.lamuGrowButton, self.lamu_start))
         self.dddGetButton.clicked.connect(lambda: self.start_task("点点豆", self.ddd_run, Interval.FAST, self.dddGetButton))
         self.medGetButton.clicked.connect(lambda: self.start_task("摩尔豆", self.med_run, Interval.FAST, self.medGetButton))
-        self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton, self.bh_start))
+        self.bhOpenButton.clicked.connect(lambda: self.start_task("缤纷七彩宝盒", self.bh_run, Interval.SLOW, self.bhOpenButton))
         self.kllFinishButton.clicked.connect(lambda: self.start_task("卡罗拉幸运儿", self.kll_run, Interval.IDLE, self.kllFinishButton))
-        self.is_show_recv = None # 记录启动任务前是否显示recv包
+        self.is_show_recv = None  # 记录启动任务前是否显示recv包
         # 摩摩怪功能
         self.timer_pool = {
             "摩摩怪": RunTimer(self.mmg_run),
-            "餐厅": {pos: RunTimer() for pos in range(1, 8)}
+            "餐厅": {pos: RunTimer() for pos in range(1, 8)},
+            "化石": RunTimer(self.hs_run, 60 * 1000),
+            "元素骑士": RunTimer(self.ysqs_arena_run, 10 * 60 * 1000)
         }
         self.mmgPVBButton.clicked.connect(lambda: self.mmg_start(1))
         self.mmgPVEButton.clicked.connect(lambda: self.mmg_start(2))
@@ -455,6 +468,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ysqsAdvanceButton.setEnabled(is_enabled)
         self.ysqsLevelBox.setEnabled(is_enabled)
         self.ysqsCardBox.setEnabled(is_enabled)
+        self.ysqsArenaFightButton.setEnabled(is_enabled)
 
     def enable_mlcs_button(self, is_enabled: bool):
         self.mlcsFightButton.setEnabled(is_enabled)
@@ -464,7 +478,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def enable_ct_button(self, is_enabled: bool):
         self.ctSellButton.setEnabled(is_enabled)
-        if not is_harvest_running():
+        if not is_running("餐厅"):
             self.ctHarvestButton.setEnabled(is_enabled)
             self.ctDishBox.setEnabled(is_enabled)
         elif not is_enabled:
@@ -490,6 +504,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def enable_ppl_button(self, is_enabled: bool):
         self.pplPlayButton.setEnabled(is_enabled)
 
+    def enable_hs_button(self, is_enabled: bool):
+        self.hsIdentifyButton.setEnabled(is_enabled)
+
     def enable_all_buttons(self, is_enabled: bool):
         self.enable_lamu_button(is_enabled)
         self.enable_mmg_button(is_enabled)
@@ -501,6 +518,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_kll_button(is_enabled)
         self.enable_mrjl_button(is_enabled)
         self.enable_ppl_button(is_enabled)
+        self.enable_hs_button(is_enabled)
         if not is_enabled:  # 刷新游戏后的操作
             self.stop_timer("摩摩怪")
             self.stop_timer("拉姆")
@@ -530,6 +548,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.is_show_recv = is_show_recv
             if is_show_recv:
                 self.recvCheckBox.setChecked(False)
+        show_msg(name, False)
         timer.start()
 
     def stop_task(self, name: str):
@@ -579,7 +598,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def open_github(self):
         QDesktopServices.openUrl(QUrl("https://github.com/lingcraft/mole"))
 
-    def update_title(self, module_name, module_user_id=None, func_name=None, func_info=None, next_run_getter=None):
+    def update_title(self, module_name, module_user_id=None, func_name=None, func_info=None, next_run=None):
         if func_name is None:
             self.title_part_pool.pop(module_name, None)
         else:
@@ -587,11 +606,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if module_user_id is not None:
                 title += f" ({module_user_id})"
             if func_name is not None:
-                title += f" • {func_name}："
+                title += f" • {func_name}"
             if func_info is not None:
-                title += func_info
-            if next_run_getter is not None:
-                result = next_run_getter()
+                title += f"：{func_info}"
+            if next_run is not None:
+                result = next_run()
                 if isinstance(result, datetime):
                     remain = max(0, int((result - datetime.now()).total_seconds()))
                     h, left = divmod(remain, 3600)
@@ -606,12 +625,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setWindowTitle(f"{self.title}{(" | " + suffix) if suffix else ""}")
 
     def start_update_title(self, module_name: str, module_user_id: int | None = None, func_name: str | None = None, func_info: str | None = None,
-                           next_run_getter: Callable | None = None, interval: int = 1000, on_tick: Callable | None = None):
+                           next_run: Callable | None = None, tick_run: Callable | None = None, interval: int = 100):
         def tick():
-            self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
-            if on_tick is not None:
-                on_tick()
-        self.update_title(module_name, module_user_id, func_name, func_info, next_run_getter)
+            self.update_title(module_name, module_user_id, func_name, func_info, next_run)
+            if tick_run is not None:
+                tick_run()
+        self.update_title(module_name, module_user_id, func_name, func_info, next_run)
         delay = (1000 - datetime.now().microsecond // 1000) % 1000  # 对齐到整秒
         timer = RunTimer(tick, interval, delay, True).start()
         self.title_timer_pool[module_name] = timer
@@ -695,7 +714,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.groupBox.setVisible(True)
             self.tabWidget.setGeometry(self.tab_geometry)
 
-    def reward_maybe_finish(self):
+    def reward_tick_run(self):
         # 完成判定基于“显示值”而非实际发包数：显示值节流后可能滞后于实际，
         # 追上总个数，追上才收尾，避免定时器被过早停掉导致标题只闪一下。
         if self.reward_done_disp >= self.reward_total and self.rewardGetButton.text() == "停止":
@@ -759,9 +778,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     None,
                     "领取",
                     "进度",
-                    self.reward_progress_getter,
-                    100,
-                    self.reward_maybe_finish
+                    self.reward_next_run,
+                    self.reward_tick_run
                 )
         else:
             # 手动停止：请求线程中断并等待结束，再走统一收尾（含停止弹窗提示）
@@ -817,7 +835,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def reward_progress(self, index: int):
         self.reward_packet_sent = index + 1
 
-    def reward_progress_getter(self):
+    def reward_next_run(self):
         # 当前正在领取的勾选项名 + 已发送完的个数 / 总个数
         total = self.reward_total
         if total == 0:
@@ -1162,7 +1180,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("无尽深渊")["ID"])}",
                 f"00000000000000231D0000000000000000{get_hex(get_level_info("莎士摩亚")["ID"])}"
             ])
-            run_later_expect(self.ysqs_fight, {0x231D: {"num": 2, "need_data": True, "offsets": (0, 28)}})
+            run_later_expect(self.ysqs_fight, {0x231D: {"num": 2, "offsets": (0, 28)}})
 
     def ysqs_fight(self, wjsy_info: tuple[int, int], ssmy_info: tuple[int, int]):
         hour = datetime.now().hour
@@ -1387,7 +1405,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000003FA0000000000000000000027100000000000147293{get_hex(ct_cooked_dishes_dict[self.ctDishBox.currentText()]["ID"])}00000065"
         ])
 
-    def ct_harvest_state(self):
+    def ct_next_run(self):
         global ct_state, is_connect, is_done, ct_state_since
         if self.client is None or not self.client.is_alive():
             is_connect = False
@@ -1402,17 +1420,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     is_done = True
             except Empty:
                 pass
-
         now = monotonic()
-        dwell_ok = ct_state_since is None or now - ct_state_since >= 0.2
-
+        if ct_state_since is None:
+            ct_state_since = now
+        dwell_ok = now - ct_state_since >= min_show_time
         match ct_state:
             case State.COUNTDOWN:
-                next_run = min(item["下次运行时间"] for item in ct_cooking_countdown_dict.values())
-                if int((next_run - datetime.now()).total_seconds()) > 0:
+                next_run = min(countdown_info["下次运行时间"] for countdown_info in ct_cooking_countdowns_dict.values())
+                if (next_run - datetime.now()).total_seconds() > 0:
                     return next_run
                 else:
-                    self.title_timer_pool["餐厅"].set_interval(50)
+                    for countdown_info in ct_cooking_countdowns_dict.values():
+                        if countdown_info["下次运行时间"] <= datetime.now():
+                            countdown_info["下次运行时间"] += countdown_info["运行间隔"]
                     ct_state_since = now
                     if is_connect:
                         ct_state = State.COOKING
@@ -1438,7 +1458,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 return "做菜中"
             case State.DONE:
                 if dwell_ok:
-                    self.title_timer_pool["餐厅"].set_interval(1000)
                     ct_state = State.COUNTDOWN
                     ct_state_since = now
                 return "做菜完成"
@@ -1446,7 +1465,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 return "准备中"
 
     def ct_harvest_start(self):
-        if not is_harvest_running():  # 启动
+        if not is_running("餐厅"):  # 启动
             self.harvest_button_text = self.ctHarvestButton.text()
             self.ctHarvestButton.setText("停止")
             self.ctDishBox.setEnabled(False)
@@ -1455,9 +1474,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.start_update_title(
                 "餐厅",
                 self.user_id,
-                self.harvest_button_text,
+                "做菜",
                 self.ctDishBox.currentText(),
-                self.ct_harvest_state,
+                self.ct_next_run,
             )
             switch_map(user_id, 0x1F)
             run_later_expect(self.ct_harvest_run, {0x3F6: 1})  # 获取餐厅信息
@@ -1492,17 +1511,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     delay = need_time - cook_time
                 elif cook_time >= expire_time:  # 已糊的菜
                     dish_info["菜已糊"] = True
-            ct_cooking_countdown_dict[dish_pos] = {
+            ct_cooking_countdowns_dict[dish_pos] = {
                 "运行间隔": timedelta(seconds=interval),
                 "下次运行时间": now + timedelta(seconds=delay)
             }
-            ct_state = State.LOGGING_IN if delay == 0 else State.COUNTDOWN
+            ct_state = State.COUNTDOWN
             timer.set_data(lambda pos=dish_pos: self.ct_harvest_func(pos), interval * 1000, delay * 1000).start()
 
     def ct_harvest_func(self, pos: int):
         cooked_info = ct_cooked_dishes_dict[self.ctDishBox.currentText()]
         dish_info = ct_cooking_dishes_dict[pos]
-        countdown_info = ct_cooking_countdown_dict[pos]
+        countdown_info = ct_cooking_countdowns_dict[pos]
         now = datetime.now()
         # 首次登录包
         init_lines = [
@@ -1517,7 +1536,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 lines.append(f"0000000000000003FD0000000000000000{get_hex(cooked_info["类型"])}{get_hex(dish_info["ID"])}{get_hex(pos)}{get_hex(cooked_info["位置"])}")  # 收菜
         if now.hour >= 6:
             lines.append(f"0000000000000003F90000000000000000{get_hex(dish_info["类型"])}{get_hex(pos)}")  # 做菜
-            countdown_info["下次运行时间"] += countdown_info["运行间隔"]
         else:
             dish_info["下次不收菜"] = True
             cook_start = datetime(now.year, now.month, now.day, 6, 1)
@@ -1548,10 +1566,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"000000000000002B1A0000000000000000{get_hex(num)}" for num in range(1, 11)
         ])
 
-    def bh_start(self):
-        global is_show_msg
-        is_show_msg = False
-
     def bh_run(self):
         send_lines([
             "0000000000000022F9000000000000000000003E95"
@@ -1568,11 +1582,172 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ])
 
     def ppl_start(self):
-        if not is_ppl_running():  # 启动
+        if not self.ppl_thread.is_start:  # 启动
             self.ppl_button_text = self.pplPlayButton.text()
             self.ppl_thread.start()
         else:  # 停止
             self.ppl_thread.stop()
+
+    def hs_next_run(self):
+        global hs_state, hs_state_since
+        now = monotonic()
+        if hs_state_since is None:
+            hs_state_since = now
+        dwell_ok = now - hs_state_since >= min_show_time
+        match hs_state:
+            case State.COUNTDOWN:
+                next_run = hs_countdown_info["下次运行时间"]
+                if (next_run - datetime.now()).total_seconds() > 0:
+                    return next_run
+                else:
+                    hs_countdown_info["下次运行时间"] += hs_countdown_info["运行间隔"]
+                    hs_state = State.RUNNING
+                    hs_state_since = now
+                    return "鉴定中"
+            case State.RUNNING:
+                if dwell_ok:
+                    hs_state = State.DONE
+                    hs_state_since = now
+                return "鉴定中"
+            case State.DONE:
+                if dwell_ok:
+                    hs_state = State.COUNTDOWN
+                    hs_state_since = now
+                return "鉴定完成"
+            case _:
+                return "准备中"
+
+    def hs_start(self):
+        def start(delay: int):
+            global hs_state, hs_countdown_info
+            hs_countdown_info = {
+                "运行间隔": timedelta(minutes=1),
+                "下次运行时间": datetime.now() + timedelta(seconds=delay)
+            }
+            hs_state = State.COUNTDOWN
+            self.timer_pool["化石"].start(delay * 1000)
+
+        if not is_running("化石"):  # 启动
+            self.hs_button_text = self.hsIdentifyButton.text()
+            self.hsIdentifyButton.setText("停止")
+            self.start_update_title(
+                "化石",
+                None,
+                "鉴定",
+                None,
+                self.hs_next_run
+            )
+            send_lines([
+                "0000000000000023280000000000000000"  # 化石鉴定冷却信息
+            ])
+            run_later_expect(start, {0x2328: {"offsets": (8,)}})
+        else:
+            self.hs_stop()
+
+    def hs_run(self):
+        send_lines([
+            "0000000000000004DA0000000000000000000000740000000000000000"
+        ])
+
+    def hs_stop(self):
+        if is_running("化石"):
+            self.hsIdentifyButton.setText(self.hs_button_text)
+            self.stop_update_title("化石")
+            self.stop_timer("化石")
+
+    def ysqs_next_run(self):
+        global ysqs_state, ysqs_state_since
+        now = monotonic()
+        if ysqs_state_since is None:
+            ysqs_state_since = now
+        dwell_ok = now - ysqs_state_since >= min_show_time
+        match ysqs_state:
+            case State.COUNTDOWN:
+                next_run = ysqs_countdown_info["下次运行时间"]
+                if (next_run - datetime.now()).total_seconds() > 0:
+                    return next_run
+                else:
+                    ysqs_countdown_info["下次运行时间"] += ysqs_countdown_info["运行间隔"]
+                    ysqs_state = State.RUNNING
+                    ysqs_state_since = now
+                    return "挑战中"
+            case State.RUNNING:
+                if dwell_ok:
+                    ysqs_state = State.DONE
+                    ysqs_state_since = now
+                return "挑战中"
+            case State.DONE:
+                if dwell_ok:
+                    ysqs_state = State.COUNTDOWN
+                    ysqs_state_since = now
+                return "挑战完成"
+            case _:
+                return "准备中"
+
+    def ysqs_arena_start(self):
+        def start(last_fight: int):
+            global ysqs_state, ysqs_countdown_info
+            delay = max((datetime.fromtimestamp(last_fight) + timedelta(minutes=10) - datetime.now()).total_seconds(), 0)
+            ysqs_countdown_info = {
+                "运行间隔": timedelta(minutes=10),
+                "下次运行时间": datetime.now() + timedelta(seconds=delay)
+            }
+            ysqs_state = State.COUNTDOWN
+            self.timer_pool["元素骑士"].start(delay * 1000)
+
+        if not is_running("元素骑士"):  # 启动
+            self.ysqs_button_text = self.ysqsArenaFightButton.text()
+            self.ysqsArenaFightButton.setText("停止")
+            self.start_update_title(
+                "元素骑士",
+                None,
+                "竞技场",
+                "挑战",
+                self.ysqs_next_run
+            )
+            send_lines([
+                "0000000000000022B2000000000000000000000270"  # 上次挑战时间
+            ])
+            run_later_expect(start, {0x22B2: {"offsets": (4,)}})
+        else:
+            self.ysqs_arena_stop()
+
+    def ysqs_arena_run(self):
+        def run(ysqs_info: dict[int, list[int | tuple[int]]]):
+            arena_times, = ysqs_info[0x22B2]
+            rank, = ysqs_info[0x2339]
+            players_info, = ysqs_info[0x2324]
+            if arena_times > 0:
+                if rank <= 100:
+                    fight_user_id = 262449414
+                else:
+                    ranks = players_info[1::2]
+                    fight_user_id = players_info[2 * ranks.index(max(ranks))]
+                send_lines([
+                    f"0000000000000023230000000000000000{get_hex(fight_user_id)}"
+                ])
+                if arena_times > 1:
+                    return
+            self.ysqs_arena_stop()
+            alert_msg("已完成元素骑士竞技场挑战")
+
+        send_lines([
+            "0000000000000022B200000000000000000000026F",  # 剩余挑战次数
+            f"0000000000000023390000000000000000{get_hex(user_id)}",  # 声望、排名信息
+            "0000000000000023240000000000000000"  # 推荐玩家
+        ])
+        run_later_expect(run, {
+            0x22B2: {"offsets": (4,)},
+            0x2339: {"offsets": (4,)},
+            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))}  # 推荐玩家的id、排名偏移
+        })
+
+
+    def ysqs_arena_stop(self):
+        if is_running("元素骑士"):
+            self.ysqsArenaFightButton.setText(self.ysqs_button_text)
+            self.stop_update_title("元素骑士")
+            self.stop_timer("元素骑士")
 
 
 class AdvanceDialog(QDialog, Ui_AdvanceDialog):
@@ -1661,7 +1836,7 @@ class PPLThread(QThread):
     def __init__(self):
         super().__init__()
         self.bot = None
-        self.is_user_wanted = False  # 下一关复活判断用
+        self.is_start = False  # 下一关复活判断用
         self.game_socket = None  # 复用的游戏 socket 副本（fromfd dup），断连/stop 置 None 时重建
 
     def init(self):
@@ -1699,7 +1874,7 @@ class PPLThread(QThread):
 
     def run(self):
         while not self.isInterruptionRequested():
-            if self.bot is None or not self.is_user_wanted:
+            if self.bot is None or not self.is_start:
                 sleep(0.05)  # 未就绪/暂停时空转，避免忙等
                 continue
             logger.info(f"[泡泡龙] maybe_shoot 进入（seq≈{getattr(self.bot, "seq", 0)}）")
@@ -1715,15 +1890,15 @@ class PPLThread(QThread):
         if game_socket_num == 0:
             logger.info("[泡泡龙] 尚未识别游戏服务器 socket（请先手动进入泡泡龙并开始游戏）")
             return
-        self.is_user_wanted = True  # ★ 用户意图：想要自动打（用于 31114 软过渡后下一关复活判断）
+        self.is_start = True  # ★ 用户意图：想要自动打（用于 31114 软过渡后下一关复活判断）
         self.bot.start()
         window.pplPlayButton.setText("停止")
         if not self.isRunning():
             super().start()  # 启动 QThread 的 run 循环
 
     def stop(self):
-        if is_ppl_running():
-            self.is_user_wanted = False  # ★ 用户主动停止：下一关 797E 不再自动复活
+        if self.is_start:
+            self.is_start = False  # ★ 用户主动停止：下一关 797E 不再自动复活
             window.pplPlayButton.setText(window.ppl_button_text)
             if self.bot is not None:
                 self.bot.running = False
@@ -1736,7 +1911,7 @@ class PPLThread(QThread):
             logger.info("[泡泡龙] 自动通关已停止")
 
     def resume(self):
-        if not self.is_user_wanted or self.bot is None:
+        if not self.is_start or self.bot is None:
             return
         if not self.isRunning():
             super().start()  # 线程已退出则重新拉起
@@ -1850,15 +2025,26 @@ class RunTimer(QTimer):
         self.is_restart = False
         return self
 
-    def set_interval(self, interval: int | float | None = None):
-        if interval is None:
-            super().setInterval(self.interval)
-        elif self.interval != interval:
-            self.interval = int(interval)
-            super().setInterval(self.interval)
+    @staticmethod
+    def from_data(data: int | float | datetime):
+        if isinstance(data, datetime):
+            return int((data - datetime.now()).total_seconds() * 1000)
+        else:
+            return int(data)
+
+    def set_timer_interval(self):
+        super().setInterval(self.interval)
         return self
 
-    def start(self):
+    def set_interval(self, interval: int | float):
+        if self.interval != interval:
+            self.interval = self.from_data(interval)
+            self.set_timer_interval()
+        return self
+
+    def start(self, delay: int | float | datetime | None = None):
+        if delay is not None and self.delay != delay:
+            self.delay = self.from_data(delay)
         self.is_first = True
         super().start(self.delay)
         return self
@@ -1866,18 +2052,14 @@ class RunTimer(QTimer):
     def restart(self, delay: int | float | datetime):
         super().stop()
         self.is_restart = True
-        if isinstance(delay, datetime):
-            self.delay = int((delay - datetime.now()).total_seconds() * 1000)
-        else:
-            self.delay = int(delay)
-        return self.start()
+        return self.start(delay)
 
     def on_timeout(self):
         self.is_restart = False
         self.signal.emit()
         if self.is_first and not self.is_restart:
             self.is_first = False
-            self.set_interval()
+            self.set_timer_interval()
 
 
 class Packet:
@@ -2077,7 +2259,7 @@ def run_later(func: Callable, delay: int = 300):
 
 def run_later_expect(func: Callable, expect: dict):
     # 等待到期望包之后运行
-    # expect：{cmd_id：{"num"：数量, "offsets"：[offset, ...], "need_data"：是否获取数据}}
+    # expect：{cmd_id：{"num"：数量, "offsets"：(offset, ...)}}
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
     pending_waits.append({
         "expect": expect,
@@ -2087,32 +2269,35 @@ def run_later_expect(func: Callable, expect: dict):
     })
 
 
+def is_need_data(expect_info):
+    return isinstance(expect_info, dict) and "offsets" in expect_info
+
+
 def check_waiting_packets(packet: Packet):
     # 检查待匹配包
     for index in range(len(pending_waits) - 1, -1, -1):
         wait_info = pending_waits[index]
-        expect = wait_info.get("expect", {})
+        expect, counts, data, func = [wait_info[key] for key in ("expect", "counts", "data", "func")]
         if packet.cmd_id in expect:
-            counts = wait_info.get("counts", {})
-            counts[packet.cmd_id] = counts.get(packet.cmd_id, 0) + 1
-            spec = expect[packet.cmd_id]
-            data = wait_info.get("data", {})
-            if isinstance(spec, dict) and spec.get("need_data", False):
-                offsets = spec.get("offsets", ())
-                data[packet.cmd_id].append(
-                    tuple(get_int(packet.body, offset) for offset in offsets) if offsets else get_int(packet.body)
-                )
+            counts[packet.cmd_id] += 1
+            if is_need_data(expect[packet.cmd_id]):
+                offsets = expect[packet.cmd_id]["offsets"]
+                if len(offsets) == 1:
+                    data[packet.cmd_id].append(get_int(packet.body, offsets[0]))
+                elif len(offsets) > 1:
+                    data[packet.cmd_id].append(tuple(get_int(packet.body, offset) for offset in offsets))
             # 检查是否所有 cmd_id 都集齐
-            if all(counts.get(cid, 0) >= (spec["num"] if isinstance(spec, dict) else spec)
-                   for cid, spec in expect.items()):
-                func = wait_info["func"]
-                if func:
-                    if len(expect) == 1:
-                        run_later(lambda args=data.get(next(iter(expect)), []): func(*args), 0)
-                    elif any(isinstance(spec, dict) and spec.get("need_data", False) for spec in expect.values()):
-                        run_later(lambda args=data: func(args), 0)
-                    else:
-                        run_later(func, 0)
+            if all(
+                counts[cmd_id] >= (expect_info.get("num", 1) if isinstance(expect_info, dict) else expect_info)
+                for cmd_id, expect_info in expect.items()
+            ):
+                if len(expect) == 1:
+                    cmd_id, = expect
+                    run_later(lambda args=data[cmd_id]: func(*args), 0)
+                elif any(is_need_data(expect_info) for expect_info in expect.values()):
+                    run_later(lambda args=data: func(args), 0)
+                else:
+                    run_later(func, 0)
                 pending_waits.pop(index)
 
 
@@ -2270,23 +2455,31 @@ def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_n
 
 
 def is_running(name: str):
-    if name in window.timer_pool:
-        timer = window.timer_pool[name]
-        if isinstance(timer, dict):
-            return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
-        elif isinstance(timer, tuple):
-            return any(isinstance(item, QTimer) and item.isActive() for item in timer)
-        return isinstance(timer, QTimer) and timer.isActive()
-    else:
-        return False
+    match name:
+        case "餐厅":
+            return window.ctHarvestButton.text() == "停止"
+        case "化石":
+            return window.hsIdentifyButton.text() == "停止"
+        case "元素骑士":
+            return window.ysqsArenaFightButton.text() == "停止"
+        case _:
+            if name in window.timer_pool:
+                timer = window.timer_pool[name]
+                if isinstance(timer, dict):
+                    return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
+                elif isinstance(timer, tuple):
+                    return any(isinstance(item, QTimer) and item.isActive() for item in timer)
+                return isinstance(timer, QTimer) and timer.isActive()
+            else:
+                return False
 
 
-def is_harvest_running():
-    return window.ctHarvestButton.text() == "停止"
+def is_shown_msg(name: str):
+    return msg_show_states[name]
 
 
-def is_ppl_running():
-    return window.pplPlayButton.text() == "停止"
+def show_msg(name: str, state: bool = True):
+    msg_show_states[name] = state
 
 
 def get_ip_port(socket_num: int):
@@ -2310,8 +2503,9 @@ def get_remote_info(socket_num: int):
             return 1
 
 
-def write_back(buf: buffer, index: int, packet: Packet):
-    buf[index:index + packet.length] = packet.encrypt(False).data()
+def write_back(buf: buffer, packet: Packet):
+    if len(buf) >= buf_index + packet.length:
+        ffi.memmove(ffi.from_buffer(buf) + buf_index, packet.encrypt(False).data(), packet.length)
 
 
 def send(socket_num: int, buf: bytes | buffer, length: int):
@@ -2355,7 +2549,7 @@ def process_recv_packet(socket_num, buf, length):
     global recv_buf, buf_index, can_get_lamu_info, super_lamu_id, lamus_num, lamus_dict, lamu_id, lamu_name, lamu_times, is_last_skill_success, \
         is_max_skill_success, super_lamu_value, super_lamu_level, mmg_game_id, mmg_energy, mmg_vigour, mmg_level, mmg_card, mmg_times, mmg_friends, \
         mmg_fight_friends, mmg_friends_num, mmg_friends_dict, mmg_query_page, mmg_boss_times_thresholds, mlcs_energy, mlcs_arena_times, \
-        mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, is_show_msg, ysqs_cards_dict, ysqs_material_cards_dict, \
+        mlcs_exp_times, mlcs_sprites_dict, ysqs_max_floor, ysqs_attack, ysqs_energy, ysqs_cards_dict, ysqs_material_cards_dict, \
         can_fight_wjsy, can_fight_ssmy, is_equip_card, map_id
     if get_remote_info(socket_num) == 0:
         return
@@ -2617,7 +2811,7 @@ def process_recv_packet(socket_num, buf, length):
                                     if index != -1:
                                         window.ysqsCardBox.setCurrentIndex(index)
                                 window.ysqsCardBox.blockSignals(False)
-                            case 1014 if not is_harvest_running():  # 餐厅信息
+                            case 1014 if not is_running("餐厅"):  # 餐厅信息
                                 ct_cooked_dishes_dict.clear()
                                 ct_cooking_dishes_dict.clear()
                                 house_type = get_int(packet.body, 36)  # 内部装潢类型
@@ -2682,7 +2876,7 @@ def process_recv_packet(socket_num, buf, length):
                                 dish_step = get_int(packet.body, 12)
                                 if dish_step < 3:
                                     window.ct_cook_after(dish_id, dish_type, dish_step)
-                                elif dish_step == 3 and not is_harvest_running():  # 做菜步骤完成后，更新灶台信息
+                                elif dish_step == 3 and not is_running("餐厅"):  # 做菜步骤完成后，更新灶台信息
                                     ct_cooking_dishes_dict[dish_pos] = {
                                         "ID": dish_id,
                                         "类型": dish_type,
@@ -2695,7 +2889,7 @@ def process_recv_packet(socket_num, buf, length):
                                 dish_pos = get_int(packet.body, 12)
                                 dish_num = get_int(packet.body, 16)
                                 dish_info = get_dish_info(dish_type)
-                                if dish_info["名称"] not in ct_cooked_dishes_dict and not is_harvest_running():  # 新收的菜
+                                if dish_info["名称"] not in ct_cooked_dishes_dict and not is_running("餐厅"):  # 新收的菜
                                     ct_cooked_dishes_dict[dish_info["名称"]] = {
                                         "ID": dish_id,
                                         "类型": dish_type,
@@ -2707,26 +2901,36 @@ def process_recv_packet(socket_num, buf, length):
                                     window.ctDishBox.addItem(dish_info["名称"])
                                     window.enable_ct_button(True)
                             case 8953:  # 开启七彩缤纷宝盒
+                                task_name = "缤纷七彩宝盒"
                                 item_id = get_int(packet.body)
+                                item_num = get_int(packet.body, 4)
                                 if item_id == 0x31CE:  # 火龙珠
-                                    window.stop_task("缤纷七彩宝盒")
-                                    alert_reward(item_id)
-                                elif item_id == 0 and not is_show_msg:
-                                    is_show_msg = True
-                                    window.stop_task("缤纷七彩宝盒")
+                                    window.stop_task(task_name)
+                                    alert_reward((item_id, item_num))
+                                elif item_id == 0 and not is_shown_msg(task_name):
+                                    show_msg(task_name)
+                                    window.stop_task(task_name)
                                     alert_msg("已开完宝盒，暂未获得火龙珠")
                             case 8402:  # 卡罗拉幸运儿游戏开始
                                 window.kll_finish(packet.body.hex())
                             case 8403:  # 卡罗拉幸运儿游戏结果
+                                task_name = "卡罗拉幸运儿"
                                 if get_int(packet.body, 4) == 1:
                                     item_id = get_int(packet.body, 8)
                                     item_num = get_int(packet.body, 12)
                                     alert_reward((item_id, item_num))
-                                else:
-                                    window.stop_task("卡罗拉幸运儿")
+                                elif not is_shown_msg(task_name):
+                                    show_msg(task_name)
+                                    window.stop_task(task_name)
                                     alert_msg("已完成今日卡罗拉幸运儿游戏")
                             case 406:  # 进入地图
                                 map_id = get_int(packet.body)
+                            case 1242:  # 鉴定化石
+                                item_id = get_int(packet.body, 4)
+                                item_num = get_int(packet.body, 8)
+                                if item_id == 0x2EA6E:  # 瓦尔卡火龙蛋
+                                    window.hs_stop()
+                                    alert_reward((item_id, item_num))
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                     else:  # 错误包
                         match packet.cmd_id:
@@ -2737,6 +2941,9 @@ def process_recv_packet(socket_num, buf, length):
                                     is_max_skill_success = False
                             case 403 if is_running("摩摩怪"):  # 摩摩怪进入游戏失败
                                 window.mmg_stop()
+                            case 1242:  # 化石鉴定失败
+                                window.hs_stop()
+                                alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
                     # 处理后面的包
                     recv_buf = recv_buf[packet_len:]
                     buf_index += packet_len
