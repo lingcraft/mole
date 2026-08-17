@@ -1645,9 +1645,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.hs_stop()
 
     def hs_run(self):
+        def run(fossils_num: int):
+            if fossils_num > 0:
+                send_lines([
+                    "0000000000000004DA0000000000000000000000740000000000000000"
+                ])
+                if fossils_num > 1:
+                    return
+            window.hs_stop()
+            alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
+
         send_lines([
-            "0000000000000004DA0000000000000000000000740000000000000000"
+            f"0000000000000001FF0000000000000000{get_hex(user_id)}0002EA700002EA7102"
         ])
+        run_later_expect(run, {0x1FF: {"offsets": (12,)}})
 
     def hs_stop(self):
         if is_running("化石"):
@@ -2306,6 +2317,8 @@ def clamp(value: int, lower: int, upper: int):
 
 
 def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):
+    if offset + bytes_num > len(buf):
+        return 0
     match bytes_num:
         case 4:
             return unpack_from("!I", buf, offset)[0]
@@ -2815,7 +2828,7 @@ def process_recv_packet(socket_num, buf, length):
                                 ct_cooked_dishes_dict.clear()
                                 ct_cooking_dishes_dict.clear()
                                 house_type = get_int(packet.body, 36)  # 内部装潢类型
-                                stove_num = get_stove_num(house_type)  # 餐厅灶台数
+                                stoves_num = get_stove_num(house_type)  # 餐厅灶台数
                                 dishes_num = get_int(packet.body, 68)
                                 start = 72
                                 size = 6 * 4
@@ -2852,7 +2865,7 @@ def process_recv_packet(socket_num, buf, length):
                                                 "位置": dish_pos,
                                                 "时间": -5,
                                             }
-                                for dish_pos in range(1, stove_num + 1):
+                                for dish_pos in range(1, stoves_num + 1):
                                     ct_cooking_dishes_dict.setdefault(dish_pos, {
                                         "类型": 0x147267,
                                         "位置": dish_pos,
@@ -2941,9 +2954,6 @@ def process_recv_packet(socket_num, buf, length):
                                     is_max_skill_success = False
                             case 403 if is_running("摩摩怪"):  # 摩摩怪进入游戏失败
                                 window.mmg_stop()
-                            case 1242:  # 化石鉴定失败
-                                window.hs_stop()
-                                alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
                     # 处理后面的包
                     recv_buf = recv_buf[packet_len:]
                     buf_index += packet_len

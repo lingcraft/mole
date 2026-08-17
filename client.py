@@ -259,6 +259,8 @@ class Packet:
 
 
 def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):
+    if offset + bytes_num > len(buf):
+        return 0
     match bytes_num:
         case 4:
             return unpack_from("!I", buf, offset)[0]
