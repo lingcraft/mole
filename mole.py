@@ -1652,7 +1652,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 ])
                 if fossils_num > 1:
                     return
-            window.hs_stop()
+            self.hs_stop()
             alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
 
         send_lines([
