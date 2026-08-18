@@ -94,6 +94,9 @@ ysqs_non_material_cards_types = frozenset({
 ysqs_countdown_info = {}  # 元素骑士竞技倒计时信息
 ysqs_state: "State | None" = None  # 状态
 ysqs_state_since = None  # 上一状态时间
+ysqs_talent_cd_thresholds = (
+    (1, 1), (5, 1), (10, 8), (15, 3), (20, 5), (25, 2), (30, 5), (45, 3), (50, 2), (60, 10)
+)
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdowns_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
 ct_state: "State | None" = None  # 状态
@@ -1659,7 +1662,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def run(fossils_num: int):
             if fossils_num > 0:
                 send_lines([
-                    "0000000000000004DA0000000000000000000000740000000000000000"
+                    "0000000000000004DA0000000000000000000000740000000000000000"  # 鉴定化石
                 ])
                 if fossils_num > 1:
                     return
@@ -1667,7 +1670,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
 
         send_lines([
-            f"0000000000000001FF0000000000000000{get_hex(user_id)}0002EA700002EA7102"
+            f"0000000000000001FF0000000000000000{get_hex(user_id)}0002EA700002EA7102"  # 获取化石数量
         ])
         run_later_expect(run, {0x1FF: {"offsets": (12,)}})
 
@@ -1746,7 +1749,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     ranks = players_info[1::2]
                     fight_user_id = players_info[2 * ranks.index(max(ranks))]
                 send_lines([
-                    f"0000000000000023230000000000000000{get_hex(fight_user_id)}"
+                    f"0000000000000023230000000000000000{get_hex(fight_user_id)}"  # 挑战玩家
                 ])
                 if arena_times > 1:
                     return
@@ -2215,6 +2218,15 @@ def get_card_level(star: int, exp: int):
     star = min(star, 6)
     base = 2 * star + 5
     return floor((-base + sqrt(base ** 2 + 4 * exp)) / 2) + 1
+
+
+def get_talent_cd(level: int):
+    # 根据天赋等级计算冷却时间分钟数
+    for minutes, count in ysqs_talent_cd_thresholds:
+        if level <= count:
+            return minutes
+        level -= count
+    return 60
 
 
 def get_sprite_max_exp(star: int, max_level: int):
