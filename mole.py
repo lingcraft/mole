@@ -19,6 +19,7 @@ from enum import IntEnum, IntFlag, StrEnum
 from configparser import ConfigParser
 from os import environ
 from pathlib import Path
+from shutil import rmtree
 from tomllib import load, loads
 from requests import get
 from bisect import bisect_right
@@ -147,19 +148,20 @@ config = Path(environ["appdata"]) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
 hook_log = base_dir / "hook.log"
 mole_log = base_dir / "mole.log"
-login_cache = next(
+login_record = next(
     (
-        cache_dir / "127.0.0.1" / "#mole" / "login.sol"
-        for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
+        record_dir / "127.0.0.1" / "#mole" / "login.sol"
+        for record_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
     ),
     None
 )
-account_caches = [
+account_records = [
     sol_file
     for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
     for sol_file in (cache_dir / "127.0.0.1" / "#mole").glob("*.sol")
     if sol_file.stem.isdigit()
 ]
+caches_dir = Path(environ["localappdata"]) / "Microsoft" / "Windows" / "INetCache" / "IE"
 is_window_init = False
 
 
@@ -215,13 +217,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file)["project"]["version"]
         self.account_dict = {}
-        if login_cache and login_cache.exists():
-            with open(login_cache, "rb") as file:  # 获取登录信息
+        if login_record and login_record.exists():
+            with open(login_record, "rb") as file:  # 获取登录信息
                 self.account_dict = {data["userID"]: get_password(data["pwd"]) for data in sol.decode(file.read())[1]["list"]}
         self.friend_dict = {}
-        for account_cache in account_caches:  # 获取好友信息
-            with open(account_cache, "rb") as file:
-                self.friend_dict[int(account_cache.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
+        for account_record in account_records:  # 获取好友信息
+            with open(account_record, "rb") as file:
+                self.friend_dict[int(account_record.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
         # 界面主区域设置
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         start_bridge()  # 注入服务、命令桥，端口自适应
@@ -252,6 +254,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             action.triggered.connect(self.change_node)
             self.nodeMenu.addAction(action)
         self.menubar.addAction("刷新游戏", self.refresh)
+        self.menubar.addAction("清除缓存", self.clear_cache)
         self.menubar.addAction("检查更新", self.check_update)
         self.menubar.addAction(QIcon(path("github.ico")), "关于", self.open_github)
         self.check_menu()  # 节点勾选
@@ -402,6 +405,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.set_scale_mode()
         self.enable_all_buttons(False)
+
+    def clear_cache(self):
+        for cache_dir in caches_dir.glob("*/"):
+            try:
+                rmtree(cache_dir)
+            except:
+                pass
+        self.refresh()
 
     def add_data(self, data_type: str, socket_num: int, cmd_id: int, cmd_analyse: str, data: str):
         self.tableWidget.blockSignals(True)

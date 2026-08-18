@@ -2,7 +2,7 @@ from os import environ
 from re import match
 import copy
 import xml.etree.ElementTree as ET
-from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, timeout
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, timeout
 from threading import Thread, Lock
 from requests import Session
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -144,7 +144,7 @@ def clear_ext_xml_cache() -> None:
         pass
     # 2) 兜底：直接删除 INetCache\IE 下所有 ext*.xml 文件
     try:
-        cache_root = Path(environ.get("LOCALAPPDATA", "")) / "Microsoft" / "Windows" / "INetCache" / "IE"
+        cache_root = Path(environ["localappdata"]) / "Microsoft" / "Windows" / "INetCache" / "IE"
         if cache_root.is_dir():
             for f in cache_root.glob("**/ext*.xml"):
                 try:
@@ -216,6 +216,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                 return
         # 额外资源：
         # 1) swf/replace 中的同名 SWF/XML → 就地替换为本地文件，覆盖上游官方文件
+        #    （注：以 DLL 结尾的 SWF 仅官服替换，平行服等沿用本服自带、不覆盖）
         # 2) swf/append 中的 .swf → 直接返回本地 mod 文件
         # 3) swf/append 中的 .xml → 视为「新增内容」：拉取上游原始 xml 并合并新增节点后返回
         name = url.split("?", 1)[0].rsplit("/", 1)[-1]
@@ -223,9 +224,11 @@ class InjectHandler(BaseHTTPRequestHandler):
         if lower.endswith(".swf") or lower.endswith(".xml"):
             replace_local = replace_dir / name  # 优先 replace：同名覆盖官方 SWF/XML
             if replace_local.is_file():
-                ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
-                self.serve_local(replace_local.read_bytes(), ctype)
-                return
+                # 以 DLL 结尾的 SWF（如 ClientAppDLL）仅官服替换：平行服等沿用本服自带，不覆盖
+                if not lower.endswith("dll.swf") or is_official_server():
+                    ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
+                    self.serve_local(replace_local.read_bytes(), ctype)
+                    return
             append_local = append_dir / name
             if append_local.is_file():
                 if lower.endswith(".swf"):
@@ -421,11 +424,33 @@ class InjectHandler(BaseHTTPRequestHandler):
         pass
 
 
+class ExclusiveHTTPServer(ThreadingHTTPServer):
+    # 关闭地址复用：HTTPServer 默认 allow_reuse_address=1，而 Windows 下 SO_REUSEADDR
+    # 允许不同进程同时 bind 同一端口 → 多实例会串端口。设为 0 后，端口被其他实例占用时
+    # bind 真正失败 → 触发下方动态回退，实现多实例隔离。
+    allow_reuse_address = 0
+
+    def handle_error(self, request, client_address):
+        # socketserver 在此调用服务器自身的 handle_error（注意：不是 InjectHandler 的方法）。
+        # 切节点等场景 Flash/BridgeDLL 会直接 RST/中止 keep-alive 连接，读请求行时抛
+        # ConnectionResetError(10054)/ConnectionAbortedError(10053)/BrokenPipeError，属正常
+        # 客户端行为，压掉默认打印的整段 traceback 噪声。
+        import sys
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError)):
+            return
+        super().handle_error(request, client_address)
+
+
 def start_bridge():
-    """启动本地桥服务（守护线程）：注入服务(动态端口) + socket 命令桥(动态端口)。
-    两个端口均由 OS 动态分配，保证多客户端实例各用独立端口、互不干扰。"""
+    """启动本地桥服务（守护线程）：注入服务(默认端口 10000) + socket 命令桥(默认端口 10001)。
+    默认优先绑定固定端口；仅当端口已被其他客户端实例占用时，才回退到 OS 动态分配，
+    保证多客户端实例各用独立端口、互不干扰。"""
     global injecter_port
-    http_srv = ThreadingHTTPServer(("127.0.0.1", 0), InjectHandler)
+    try:
+        http_srv = ExclusiveHTTPServer(("127.0.0.1", 10000), InjectHandler)
+    except OSError:  # 端口被占用（已运行其他客户端实例）→ 动态分配
+        http_srv = ExclusiveHTTPServer(("127.0.0.1", 0), InjectHandler)
     injecter_port = http_srv.server_address[1]
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
@@ -560,11 +585,21 @@ def sock_serve(conn):
 
 def start_socket_bridge():
     """启动 socket 命令桥（守护线程），返回监听 socket。
-    端口由 OS 动态分配（bind 0），保证多客户端实例各用独立端口、互不干扰。"""
+    默认绑定 10001；仅当该端口已被占用（多客户端同时运行）时回退到 OS 动态分配。"""
     global bridge_port
     srv = socket(AF_INET, SOCK_STREAM)
-    srv.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-    srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
+    # 关闭 SO_REUSEADDR（Windows 下它允许不同进程共享同一端口 → 多实例串端口）。
+    # 改用 SO_EXCLUSIVEADDRUSE：端口被其他实例占用时 bind 真正失败 → 触发动态回退，实现隔离。
+    excl = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    if excl is not None:
+        try:
+            srv.setsockopt(SOL_SOCKET, excl, 1)
+        except OSError:
+            pass
+    try:
+        srv.bind(("127.0.0.1", 10001))
+    except OSError:  # 端口被占用（已运行其他客户端实例）→ 动态分配
+        srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
     bridge_port = srv.getsockname()[1]
     logger.info(f"[bridge] 命令桥端口: {bridge_port}")
     srv.listen(8)
