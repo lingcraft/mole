@@ -99,8 +99,8 @@ ysqs_stones_num, ysqs_free_left, has_stones = 0, 3, False # 领悟石数量、�
 ysqs_countdown_info: dict[str, datetime | None] = {}  # 竞技场挑战倒计时信息
 ysqs_state: "State | None" = None  # 状态
 ysqs_state_since = None  # 状态开始时间
-ysqs_state_queue = deque()  # 待展示任务队列
-ysqs_state_display = ""  # 状态展示信息
+ysqs_state_queue: deque[str] = deque()  # 待展示任务队列
+ysqs_task = ""  # 状态展示信息
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdowns_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
 ct_state: "State | None" = None  # 状态
@@ -212,15 +212,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.config = ConfigParser()
         if config.exists():
             self.config.read(config, encoding="utf-8")
-            self.server = self.config.get("Settings", "server", fallback="官服")
-            self.node = self.config.get("Settings", "node", fallback="主节点")
-            if self.server not in server_dict:
-                self.server = "官服"
-            if self.node not in node_dict:
-                self.node = "主节点"
-        else:
-            self.server = "官服"
-            self.node = "主节点"
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file)["project"]["version"]
         self.account_dict = {}
@@ -281,7 +272,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.sendClearButton.clicked.connect(self.send_clear)
         self.sendCheckBox.stateChanged.connect(self.change_show_send)
         self.recvCheckBox.stateChanged.connect(self.change_show_recv)
-        self.socketCheckBox.stateChanged.connect(self.change_set_socket)
+        self.socketCheckBox.stateChanged.connect(self.change_socket)
         self.clearButton.clicked.connect(self.clear_table)
         self.ysqsFightButton.clicked.connect(self.ysqs_start)
         self.ysqsUpgradeButton.clicked.connect(self.ysqs_upgrade_start)
@@ -320,15 +311,41 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.title_part_pool = {}
 
     # ================================================== 界面功能方法 ==================================================
-    def closeEvent(self, event: QCloseEvent):
+    @property
+    def server(self):
+        if (server := self.config.get("Settings", "server", fallback="官服")) in server_dict:
+            return server
+        else:
+            self.server = "官服"
+            return "官服"
+
+    @property
+    def node(self):
+        if (node := self.config.get("Settings", "node", fallback="主节点")) in node_dict:
+            return node
+        else:
+            self.node = "主节点"
+            return "主节点"
+
+    @server.setter
+    def server(self, value):
+        self.save("server", value)
+
+    @node.setter
+    def node(self, value):
+        self.save("node", value)
+
+    def save(self, option, value):
         if not self.config.has_section("Settings"):
             self.config.add_section("Settings")
-        self.config.set("Settings", "server", self.server)
-        self.config.set("Settings", "node", self.node)
+        self.config.set("Settings", option, value)
         if not config.parent.exists():
             config.parent.mkdir()
         with open(config, "w", encoding="utf-8") as file:
             self.config.write(file)
+
+    def closeEvent(self, event: QCloseEvent):
+        self.stop_send()
         if hook_log.exists():
             hook_log.unlink()
         if mole_log.exists():
@@ -337,7 +354,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 mole_log.unlink()
             except:
                 pass
-        self.stop_send()
         super(MainWindow, self).closeEvent(event)
 
     def url(self):
@@ -362,7 +378,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         global is_show_recv
         is_show_recv = state > 0
 
-    def change_set_socket(self, state: int):
+    def change_socket(self, state: int):
         self.socketLineEdit.setEnabled(state > 0)
         if state > 0 and len(self.socketLineEdit.text()) == 0 and login_socket_num != 0:
             self.socketLineEdit.setText(str(login_socket_num))
@@ -1682,43 +1698,45 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.stop_timer("化石")
 
     def ysqs_next_run(self):
-        # 标题展示：依次消费展示队列（挑战中→挑战完成→领悟中→领悟完成），
-        # 队列空则展示最近（剩余时间最小）的一个倒计时
-        global ysqs_state, ysqs_state_since, ysqs_state_queue, ysqs_state_display
+        global ysqs_state, ysqs_state_since, ysqs_state_queue, ysqs_task
         now = monotonic()
         if ysqs_state_since is None:
             ysqs_state_since = now
         dwell_ok = now - ysqs_state_since >= min_show_time
-        if ysqs_state_display:  # 有正在展示的任务
-            if ysqs_state == State.RUNNING:
-                if dwell_ok:
+        match ysqs_state:
+            case State.COUNTDOWN:
+                if ysqs_state_queue and (state := ysqs_state_queue.popleft()).endswith("中"):
+                    ysqs_task = state[:-1]
+                    ysqs_state = State.RUNNING
+                    ysqs_state_since = now
+                    return state
+                return self.ysqs_next_run_time()[1]
+            case State.RUNNING:
+                if dwell_ok and ysqs_state_queue and ysqs_state_queue.popleft().endswith("完成"):
                     ysqs_state = State.DONE
                     ysqs_state_since = now
-                return f"{ysqs_state_display}中"
-            else:  # DONE
+                return f"{ysqs_task}中"
+            case State.DONE:
                 if dwell_ok:
-                    name = ysqs_state_display
-                    ysqs_state_display = ""
+                    ysqs_task = ""
+                    ysqs_state = State.COUNTDOWN
                     ysqs_state_since = now
-                    return f"{name}完成"
-                return f"{ysqs_state_display}完成"
-        # 当前无展示：取队列下一个
-        if ysqs_state_queue:
-            ysqs_state_display = ysqs_state_queue.popleft()
-            ysqs_state = State.RUNNING
-            ysqs_state_since = now
-            return f"{ysqs_state_display}中"
-        # 队列空：倒计时（最近一条）
-        _, next_run = self.ysqs_next_run_time()
-        return next_run
+                return f"{ysqs_task}完成"
+            case _:
+                return "准备中"
 
     def ysqs_arena_start(self):
         def start(data: dict):
-            global ysqs_stones_num, ysqs_free_left, has_stones
+            global ysqs_countdown_info, ysqs_state, ysqs_state_queue, ysqs_task, ysqs_stones_num, ysqs_free_left, has_stones
             last_fight, = data[0x22B2]
             (talent_level, last_grasp, ysqs_stones_num), = data[0x231E]
-            ysqs_countdown_info["下次竞技时间"] = datetime.fromtimestamp(last_fight) + timedelta(minutes=10)
-            ysqs_countdown_info["下次领悟时间"] = datetime.fromtimestamp(last_grasp) + timedelta(minutes=get_talent_cd(talent_level))
+            ysqs_countdown_info = {
+                "下次竞技时间": datetime.fromtimestamp(last_fight) + timedelta(minutes=10),
+                "下次领悟时间": datetime.fromtimestamp(last_grasp) + timedelta(minutes=get_talent_cd(talent_level))
+            }
+            ysqs_state = State.COUNTDOWN
+            ysqs_state_queue.clear()
+            ysqs_task = ""
             now = datetime.now()
             # 免费次数：每天前3次免费。若下次领悟时间在未来 → 今天至少已用1次免费（还剩≤2次）
             ysqs_free_left = 2 if ysqs_countdown_info["下次领悟时间"] > now else 3
@@ -1767,9 +1785,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     send_lines([
                         f"0000000000000023230000000000000000{get_hex(fight_user_id)}"  # 挑战玩家
                     ])
-                    ysqs_state_queue.append("挑战")  # 入队展示：挑战中→挑战完成
+                    ysqs_state_queue.append("挑战中")
+                    ysqs_state_queue.append("挑战完成")
                 # 剩>1次排下一轮10分钟冷却；打完最后1次(或已无次数)直接终止竞技场，不再多等一轮冷却（天赋继续）
                 ysqs_countdown_info["下次竞技时间"] = (now + timedelta(minutes=10)) if arena_times > 1 else None
+                self.ysqs_set_interval()
             # 天赋领悟：仅当冷却到（下次领悟时间已到）才发包
             next_grasp = ysqs_countdown_info.get("下次领悟时间")
             if next_grasp is not None and next_grasp <= now:
@@ -1781,14 +1801,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 ysqs_stones_num = stones_num
                 if has_stones and ysqs_free_left <= 0 and stones_num == 0:
                     ysqs_countdown_info["下次领悟时间"] = None
+                    self.ysqs_set_interval()
                 else:
                     send_lines([
                         "00000000000000231A0000000000000000"  # 领悟天赋
                     ])
-                    ysqs_state_queue.append("领悟")  # 入队展示：领悟中→领悟完成
+                    ysqs_state_queue.append("领悟中")
                     run_later_expect(lambda state: self.ysqs_grasp(talent_level, state), {0x231A: {"offsets": (0,)}})
-                    return
-            self.ysqs_set_interval()
 
         send_lines([
             "0000000000000022B200000000000000000000026F",  # 剩余挑战次数
@@ -1808,6 +1827,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level + 1 - state))
         else:
             ysqs_countdown_info["下次领悟时间"] = None
+        ysqs_state_queue.append("领悟完成")
         self.ysqs_set_interval()
 
     def ysqs_next_run_time(self):
