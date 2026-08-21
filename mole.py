@@ -1613,6 +1613,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             f"0000000000000020D30000000000000000{body}"
         ])
 
+    def kll_reward(self):
+        send_lines([
+            "0000000000000020D90000000000000000"
+        ])
+
     def ppl_start(self):
         if not self.ppl_thread.is_start:  # 启动
             self.ppl_button_text = self.pplPlayButton.text()
@@ -1690,9 +1695,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
 
         send_lines([
-            f"0000000000000001FF0000000000000000{get_hex(user_id)}0002EA700002EA7102"  # 获取化石数量
+            "00000000000000077B0000000000000000000000010002EA70"  # 获取化石数量
         ])
-        run_later_expect(run, {0x1FF: {"offsets": (12,)}})
+        run_later_expect(run, {0x77B: {"items": (0x2EA70,)}})
 
     def hs_stop(self):
         if is_running("化石"):
@@ -2337,11 +2342,10 @@ def alert_msg(msg: str):
     push_cmd(f"alertMsg|{msg}")
 
 
-def alert_reward(data: tuple | int):
-    if isinstance(data, tuple):
-        push_cmd(f"alertReward|{",".join(str(item) for item in data)}")
-    else:
-        push_cmd(f"alertReward|{data},1")
+def alert_reward(data: tuple | int, prefix: str = "", suffix: str = ""):
+    items = data if isinstance(data, tuple) else (data, 1)
+    seg = "|".join([prefix, suffix, ",".join(str(x) for x in items)])
+    push_cmd(f"alertReward|{seg}")
 
 
 def enter_map(_map_id: int, map_type: int = 0):
@@ -2705,6 +2709,7 @@ def process_recv_packet(socket_num, buf, length):
                                 can_get_lamu_info = False
                                 super_lamu_id = get_int(packet.body)
                                 window.lamu_get_info()
+                                window.kll_reward()
                             case 214: # 获取拉姆数量
                                 lamus_num = get_int(packet.body, 0, 1)
                             case 212 if get_int(packet.body) == user_id and get_int(packet.body, 4) == lamus_num:  # 获取拉姆信息
@@ -3053,6 +3058,11 @@ def process_recv_packet(socket_num, buf, length):
                                     show_msg(task_name)
                                     window.stop_task(task_name)
                                     alert_msg("已完成今日卡罗拉幸运儿游戏")
+                            case 8409:  # 卡罗拉幸运儿领奖
+                                if get_int(packet.body) == 1:
+                                    item_id = get_int(packet.body, 4)
+                                    item_num = get_int(packet.body, 8)
+                                    alert_reward((item_id, item_num), "恭喜你成为了卡罗拉祝福的幸运儿，获得了")
                             case 406:  # 进入地图
                                 map_id = get_int(packet.body)
                             case 1242:  # 鉴定化石
