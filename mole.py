@@ -91,20 +91,24 @@ ysqs_non_material_cards_types = frozenset({
     0x196277,  # 汉青⭐5
     0x19628E, 0x19628F, 0x196290  # 洛基⭐3/4/5
 })
-ysqs_countdown_info = {}  # 元素骑士竞技倒计时信息
-ysqs_state: "State | None" = None  # 状态
-ysqs_state_since = None  # 上一状态时间
+# 元素骑士竞技场
 ysqs_talent_cd_thresholds = (
-    (1, 1), (5, 1), (10, 8), (15, 3), (20, 5), (25, 2), (30, 5), (45, 3), (50, 2), (60, 10)
+    (1, 1), (5, 1), (10, 8), (15, 3), (20, 5), (25, 2), (30, 5), (45, 3), (50, 2), (60, 10)  # 天赋冷却阈值
 )
+ysqs_stones_num, ysqs_free_left, has_stones = 0, 3, False # 领悟石数量、剩余免费领悟次数、初始有领悟石时启用
+ysqs_countdown_info: dict[str, datetime | None] = {}  # 竞技场挑战倒计时信息
+ysqs_state: "State | None" = None  # 状态
+ysqs_state_since = None  # 状态开始时间
+ysqs_state_queue = deque()  # 待展示任务队列
+ysqs_state_display = ""  # 状态展示信息
 # 餐厅
 ct_cooked_dishes_dict, ct_cooking_dishes_dict, ct_cooking_countdowns_dict = {}, {}, {}  # 餐台菜信息、灶台菜信息、灶台做菜倒计时信息
 ct_state: "State | None" = None  # 状态
-ct_state_since, is_connect, is_done = None, False, False  # 上一状态时间、客户端是否连接、做菜是否完成
+ct_state_since, is_connect, is_done = None, False, False  # 状态开始时间、客户端是否连接、做菜是否完成
 # 化石
 hs_countdown_info = {}  # 化石鉴定倒计时信息
 hs_state: "State | None" = None  # 状态
-hs_state_since = None  # 上一状态时间
+hs_state_since = None  # 状态开始时间
 # 游戏版本
 server_dict = {
     "官服": "http://mole.61.com",
@@ -1681,44 +1685,51 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.stop_timer("化石")
 
     def ysqs_next_run(self):
-        global ysqs_state, ysqs_state_since
+        # 标题展示：依次消费展示队列（挑战中→挑战完成→领悟中→领悟完成），
+        # 队列空则展示最近（剩余时间最小）的一个倒计时
+        global ysqs_state, ysqs_state_since, ysqs_state_queue, ysqs_state_display
         now = monotonic()
         if ysqs_state_since is None:
             ysqs_state_since = now
         dwell_ok = now - ysqs_state_since >= min_show_time
-        match ysqs_state:
-            case State.COUNTDOWN:
-                next_run = ysqs_countdown_info["下次运行时间"]
-                if (next_run - datetime.now()).total_seconds() > 0:
-                    return next_run
-                else:
-                    ysqs_countdown_info["下次运行时间"] += ysqs_countdown_info["运行间隔"]
-                    ysqs_state = State.RUNNING
-                    ysqs_state_since = now
-                    return "挑战中"
-            case State.RUNNING:
+        if ysqs_state_display:  # 有正在展示的任务
+            if ysqs_state == State.RUNNING:
                 if dwell_ok:
                     ysqs_state = State.DONE
                     ysqs_state_since = now
-                return "挑战中"
-            case State.DONE:
+                return f"{ysqs_state_display}中"
+            else:  # DONE
                 if dwell_ok:
-                    ysqs_state = State.COUNTDOWN
+                    name = ysqs_state_display
+                    ysqs_state_display = ""
                     ysqs_state_since = now
-                return "挑战完成"
-            case _:
-                return "准备中"
+                    return f"{name}完成"
+                return f"{ysqs_state_display}完成"
+        # 当前无展示：取队列下一个
+        if ysqs_state_queue:
+            ysqs_state_display = ysqs_state_queue.popleft()
+            ysqs_state = State.RUNNING
+            ysqs_state_since = now
+            return f"{ysqs_state_display}中"
+        # 队列空：倒计时（最近一条）
+        _, next_run = self.ysqs_next_run_time()
+        return next_run
 
     def ysqs_arena_start(self):
-        def start(last_fight: int):
-            global ysqs_state, ysqs_countdown_info
-            delay = max((datetime.fromtimestamp(last_fight) + timedelta(minutes=10) - datetime.now()).total_seconds(), 0)
-            ysqs_countdown_info = {
-                "运行间隔": timedelta(minutes=10),
-                "下次运行时间": datetime.now() + timedelta(seconds=delay)
-            }
-            ysqs_state = State.COUNTDOWN
-            self.timer_pool["元素骑士"].start(delay * 1000)
+        def start(data: dict):
+            global ysqs_stones_num, ysqs_free_left, has_stones
+            last_fight, = data[0x22B2]
+            (talent_level, last_grasp, ysqs_stones_num), = data[0x231E]
+            ysqs_countdown_info["下次竞技时间"] = datetime.fromtimestamp(last_fight) + timedelta(minutes=10)
+            ysqs_countdown_info["下次领悟时间"] = datetime.fromtimestamp(last_grasp) + timedelta(minutes=get_talent_cd(talent_level))
+            now = datetime.now()
+            # 免费次数：每天前3次免费。若下次领悟时间在未来 → 今天至少已用1次免费（还剩≤2次）
+            ysqs_free_left = 2 if ysqs_countdown_info["下次领悟时间"] > now else 3
+            # 初始有领悟石 → 后续用 stones_num 查询值判定终止，减少1次等待冷却
+            has_stones = ysqs_stones_num > 0
+            _, next_run = self.ysqs_next_run_time()
+            # 最近时间已到点则立即运行（0 延迟），否则按 datetime 到点触发
+            self.timer_pool["元素骑士"].start(0 if next_run <= now else next_run)
 
         if not is_running("元素骑士"):  # 启动
             self.ysqs_button_text = self.ysqsArenaFightButton.text()
@@ -1731,42 +1742,92 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.ysqs_next_run
             )
             send_lines([
-                "0000000000000022B2000000000000000000000270"  # 上次挑战时间
+                "0000000000000022B2000000000000000000000270",  # 上次挑战时间
+                "00000000000000231E000000000000000000000000"  # 天赋等级、上次领悟天赋时间
             ])
-            run_later_expect(start, {0x22B2: {"offsets": (4,)}})
+            run_later_expect(start, {0x22B2: {"offsets": (4,)}, 0x231E: {"offsets": (36, 40), "items": (0x19872A,)}})
         else:
             self.ysqs_arena_stop()
 
     def ysqs_arena_run(self):
-        def run(ysqs_info: dict[int, list[int | tuple[int]]]):
-            arena_times, = ysqs_info[0x22B2]
-            rank, = ysqs_info[0x2339]
-            players_info, = ysqs_info[0x2324]
-            if arena_times > 0:
-                if rank <= 100:
-                    fight_user_id = 262449414
+        def run(data: dict):
+            global ysqs_stones_num, ysqs_free_left, has_stones
+            arena_times, = data[0x22B2]
+            rank, = data[0x2339]
+            players_info, = data[0x2324]
+            (talent_level, last_grasp, stones_num), = data[0x231E]
+            now = datetime.now()
+            # 竞技场挑战：仅当它自己的下次时间已到 且 次数>0 才挑战
+            # （避免被领悟到点触发时误发挑战包 / 重复触发导致双「挑战中」）
+            next_arena = ysqs_countdown_info.get("下次竞技时间")
+            if next_arena is not None and next_arena <= now:
+                if arena_times > 0:
+                    if rank <= 100:
+                        fight_user_id = 262449414
+                    else:
+                        ranks = players_info[1::2]
+                        fight_user_id = players_info[2 * ranks.index(max(ranks))]
+                    send_lines([
+                        f"0000000000000023230000000000000000{get_hex(fight_user_id)}"  # 挑战玩家
+                    ])
+                    ysqs_state_queue.append("挑战")  # 入队展示：挑战中→挑战完成
+                # 剩>1次排下一轮10分钟冷却；打完最后1次(或已无次数)直接终止竞技场，不再多等一轮冷却（天赋继续）
+                ysqs_countdown_info["下次竞技时间"] = (now + timedelta(minutes=10)) if arena_times > 1 else None
+            # 天赋领悟：仅当冷却到（下次领悟时间已到）才发包
+            next_grasp = ysqs_countdown_info.get("下次领悟时间")
+            if next_grasp is not None and next_grasp <= now:
+                # 启用石头终止时：免费次数已用光 且 当前无领悟石 → 直接终止，不再发领悟包（省1轮冷却等待）
+                if stones_num == ysqs_stones_num - 1:
+                    ysqs_free_left = 0
                 else:
-                    ranks = players_info[1::2]
-                    fight_user_id = players_info[2 * ranks.index(max(ranks))]
-                send_lines([
-                    f"0000000000000023230000000000000000{get_hex(fight_user_id)}"  # 挑战玩家
-                ])
-                if arena_times > 1:
+                    ysqs_free_left -= 1
+                ysqs_stones_num = stones_num
+                if has_stones and ysqs_free_left <= 0 and stones_num == 0:
+                    ysqs_countdown_info["下次领悟时间"] = None
+                else:
+                    send_lines([
+                        "00000000000000231A0000000000000000"  # 领悟天赋
+                    ])
+                    ysqs_state_queue.append("领悟")  # 入队展示：领悟中→领悟完成
+                    run_later_expect(lambda state: self.ysqs_grasp(talent_level, state), {0x231A: {"offsets": (0,)}})
                     return
-            self.ysqs_arena_stop()
-            alert_msg("已完成元素骑士竞技场挑战")
+            self.ysqs_set_interval()
 
         send_lines([
             "0000000000000022B200000000000000000000026F",  # 剩余挑战次数
             f"0000000000000023390000000000000000{get_hex(user_id)}",  # 声望、排名信息
-            "0000000000000023240000000000000000"  # 推荐玩家
+            "0000000000000023240000000000000000",  # 推荐玩家
+            "00000000000000231E000000000000000000000000"  # 天赋等级、上次领悟天赋时间
         ])
         run_later_expect(run, {
             0x22B2: {"offsets": (4,)},
             0x2339: {"offsets": (4,)},
-            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))}  # 推荐玩家的id、排名偏移
+            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))},  # 推荐玩家的id、排名偏移
+            0x231E: {"offsets": (36, 40), "items": (0x19872A,)}
         })
 
+    def ysqs_grasp(self, talent_level: int, state: int):
+        if state <= 1:  # 0：成功，1：失败，2：道具不够，3：已经满级，4：冷却时间未到，5：未转职
+            ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level + 1 - state))
+        else:
+            ysqs_countdown_info["下次领悟时间"] = None
+        self.ysqs_set_interval()
+
+    def ysqs_next_run_time(self):
+        # 最近（剩余时间最小）的未来运行时间及键名；无则 None
+        pending = [
+            (task, next_run) for task, next_run in ysqs_countdown_info.items() if next_run is not None
+        ]
+        return min(pending, key=lambda item: item[1]) if pending else ("全部完成", None)
+
+    def ysqs_set_interval(self):
+        # 每次运行后：根据2条倒计时动态调整单个任务的间隔（标题显示最近的一条）
+        task, next_run = self.ysqs_next_run_time()
+        if next_run is not None:
+            self.timer_pool["元素骑士"].set_interval(next_run)
+        else:
+            self.ysqs_arena_stop()
+            alert_msg("已完成元素骑士竞技场挑战和天赋领悟")
 
     def ysqs_arena_stop(self):
         if is_running("元素骑士"):
@@ -2293,8 +2354,10 @@ def run_later(func: Callable, delay: int = 300):
 
 def run_later_expect(func: Callable, expect: dict):
     # 等待到期望包之后运行
-    # expect：{cmd_id：{"num"：数量, "offsets"：(offset, ...)}}
+    # expect：{cmd_id：{"num"：数量, "offsets"：(offset, ...), "items"：(item, ...)}}
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
+    # offsets：按绝对字节偏移取 4 字节整数
+    # items：4 字节步进遍历包体，找到与 marker 匹配的 4 字节后，返回其后的 4 字节整数（取首个匹配）
     pending_waits.append({
         "expect": expect,
         "counts": {cmd_id: 0 for cmd_id in expect},
@@ -2303,8 +2366,16 @@ def run_later_expect(func: Callable, expect: dict):
     })
 
 
-def is_need_data(expect_info):
-    return isinstance(expect_info, dict) and "offsets" in expect_info
+def is_need_data(expect_info: dict | int):
+    return isinstance(expect_info, dict) and ("offsets" in expect_info or "items" in expect_info)
+
+
+def find_item_value(buf: bytes, item: int):
+    # 4 字节步进遍历包体，找到与 item 匹配的 4 字节后，返回其后的 4 字节整数；取首个匹配；未找到返回 0
+    for offset in range(0, len(buf) - 7, 4):
+        if get_int(buf, offset) == item:
+            return get_int(buf, offset + 4)
+    return 0
 
 
 def check_waiting_packets(packet: Packet):
@@ -2314,12 +2385,14 @@ def check_waiting_packets(packet: Packet):
         expect, counts, data, func = [wait_info[key] for key in ("expect", "counts", "data", "func")]
         if packet.cmd_id in expect:
             counts[packet.cmd_id] += 1
-            if is_need_data(expect[packet.cmd_id]):
-                offsets = expect[packet.cmd_id]["offsets"]
-                if len(offsets) == 1:
-                    data[packet.cmd_id].append(get_int(packet.body, offsets[0]))
-                elif len(offsets) > 1:
-                    data[packet.cmd_id].append(tuple(get_int(packet.body, offset) for offset in offsets))
+            expect_info = expect[packet.cmd_id]
+            if is_need_data(expect_info):
+                values = []
+                if "offsets" in expect_info:
+                    values += [get_int(packet.body, offset) for offset in expect_info["offsets"]]
+                if "items" in expect_info:
+                    values += [find_item_value(packet.body, item) for item in expect_info["items"]]
+                data[packet.cmd_id].append(values[0] if len(values) == 1 else tuple(values))
             # 检查是否所有 cmd_id 都集齐
             if all(
                 counts[cmd_id] >= (expect_info.get("num", 1) if isinstance(expect_info, dict) else expect_info)

@@ -32,7 +32,8 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
     """将 append 子树合并进 orig：
     - 同名/同 id 的元素：用 append 的属性覆盖 orig 的对应属性（orig 独有属性保留），再递归其子节点；
     - 仅 append 独有的元素（容器或 item）：整棵子树追加；
-    - <remove> 标记：其下的 <item> 按 id 从当前层级删除，<remove> 节点本身不并入结果；
+    - <remove> 标记：按 id 从当前层级删除 item；支持 <remove ids="a,b,c"/> 紧凑写法，
+      也兼容其下 <item id="..."/> 子元素写法；<remove> 节点本身不并入结果；
     - 匹配规则：容器按 tag 名匹配，item 按 id 匹配。
     例如原始 <shop info="原始info"> 与补充 <shop info="新info"> 合并后，info 被替换为「新info」。"""
     # 用 append 的属性覆盖当前层匹配元素的属性（不删除 orig 独有属性）
@@ -41,11 +42,15 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
     for ac in list(append):
         if not isinstance(ac.tag, str):
             continue  # 跳过注释等非元素节点
-        if ac.tag == "remove":  # 删除标记：其下 item 按 id 从 orig 当前层级删除，<remove> 本身不并入
+        if ac.tag == "remove":  # 删除标记：按 id 从 orig 当前层级删除 item，<remove> 本身不并入
+            # 兼容 ids="a,b,c" 紧凑写法 与 子 <item id="..."/> 写法（两者可混用）
+            ids = [x.strip() for x in (ac.get("ids") or "").split(",") if x.strip()]
             for di in ac:
-                if not isinstance(di.tag, str) or di.tag != "item":
-                    continue
-                did = di.get("id")
+                if isinstance(di.tag, str) and di.tag == "item":
+                    did = di.get("id")
+                    if did:
+                        ids.append(did)
+            for did in ids:
                 target = next(
                     (c for c in orig if isinstance(c.tag, str) and c.tag == "item" and c.get("id") == did),
                     None,
@@ -63,9 +68,30 @@ def merge_append(orig: ET.Element, append: ET.Element) -> None:
             merge_append(oc, ac)
 
 
+def merge_parallel_add(orig: ET.Element, src: ET.Element) -> None:
+    """并入 src（平行服）节点到 orig（官服）基底：
+    - 两服共有的元素（容器按 tag、item 按 id 匹配）：用 src 的属性覆盖 orig 对应属性
+      （orig 独有属性保留），再递归其子节点；
+    - 仅 src 独有的元素整棵子树追加；orig 独有（即平行服删除的）保留不动。"""
+    for k, v in src.attrib.items():
+        orig.set(k, v)
+    for sc in list(src):
+        if not isinstance(sc.tag, str):
+            continue  # 跳过注释等非元素节点
+        if sc.tag == "item":  # item 按 id 匹配
+            oc = next((c for c in orig if isinstance(c.tag, str) and c.tag == "item" and c.get("id") == sc.get("id")), None)
+        else:  # 容器按 tag 名匹配
+            oc = next((c for c in orig if isinstance(c.tag, str) and c.tag == sc.tag), None)
+        if oc is None:
+            orig.append(copy.deepcopy(sc))  # 平行服新增节点：整棵追加
+        else:
+            merge_parallel_add(oc, sc)  # 共有节点：平行服属性覆盖 + 递归子节点
+
+
 injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
-upstream_base = "http://mole.61.com"  # 真实服务器基址，由 mole.py 按服/节点设置
+official_base = "http://mole.61.com"  # 官服基址
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
+upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
 replace_resources = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
 
 
@@ -87,6 +113,14 @@ def content_type_for(name: str) -> str:
 # 复用 TCP 连接；trust_env=False 强制不走系统代理，避免回环到本代理自身
 session = Session()
 session.trust_env = False
+# 平行服请求走系统代理（如 Clash）：浏览器可访问而 requests 直连会超时的场景
+parallel_session = Session()  # trust_env 默认 True：自动使用系统代理
+
+
+def fetch(base: str, url: str, timeout: int = 5):
+    """按基址选择会话：平行服（域名含 61player）走系统代理，其余直连。"""
+    sess = parallel_session if "61player" in base else session
+    return sess.get(base + url, timeout=timeout)
 
 cmd_queue: list[str] = []  # SWF 命令队列（如 "alert|标题|内容"）
 
@@ -227,7 +261,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                 # 以 DLL 结尾的 SWF（如 ClientAppDLL）仅官服替换：平行服等沿用本服自带，不覆盖
                 if not lower.endswith("dll.swf") or is_official_server():
                     ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
-                    self.serve_local(replace_local.read_bytes(), ctype)
+                    self.serve_local_cacheable(replace_local.read_bytes(), ctype)
                     return
             append_local = append_dir / name
             if append_local.is_file():
@@ -250,7 +284,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)) or None
         target = upstream_base + url
         try:
-            resp = session.request(self.command, target, headers=headers, data=body, stream=True, timeout=30)
+            resp = session.request(self.command, target, headers=headers, data=body, stream=True, timeout=5)
         except Exception:
             self.send_response(502)
             self.end_headers()
@@ -291,7 +325,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         返回 True 表示已处理；False 表示放弃（如上游取回失败），交回 dispatch 走透传。"""
         mods = list_append_swfs()
         try:
-            resp = session.get(upstream_base + url, timeout=30)
+            resp = session.get(upstream_base + url, timeout=5)
         except Exception:
             return False
         if resp.status_code != 200:
@@ -310,29 +344,38 @@ class InjectHandler(BaseHTTPRequestHandler):
         return True
 
     def serve_merged_xml(self, url: str, append_path: Path) -> None:
-        """把 swf/append 下的「补充 xml」合并进上游原始 xml 后返回。
-        append xml 仅含新增节点（同根/同层级结构）；先取上游原版 xml，
-        再把补充 xml 中的节点按 id 去重后并入对应容器，最后返回合并结果。
-        若上游取回 / 解析失败，则回退为直接返回本地补充文件。"""
+        """把 swf/append 下的「补充 xml」合并后返回，分三层：
+        1) 取官服与平行服同路径 xml 资源；
+        2) 以官服内容为基底，并入平行服「新增」的节点（平行服删除的不管）；
+        3) 再应用 append xml 的自定义新增/删除规则（含 <remove>）。
+        官服取不到时以平行服为基底；两服均取回/解析失败则回退直接返回本地补充文件。"""
         try:
-            resp = session.get(upstream_base + url, timeout=30)
-        except Exception:
-            logger.warning(f"[resource] 取上游原始 xml 失败，回退返回本地补充文件: {url}")
-            self.serve_local(append_path.read_bytes(), "application/xml")
-            return
-        if resp.status_code != 200:
-            logger.warning(f"[resource] 上游返回 {resp.status_code}，回退返回本地补充文件: {url}")
-            self.serve_local(append_path.read_bytes(), "application/xml")
-            return
-        try:
-            orig_root = ET.fromstring(resp.content.decode("utf-8-sig"))
             append_root = ET.parse(append_path).getroot()
         except Exception as e:
-            logger.warning(f"[resource] 解析 xml 失败（{e}），回退返回本地补充文件")
+            logger.warning(f"[resource] 解析补充 xml 失败（{e}），回退返回本地补充文件")
             self.serve_local(append_path.read_bytes(), "application/xml")
             return
-        merge_append(orig_root, append_root)
-        merged = ET.tostring(orig_root, encoding="utf-8")
+        roots = {}  # 标签 → 根节点（官服 / 平行服）
+        for label, base in (("官服", official_base), ("平行服", parallel_base)):
+            try:
+                resp = fetch(base, url)
+                if resp.status_code == 200 and resp.content:
+                    roots[label] = ET.fromstring(resp.content.decode("utf-8-sig"))
+            except Exception as e:
+                logger.warning(f"[resource] 取{label} xml 失败（{e}）: {url}")
+        orig = roots.get("官服")
+        if orig is None:
+            # 官服取不到：以平行服内容为基底（跳过第 2 层平行服并入）
+            orig = roots.get("平行服")
+            if orig is None:
+                logger.warning(f"[resource] 官服与平行服均取回失败，回退返回本地补充文件: {url}")
+                self.serve_local(append_path.read_bytes(), "application/xml")
+                return
+        elif "平行服" in roots:
+            # 官服为基底：并入平行服「新增」节点
+            merge_parallel_add(orig, roots["平行服"])
+        merge_append(orig, append_root)  # 第 3 层：应用 append xml 的自定义新增/删除规则
+        merged = ET.tostring(orig, encoding="utf-8")
         self.serve_local(merged, "application/xml")
         logger.info(f"[resource] 修改: {append_path.name}")
 
@@ -380,7 +423,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         resp = source = None
         for base in (primary, secondary):
             try:
-                r = session.get(base + url, timeout=30)
+                r = fetch(base, url)
             except Exception:
                 r = None
             if r is not None and r.status_code == 200 and len(r.content) > 0:

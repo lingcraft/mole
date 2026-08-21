@@ -1,81 +1,20 @@
-<!--事件簿* logo=""   1=新品 2=即将下架 3=已拥有 4=套装单品 5=限量品 6=折扣价 7=限时购 8=买就送 9=畅销  * tips=""  活动说明* 华丽套装id填商品id，其他的都为物品id* score=""兑换所需的积分数量   itemcout=""积分一次性可以兑换多少物品  exchageid=""后台协议ID-->
-<shop info="★摩尔商品超多新品上架，多个分类商品更新快来选购吧！★">
+<!--logo="" 1=新品 2=即将下架 3=已拥有 4=套装单品 5=限量品 6=折扣价 7=限时购 8=买就送 9=畅销 tips="" 华丽套装ID填商品ID，其他的都为物品ID score="" 兑换所需的积分数量 itemcout="" 积分一次性可以兑换多少物品 exchageid="" 后台协议ID-->
+<shop>
     <!--最新上架-->
     <zuixinshangjia>
         <!--潮流单品-->
         <chaoliudanping>
-            <item id="161489" logo="1" tips="小屋背景"/>
-            <item id="1593069" logo="1" tips="肥肥馆的猪种"/>
-            <item id="15300" logo="1" tips=""/>
-            <item id="15250" logo="1" tips="官服素材不显示！！！"/>
-            <item id="15251" logo="1" tips="官服素材不显示！！！"/>
-            <item id="15252" logo="1" tips="官服素材不显示！！！"/>
-            <item id="15253" logo="1" tips="官服素材不显示！！！"/>
-            <item id="1353308" logo="1" tips="老天使种子，含2只小狸"/>
-            <item id="1643128" logo="1" tips="新天使"/>
-            <item id="16016" logo="5" tips="买1个就可以了，包含草莓团子发型和无精打采眼罩"/>
-            <item id="16024" logo="1" tips=""/>
-            <item id="18019" logo="1" tips=""/>
-            <item id="18021" logo="1" tips=""/>
-            <item id="15498" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15499" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15500" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15501" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15502" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15503" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15504" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15505" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15506" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15507" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15533" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15534" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15535" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15544" logo="7" tips=""/>
-            <item id="15545" logo="7" tips=""/>
-            <item id="15546" logo="7" tips=""/>
-            <item id="15552" logo="7" tips=""/>
-            <item id="15553" logo="7" tips=""/>
-            <item id="15554" logo="7" tips=""/>
-            <item id="15555" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15556" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15557" logo="7" tips="官服素材不显示！！！"/>
-            <item id="15558" logo="7" tips="官服素材不显示！！！"/>
-            <item id="18168" logo="7" tips="购买前请检查背包"/>
-            <item id="18169" logo="7" tips="购买前请检查背包"/>
-            <item id="18170" logo="7" tips="购买前请检查背包"/>
-            <item id="18171" logo="7" tips="购买前请检查背包"/>
-            <item id="18173" logo="7" tips="官服素材不显示！！！"/>
-            <item id="18174" logo="7" tips="官服素材不显示！！！"/>
-            <item id="18175" logo="7" tips="官服素材不显示！！！"/>
-            <item id="18176" logo="7" tips="官服素材不显示！！！"/>
+            <!--移除商品-->
+            <remove ids="1350161,1350162,1350163,1350164,1350165,1350166,1350167,1350168,1350171,1350172,191255,191254,191253,191252"/>
         </chaoliudanping>
     </zuixinshangjia>
     <!--服饰家园-->
     <fushijiayuan>
         <!--潮流单品-->
-        <chaoliudanpin>
-            <item id="18133" logo="" tips=""/>
-            <item id="18134" logo="" tips=""/>
-            <item id="18135" logo="" tips=""/>
-            <item id="18136" logo="" tips=""/>
-            <item id="18137" logo="" tips=""/>
-        </chaoliudanpin>
+        <chaoliudanpin/>
         <!--华丽套装-->
         <hualitaozhuang>
-            <item id="101247" logo="" tips=""/>
-            <item id="101252" logo="" tips=""/>
-            <item id="101151" logo="" tips=""/>
-            <item id="101158" logo="" tips=""/>
-            <item id="101778" logo="" tips=""/>
-            <item id="101780" logo="" tips=""/>
-            <item id="101782" logo="" tips=""/>
-            <item id="102664" logo="" tips=""/>
-            <item id="102665" logo="" tips=""/>
-            <item id="102790" logo="" tips=""/>
-            <item id="102833" logo="" tips=""/>
-            <item id="102838" logo="" tips=""/>
-            <item id="102865" logo="" tips=""/>
-            <item id="102871" logo="" tips=""/>
+            <!--添加商品-->
             <item id="102667" logo="" tips=""/>
             <item id="102676" logo="" tips=""/>
             <item id="102690" logo="" tips=""/>
@@ -87,40 +26,11 @@
     <!--绝版坐骑-->
     <juebanzuoqi>
         <!--坐骑-->
-        <molezuoqi>
-            <item id="191023" logo="" tips="超拉半价！！！"/>
-            <item id="1350015" logo="" tips="超拉不打折！！！"/>
-            <item id="1350127" logo="" tips="超拉不打折！！！"/>
-            <item id="1350130" logo="" tips="超拉半价！！！"/>
-            <item id="1350137" logo="" tips="超拉不打折！！！"/>
-            <item id="1350138" logo="" tips="超拉不打折！！！"/>
-            <item id="1350140" logo="" tips="超拉不打折！！！"/>
-            <item id="1350154" logo="" tips="超拉七五折！！！"/>
-            <item id="1350173" logo="" tips="超拉打七折！！！"/>
-            <item id="1350174" logo="" tips="超拉不打折！！！"/>
-            <item id="1350175" logo="" tips="超拉不打折！！！"/>
-            <item id="1350177" logo="" tips="官服素材不显示！！！"/>
-        </molezuoqi>
+        <molezuoqi/>
     </juebanzuoqi>
     <!--最新活动-->
     <zuixinhuodong>
         <!--积分兑换-->
-        <jifenduihuan>
-            <item id="13049" price="0.1" itemcout="1" exchangeID="60" vip="1"/>
-            <item id="1663340" price="0.1" itemcout="1" exchangeID="2771" vip="1"/>
-            <item id="180093" price="0.1" itemcout="1" exchangeID="253" vip="1"/>
-            <item id="190808" price="0.1" itemcout="1" exchangeID="116" vip="1"/>
-            <item id="190362" price="0.1" itemcout="100" exchangeID="1781" vip="1"/>
-            <item id="1220159" price="0.1" itemcout="1" exchangeID="120" vip="1"/>
-            <item id="1593074" price="0.1" itemcout="1" exchangeID="1484" vip="1"/>
-            <item id="1351582" price="0.1" itemcout="5" exchangeID="2731" vip="1"/>
-            <item id="1351303" price="0.1" itemcout="2" exchangeID="1175" vip="1"/>
-            <item id="13879" price="7500" itemcout="1" exchangeID="439" vip="0.6"/>
-            <item id="14088" price="1500" itemcout="1" exchangeID="995" vip="1"/>
-            <item id="1353208" price="0.1" itemcout="1" exchangeID="430" vip="1"/>
-            <item id="1353205" price="0.1" itemcout="1" exchangeID="431" vip="1"/>
-            <item id="1593041" price="0.1" itemcout="1" exchangeID="2806" vip="1"/>
-            <item id="13825" price="5000" itemcout="1" exchangeID="402" vip="1"/>
-        </jifenduihuan>
+        <jifenduihuan/>
     </zuixinhuodong>
 </shop>
