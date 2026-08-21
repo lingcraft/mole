@@ -803,6 +803,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.run_reward()
             if self.send_thread.isRunning():
                 self.rewardGetButton.setText("停止")
+                show_msg("每日奖励", False)
                 # 标题显示领取进度（已完项/总项）
                 self.start_update_title(
                     "每日奖励",
@@ -860,7 +861,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         sent = self.reward_packet_sent
         cum = self.reward_cum
         done = sum(1 for c in cum if sent >= c)
-        if done > 0:
+        if done > 0 and not is_shown_msg("每日奖励"):
             alert_msg(f"已领取{done}个今日奖励")
 
     def reward_progress(self, index: int):
@@ -1661,6 +1662,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not is_running("化石"):  # 启动
             self.hs_button_text = self.hsIdentifyButton.text()
             self.hsIdentifyButton.setText("停止")
+            show_msg("化石", False)
             self.start_update_title(
                 "化石",
                 None,
@@ -1684,7 +1686,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if fossils_num > 1:
                     return
             self.hs_stop()
-            alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
+            if not is_shown_msg("化石"):
+                alert_msg("已鉴定完化石，暂未获得瓦尔卡火龙蛋")
 
         send_lines([
             f"0000000000000001FF0000000000000000{get_hex(user_id)}0002EA700002EA7102"  # 获取化石数量
@@ -1749,6 +1752,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not is_running("元素骑士"):  # 启动
             self.ysqs_button_text = self.ysqsArenaFightButton.text()
             self.ysqsArenaFightButton.setText("停止")
+            show_msg("元素骑士", False)
             self.start_update_title(
                 "元素骑士",
                 None,
@@ -1789,7 +1793,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     ysqs_state_queue.append("挑战完成")
                 # 剩>1次排下一轮10分钟冷却；打完最后1次(或已无次数)直接终止竞技场，不再多等一轮冷却（天赋继续）
                 ysqs_countdown_info["下次竞技时间"] = (now + timedelta(minutes=10)) if arena_times > 1 else None
-                self.ysqs_set_interval()
             # 天赋领悟：仅当冷却到（下次领悟时间已到）才发包
             next_grasp = ysqs_countdown_info.get("下次领悟时间")
             if next_grasp is not None and next_grasp <= now:
@@ -1801,13 +1804,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 ysqs_stones_num = stones_num
                 if has_stones and ysqs_free_left <= 0 and stones_num == 0:
                     ysqs_countdown_info["下次领悟时间"] = None
-                    self.ysqs_set_interval()
                 else:
                     send_lines([
                         "00000000000000231A0000000000000000"  # 领悟天赋
                     ])
                     ysqs_state_queue.append("领悟中")
                     run_later_expect(lambda state: self.ysqs_grasp(talent_level, state), {0x231A: {"offsets": (0,)}})
+                    return
+            self.ysqs_set_interval()
 
         send_lines([
             "0000000000000022B200000000000000000000026F",  # 剩余挑战次数
@@ -1842,7 +1846,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         task, next_run = self.ysqs_next_run_time()
         if next_run is not None:
             self.timer_pool["元素骑士"].set_interval(next_run)
-        else:
+        elif not is_shown_msg("元素骑士"):
             self.ysqs_arena_stop()
             alert_msg("已完成元素骑士竞技场挑战和天赋领悟")
 
