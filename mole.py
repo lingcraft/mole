@@ -381,12 +381,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def change_server(self, checked: bool):
         if checked:
-            last_server = self.server
             self.server = self.sender().text()
             if self.server == "官服":
                 self.node = "主节点"
-            elif last_server == "官服":
-                self.node = "特殊节点"
             self.refresh()
         else:
             self.sender().setChecked(True)
