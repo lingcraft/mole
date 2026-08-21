@@ -88,7 +88,7 @@ def merge_parallel_add(orig: ET.Element, src: ET.Element) -> None:
             merge_parallel_add(oc, sc)  # 共有节点：平行服属性覆盖 + 递归子节点
 
 
-injecter_port: int = 10000  # 本实例注入服务实际监听端口（动态分配，多客户端隔离）
+injecter_port: int = 10000  # 本实例注入服务实际监听端口（10000/10002/10004…成对递增，多客户端隔离）
 official_base = "http://mole.61.com"  # 官服基址
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
 upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
@@ -460,7 +460,7 @@ class InjectHandler(BaseHTTPRequestHandler):
 class ExclusiveHTTPServer(ThreadingHTTPServer):
     # 关闭地址复用：HTTPServer 默认 allow_reuse_address=1，而 Windows 下 SO_REUSEADDR
     # 允许不同进程同时 bind 同一端口 → 多实例会串端口。设为 0 后，端口被其他实例占用时
-    # bind 真正失败 → 触发下方动态回退，实现多实例隔离。
+    # bind 真正失败 → 触发 start_bridge 的成对 +2 递增重试，实现多实例隔离。
     allow_reuse_address = 0
 
     def handle_error(self, request, client_address):
@@ -477,25 +477,50 @@ class ExclusiveHTTPServer(ThreadingHTTPServer):
 
 def start_bridge():
     """启动本地桥服务（守护线程）：注入服务(默认端口 10000) + socket 命令桥(默认端口 10001)。
-    默认优先绑定固定端口；仅当端口已被其他客户端实例占用时，才回退到 OS 动态分配，
+    端口对被占用时整对 +2 递增重试（10002/10003、10004/10005…），避免 OS 动态分配(port 0) 的慢速探测，
     保证多客户端实例各用独立端口、互不干扰。"""
     global injecter_port
-    try:
-        http_srv = ExclusiveHTTPServer(("127.0.0.1", 10000), InjectHandler)
-    except OSError:  # 端口被占用（已运行其他客户端实例）→ 动态分配
-        http_srv = ExclusiveHTTPServer(("127.0.0.1", 0), InjectHandler)
+    inject = 10000
+    while True:
+        http_srv = None
+        srv = None
+        try:
+            http_srv = ExclusiveHTTPServer(("127.0.0.1", inject), InjectHandler)
+            srv = bind_exclusive_socket(inject + 1)
+            break
+        except OSError:  # 端口对被占用 → 释放已绑定资源，整对 +2 重试
+            if http_srv is not None:
+                http_srv.server_close()
+            if srv is not None:
+                srv.close()
+            inject += 2
+            if inject > 65534:
+                raise OSError("无法找到可用的注入/命令桥端口对") from None
     injecter_port = http_srv.server_address[1]
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
-    start_socket_bridge()
+    start_socket_bridge(srv)
     return http_srv
+
+
+def bind_exclusive_socket(port: int):
+    """创建命令桥 socket 并独占绑定指定端口（SO_EXCLUSIVEADDRUSE，Windows 防多实例串口）。"""
+    srv = socket(AF_INET, SOCK_STREAM)
+    excl = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
+    if excl is not None:
+        try:
+            srv.setsockopt(SOL_SOCKET, excl, 1)
+        except OSError:
+            pass
+    srv.bind(("127.0.0.1", port))
+    return srv
 
 
 # ---------------------------------------------------------------------------
 # socket 命令桥：127.0.0.1:10001，SWF 用 flash.net.Socket 连接，替代 HTTP 轮询
 # ---------------------------------------------------------------------------
-bridge_port: int = 10001  # 本实例 socket 命令桥实际监听端口（由 start_socket_bridge 动态分配）
+bridge_port: int = 10001  # 本实例 socket 命令桥实际监听端口（与注入端口成对，10001/10003/10005…递增）
 
 # 当前唯一生效的 SWF 连接：刷新重载后旧连接必须被淘汰，否则多个连接共享 cmd_queue
 # 会随机分流命令、旧半开连接吞掉命令。新连接到来即取代旧的。
@@ -616,23 +641,12 @@ def sock_serve(conn):
     conn.close()
 
 
-def start_socket_bridge():
+def start_socket_bridge(srv=None):
     """启动 socket 命令桥（守护线程），返回监听 socket。
-    默认绑定 10001；仅当该端口已被占用（多客户端同时运行）时回退到 OS 动态分配。"""
+    srv 由 start_bridge 成对分配后传入（已独占绑定）；传入 None 时回退固定 10001。"""
     global bridge_port
-    srv = socket(AF_INET, SOCK_STREAM)
-    # 关闭 SO_REUSEADDR（Windows 下它允许不同进程共享同一端口 → 多实例串端口）。
-    # 改用 SO_EXCLUSIVEADDRUSE：端口被其他实例占用时 bind 真正失败 → 触发动态回退，实现隔离。
-    excl = getattr(socket, "SO_EXCLUSIVEADDRUSE", None)
-    if excl is not None:
-        try:
-            srv.setsockopt(SOL_SOCKET, excl, 1)
-        except OSError:
-            pass
-    try:
-        srv.bind(("127.0.0.1", 10001))
-    except OSError:  # 端口被占用（已运行其他客户端实例）→ 动态分配
-        srv.bind(("127.0.0.1", 0))  # 0 = 由 OS 分配空闲端口
+    if srv is None:
+        srv = bind_exclusive_socket(10001)
     bridge_port = srv.getsockname()[1]
     logger.info(f"[bridge] 命令桥端口: {bridge_port}")
     srv.listen(8)
