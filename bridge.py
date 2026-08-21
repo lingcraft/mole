@@ -110,18 +110,8 @@ def content_type_for(name: str) -> str:
         return "application/xml"
     return "application/octet-stream"
 
-# 复用 TCP 连接；trust_env=False 强制不走系统代理，避免回环到本代理自身
-session = Session()
-session.trust_env = False
-# 平行服请求走系统代理（如 Clash）：浏览器可访问而 requests 直连会超时的场景
-parallel_session = Session()  # trust_env 默认 True：自动使用系统代理
 
-
-def fetch(base: str, url: str, timeout: int = 5):
-    """按基址选择会话：平行服（域名含 61player）走系统代理，其余直连。"""
-    sess = parallel_session if "61player" in base else session
-    return sess.get(base + url, timeout=timeout)
-
+session = Session()  # 默认走系统代理
 cmd_queue: list[str] = []  # SWF 命令队列（如 "alert|标题|内容"）
 
 
@@ -358,7 +348,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         roots = {}  # 标签 → 根节点（官服 / 平行服）
         for label, base in (("官服", official_base), ("平行服", parallel_base)):
             try:
-                resp = fetch(base, url)
+                resp = session.get(base + url, timeout=5)
                 if resp.status_code == 200 and resp.content:
                     roots[label] = ET.fromstring(resp.content.decode("utf-8-sig"))
             except Exception as e:
@@ -423,7 +413,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         resp = source = None
         for base in (primary, secondary):
             try:
-                r = fetch(base, url)
+                r = session.get(base + url, timeout=5)
             except Exception:
                 r = None
             if r is not None and r.status_code == 200 and len(r.content) > 0:
