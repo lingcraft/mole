@@ -2616,6 +2616,10 @@ def show_msg(name: str, state: bool = True):
     msg_show_states[name] = state
 
 
+def is_official_server():
+    return window.server == "官服"
+
+
 def get_ip_port(socket_num: int):
     try:
         with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
@@ -2709,7 +2713,8 @@ def process_recv_packet(socket_num, buf, length):
                                 can_get_lamu_info = False
                                 super_lamu_id = get_int(packet.body)
                                 window.lamu_get_info()
-                                window.kll_reward()
+                                if is_official_server():  # 官服才领取卡罗拉幸运儿奖励，平行服已有了
+                                    window.kll_reward()
                             case 214: # 获取拉姆数量
                                 lamus_num = get_int(packet.body, 0, 1)
                             case 212 if get_int(packet.body) == user_id and get_int(packet.body, 4) == lamus_num:  # 获取拉姆信息
@@ -3058,7 +3063,7 @@ def process_recv_packet(socket_num, buf, length):
                                     show_msg(task_name)
                                     window.stop_task(task_name)
                                     alert_msg("已完成今日卡罗拉幸运儿游戏")
-                            case 8409:  # 卡罗拉幸运儿领奖
+                            case 8409 if is_official_server():  # 卡罗拉幸运儿领奖
                                 if get_int(packet.body) == 1:
                                     item_id = get_int(packet.body, 4)
                                     item_num = get_int(packet.body, 8)
