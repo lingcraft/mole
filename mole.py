@@ -263,6 +263,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.send_to_server_thread.result.connect(self.mmg_get_reward)
         self.update_thread = UpdateThread()
         self.update_thread.result.connect(self.update_notice)
+        self.clear_thread = ClearThread()
+        self.clear_thread.result.connect(self.refresh)
         self.advance_dialog = AdvanceDialog()
         self.show_signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
@@ -427,12 +429,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.enable_all_buttons(False)
 
     def clear_cache(self):
-        for cache_dir in caches_dir.glob("*/"):
-            try:
-                rmtree(cache_dir)
-            except:
-                pass
-        self.refresh()
+        if not self.clear_thread.isRunning():
+            self.clear_thread.start()
 
     def add_data(self, data_type: str, socket_num: int, cmd_id: int, cmd_analyse: str, data: str):
         self.tableWidget.blockSignals(True)
@@ -2111,6 +2109,18 @@ class UpdateThread(QThread):
                 break
         self.result.emit(self.is_first, version, description)
         self.is_first = False
+
+
+class ClearThread(QThread):
+    result = Signal()
+
+    def run(self):
+        for cache_dir in caches_dir.glob("*/"):
+            try:
+                rmtree(cache_dir)
+            except:
+                pass
+        self.result.emit()
 
 
 class RunTimer(QTimer):
