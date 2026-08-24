@@ -95,8 +95,11 @@ ysqs_non_material_cards_types = frozenset({
 ysqs_talent_cd_thresholds = (
     (1, 1), (5, 1), (10, 8), (15, 3), (20, 5), (25, 2), (30, 5), (45, 3), (50, 2), (60, 10)  # 天赋冷却阈值
 )
-ysqs_stones_num, ysqs_free_left, has_stones = 0, 3, False # 领悟石数量、剩余免费领悟次数、初始有领悟石时启用
-ysqs_countdown_info: dict[str, datetime | None] = {}  # 竞技场挑战倒计时信息
+ysqs_stones_num, ysqs_free_left, has_stones = 0, 3, False # 领悟石数量、剩余免费领悟次数、初始时是否有领悟石
+ysqs_countdown_info: dict[str, datetime | None] = {}  # 竞技场倒计时信息
+ysqs_arena_ctx = {}  # 推荐玩家数据统计信息
+is_arena_run = False  # 竞技场是否运行中
+is_arena_choose = False  # 竞技场是否挑选对手中
 ysqs_state: "State | None" = None  # 状态
 ysqs_state_since = None  # 状态开始时间
 ysqs_state_queue: deque[str] = deque()  # 待展示任务队列
@@ -123,7 +126,6 @@ server_dict = {
 # 平行服节点
 node_dict = {
     "主节点": "mole.61player.com",
-    "亚洲节点": "mole-asia.61player.com",
     "备用节点": "mole-sub.61player.com",
     "特殊节点": "175.178.55.57"
 }
@@ -387,7 +389,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def send(self):
         # 使用后台发送，防止添加自定义延迟后阻塞界面
-        send_lines_back_ex(self.textEdit.toPlainText().split('\n'), Interval.FAST)
+        send_lines_back_ex(self.textEdit.toPlainText().split("\n"), Interval.FAST)
 
     def send_clear(self):
         self.textEdit.clear()
@@ -577,7 +579,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.is_show_recv = is_show_recv
             if is_show_recv:
                 self.recvCheckBox.setChecked(False)
-        show_msg(name, False)
+        msg_show_states[name] = False
         timer.start()
 
     def stop_task(self, name: str):
@@ -801,7 +803,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.run_reward()
             if self.send_thread.isRunning():
                 self.rewardGetButton.setText("停止")
-                show_msg("每日奖励", False)
                 # 标题显示领取进度（已完项/总项）
                 self.start_update_title(
                     "每日奖励",
@@ -1665,7 +1666,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not is_running("化石"):  # 启动
             self.hs_button_text = self.hsIdentifyButton.text()
             self.hsIdentifyButton.setText("停止")
-            show_msg("化石", False)
             self.start_update_title(
                 "化石",
                 None,
@@ -1718,13 +1718,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     return state
                 return self.ysqs_next_run_time()[1]
             case State.RUNNING:
-                if dwell_ok and ysqs_state_queue and ysqs_state_queue.popleft().endswith("完成"):
+                if dwell_ok and ysqs_state_queue and (finish_state := f"{ysqs_task}完成") in ysqs_state_queue:
+                    ysqs_state_queue.remove(finish_state)
                     ysqs_state = State.DONE
                     ysqs_state_since = now
                 return f"{ysqs_task}中"
             case State.DONE:
                 if dwell_ok:
-                    ysqs_task = ""
                     ysqs_state = State.COUNTDOWN
                     ysqs_state_since = now
                 return f"{ysqs_task}完成"
@@ -1755,7 +1755,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not is_running("元素骑士"):  # 启动
             self.ysqs_button_text = self.ysqsArenaFightButton.text()
             self.ysqsArenaFightButton.setText("停止")
-            show_msg("元素骑士", False)
             self.start_update_title(
                 "元素骑士",
                 None,
@@ -1773,29 +1772,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def ysqs_arena_run(self):
         def run(data: dict):
-            global ysqs_stones_num, ysqs_free_left, has_stones
+            global ysqs_stones_num, ysqs_free_left, has_stones, ysqs_arena_ctx, is_arena_choose, is_arena_run
             arena_times, = data[0x22B2]
             rank, = data[0x2339]
             players_info, = data[0x2324]
+            # 天赋等级、上次领悟时间、领悟石
             (talent_level, last_grasp, stones_num), = data[0x231E]
             now = datetime.now()
-            # 竞技场挑战：仅当它自己的下次时间已到 且 次数>0 才挑战
-            # （避免被领悟到点触发时误发挑战包 / 重复触发导致双「挑战中」）
-            next_arena = ysqs_countdown_info.get("下次竞技时间")
-            if next_arena is not None and next_arena <= now:
-                if arena_times > 0:
-                    if rank <= 100:
-                        fight_user_id = 262449414
-                    else:
-                        ranks = players_info[1::2]
-                        fight_user_id = players_info[2 * ranks.index(max(ranks))]
-                    send_lines([
-                        f"0000000000000023230000000000000000{get_hex(fight_user_id)}"  # 挑战玩家
-                    ])
-                    ysqs_state_queue.append("挑战中")
-                    ysqs_state_queue.append("挑战完成")
-                # 剩>1次排下一轮10分钟冷却；打完最后1次(或已无次数)直接终止竞技场，不再多等一轮冷却（天赋继续）
-                ysqs_countdown_info["下次竞技时间"] = (now + timedelta(minutes=10)) if arena_times > 1 else None
             # 天赋领悟：仅当冷却到（下次领悟时间已到）才发包
             next_grasp = ysqs_countdown_info.get("下次领悟时间")
             if next_grasp is not None and next_grasp <= now:
@@ -1805,51 +1788,223 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     ysqs_free_left -= 1
                 ysqs_stones_num = stones_num
-                if has_stones and ysqs_free_left <= 0 and stones_num == 0:
+                if has_stones and ysqs_free_left == 0 and stones_num == 0:
                     ysqs_countdown_info["下次领悟时间"] = None
+                    self.ysqs_update_interval()
                 else:
+                    ysqs_state_queue.append("领悟中")
                     send_lines([
                         "00000000000000231A0000000000000000"  # 领悟天赋
                     ])
-                    ysqs_state_queue.append("领悟中")
-                    run_later_expect(lambda state: self.ysqs_grasp(talent_level, state), {0x231A: {"offsets": (0,)}})
-                    return
-            self.ysqs_set_interval()
+                    run_later_expect(lambda state: self.ysqs_talent_next(talent_level, state), {0x231A: {"offsets": (0,)}})
+            # 竞技场挑战：仅当它自己的下次时间已到 且 次数>0 才挑战
+            # （避免被领悟到点触发时误发挑战包 / 重复触发导致双「挑战中」）
+            next_arena = ysqs_countdown_info.get("下次竞技时间")
+            if next_arena is not None and next_arena <= now:
+                if arena_times == 0:
+                    ysqs_countdown_info["下次竞技时间"] = None
+                    self.ysqs_update_interval()
+                else:
+                    ysqs_state_queue.append("挑战中")
+                    if rank <= 100:
+                        # 已进前100无排名收益，固定挑战一名看门玩家兜底
+                        self.ysqs_arena_fight(262449414, arena_times)
+                    else:
+                        # 排名>100：按评分选对手。无正分时不干等，刷新推荐多挑（前3轮预热，第4轮起按策略挑）
+                        opponents = [(players_info[i], players_info[i + 1]) for i in range(0, len(players_info), 2)]
+                        ysqs_arena_ctx = {
+                            "strategy": None, "warmup": 0, "stronger": 0, "weaker": 0, "total": 0,
+                        }
+                        is_arena_choose = True  # 竞技场评分/挑人开始，异步期间阻止误判"全部完成"
+                        self.ysqs_arena_choose(opponents, arena_times, 1)
+            is_arena_run = False  # 本轮查询包已处理完，允许下一次触发
 
+        global is_arena_run
+        if is_arena_run or is_arena_choose:
+            return
+        is_arena_run = True
         send_lines([
             "0000000000000022B200000000000000000000026F",  # 剩余挑战次数
             f"0000000000000023390000000000000000{get_hex(user_id)}",  # 声望、排名信息
-            "0000000000000023240000000000000000",  # 推荐玩家
-            "00000000000000231E000000000000000000000000"  # 天赋等级、上次领悟天赋时间
+            "00000000000000231E000000000000000000000000",  # 天赋等级、上次领悟天赋时间
+            "0000000000000023240000000000000000"  # 推荐玩家
         ])
         run_later_expect(run, {
             0x22B2: {"offsets": (4,)},
             0x2339: {"offsets": (4,)},
-            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))},  # 推荐玩家的id、排名偏移
-            0x231E: {"offsets": (36, 40), "items": (0x19872A,)}
+            0x231E: {"offsets": (36, 40), "items": (0x19872A,)},  # 天赋等级、上次领悟时间、领悟石
+            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))}  # 推荐玩家的ID、排名
         })
 
-    def ysqs_grasp(self, talent_level: int, state: int):
+    def ysqs_talent_next(self, talent_level: int, state: int):
         if state <= 1:  # 0：成功，1：失败，2：道具不够，3：已经满级，4：冷却时间未到，5：未转职
             ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level + 1 - state))
         else:
             ysqs_countdown_info["下次领悟时间"] = None
         ysqs_state_queue.append("领悟完成")
-        self.ysqs_set_interval()
+        self.ysqs_update_interval()
 
-    def ysqs_next_run_time(self):
-        # 最近（剩余时间最小）的未来运行时间及键名；无则 None
+    def ysqs_arena_choose(self, opponents, arena_times, round_num):
+        # 每轮：重查自己最新攻防(实时)、自己最新排名，并逐个查推荐玩家攻防。
+        # 预热前3次只统计"对手强度 vs 我强度"来判定段位策略；第4轮起按策略从当批挑对手。
+        # 注：服务器只认最近一次 0x2324 回包里的玩家，绝不跨批累积候选。
+        opp_ranks = dict(opponents)
+
+        def evaluate(data):
+            my_rank, = data[0x2339]  # 当前自己排名（实时）
+            per_opp = data[0x231E]   # 按序收取：第1项必为自己(全0查询，米米号字段为0)，其后为各推荐玩家
+            if not per_opp:
+                self.ysqs_arena_next(arena_times)
+                return
+            mamin, mamax, mdmin, mdmax = per_opp[0][1:]  # 自己的攻防区间
+            my_strength = mamin + mamax + mdmin + mdmax
+            ctx = ysqs_arena_ctx
+            # 本批评分数据
+            logger.info(f"[竞技场] round={round_num} phase={"预热" if ctx["warmup"] < 3 else "正式"} "
+                  f"strategy={ctx["strategy"]} my_rank={my_rank} "
+                  f"我(攻{mamin}-{mamax} 防{mdmin}-{mdmax} 强度{my_strength})")
+            # 当批有效对手：在推荐名单里、攻防区间合法
+            rows = []
+            for oid, a0, a1, d0, d1 in per_opp[1:]:
+                rnk = opp_ranks.get(oid)
+                if rnk is None or d1 < d0 or a1 < a0:
+                    continue
+                win_rate = (
+                    0.5 * get_win_rate(mamin, mamax, d0, d1)
+                    + 0.5 * (1 - get_win_rate(a0, a1, mdmin, mdmax))
+                )
+                win_rank = rnk if rnk < my_rank else my_rank
+                rank_gain = max(0, max(my_rank - 100, 0) - max(win_rank - 100, 0))
+                # 单个对手评分
+                logger.info(f"  对手{oid} rank={rnk} 攻{a0}-{a1} 防{d0}-{d1} 胜率={win_rate:.3f} "
+                      f"赢后名次={win_rank} 名次收益={rank_gain} score={win_rate * rank_gain:.3f} 强度={a0 + a1 + d0 + d1}")
+                rows.append((oid, win_rate, rank_gain, a0 + a1 + d0 + d1))
+            if ctx["warmup"] < 3:
+                # 预热：只统计对手强度 vs 我，不挑战
+                for _, _, _, ost in rows:
+                    if ost > my_strength:
+                        ctx["stronger"] += 1
+                    elif ost < my_strength:
+                        ctx["weaker"] += 1
+                    ctx["total"] += 1
+                ctx["warmup"] += 1
+                if ctx["warmup"] >= 3:
+                    ctx["strategy"] = self.ysqs_arena_detect_strategy(my_rank)
+                self.ysqs_arena_refresh(arena_times, round_num + 1)
+                return
+
+            fight_id = None
+            if ctx["strategy"] == "rank":
+                if my_rank <= 100:
+                    # 已进前100：打固定弱玩家保证赢
+                    fight_id = 262449414
+                else:
+                    # 冲前100：看名次收益，但要求胜率>0 避免选必败
+                    # 冲前100：优先名次收益，收益相同时再挑胜率更高者
+                    cand, c_key = None, (-1, -1)
+                    for oid, wr, rg, ost in rows:
+                        if wr > 0 and (rg, wr) > c_key:
+                            cand, c_key = oid, (rg, wr)
+                    fight_id = cand
+            elif ctx["strategy"] == "win":
+                # 限名次不变(rank_gain==0)；胜率优先，胜率相同时挑强度最低的确保稳赢，留在靠后段捶弱的
+                cand, c_key = None, (-1.0, float("inf"))
+                for oid, wr, rg, ost in rows:
+                    if rg == 0 and (wr, -ost) > c_key:
+                        cand, c_key = oid, (wr, -ost)
+                fight_id = cand
+            else:  # balance
+                cand, c_sc = None, 0.0
+                for oid, wr, rg, ost in rows:
+                    sc = wr * rg
+                    if sc > c_sc:
+                        cand, c_sc = oid, sc
+                fight_id = cand
+
+            if fight_id is not None:
+                # 选中目标
+                logger.info(f"[竞技场] round={round_num} 选中挑战 {fight_id}")
+                self.ysqs_arena_fight(fight_id, arena_times)
+            else:
+                logger.info(f"[竞技场] round={round_num} 无合适目标，刷新下一批")
+                self.ysqs_arena_refresh(arena_times, round_num + 1)
+
+        send_lines([
+            "00000000000000231E000000000000000000000000",  # 自己最新攻防
+            *[f"00000000000000231E0000000000000000{get_hex(opp_id)}" for opp_id, _ in opponents],  # 推荐玩家攻防
+            f"0000000000000023390000000000000000{get_hex(user_id)}"  # 自己最新排名
+        ])
+        run_later_expect(evaluate, {
+            0x231E: {"num": len(opponents) + 1, "offsets": (0, 44, 48, 52, 56)},
+            0x2339: {"num": 1, "offsets": (4,)},
+        })
+
+    def ysqs_arena_fight(self, opp_id, arena_times):
+        send_lines([
+            f"0000000000000023230000000000000000{get_hex(opp_id)}"  # 挑战玩家
+        ])
+        self.ysqs_arena_next(arena_times)
+
+    def ysqs_arena_refresh(self, arena_times, round_num):
+        # 发推荐玩家包拿下一批6个玩家，再继续评分循环（不携带上一批任何候选）
+        send_lines(["0000000000000023240000000000000000"])
+
+        def on_newbuf(players_info,):
+            opponents = [
+                (players_info[i], players_info[i + 1])
+                for i in range(0, len(players_info), 2)
+                if players_info[i]
+            ]
+            if opponents:
+                self.ysqs_arena_choose(opponents, arena_times, round_num)
+            else:
+                self.ysqs_arena_next(arena_times)
+
+        run_later_expect(on_newbuf, {
+            0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))}
+        })
+
+    def ysqs_arena_detect_strategy(self, my_rank):
+        # 其余才按3次预热统计：≥2/3 对手强于我 → rank；≥2/3 弱于我 → win；否则 balance
+        ctx = ysqs_arena_ctx
+        if ctx["total"] == 0:
+            return "balance"
+        if my_rank <= 500 or ctx["stronger"] / ctx["total"] >= 2 / 3:
+            return "rank"
+        if my_rank >= 2000 or ctx["weaker"] / ctx["total"] >= 2 / 3:
+            return "win"
+        return "balance"
+
+    def ysqs_arena_next(self, arena_times):
+        global is_arena_choose
+        is_arena_choose = False  # 挑选已结束(挑战发出或放弃)，解除"进行中"标记，允许判定全部完成
+        # 剩>1次排下一轮10分钟冷却；打完最后1次(或已无次数)直接终止竞技场（天赋继续）
+        if arena_times > 1:
+            ysqs_countdown_info["下次竞技时间"] = datetime.now() + timedelta(minutes=10)
+        else:
+            ysqs_countdown_info["下次竞技时间"] = None
+        ysqs_state_queue.append("挑战完成")
+        self.ysqs_update_interval()
+
+    def ysqs_next_run_time(self, future_only: bool = False):
+        # 最近（剩余时间最小）的运行时间及键名；无则 ("全部完成", None)
+        # future_only=True 只取未来时间(调度用)；False 连已到点的过去时间也算(标题显示/启动判断用)
+        now = datetime.now()
         pending = [
-            (task, next_run) for task, next_run in ysqs_countdown_info.items() if next_run is not None
+            (task, next_run) for task, next_run in ysqs_countdown_info.items()
+            if next_run is not None and (not future_only or next_run > now)
         ]
         return min(pending, key=lambda item: item[1]) if pending else ("全部完成", None)
 
-    def ysqs_set_interval(self):
-        # 每次运行后：根据2条倒计时动态调整单个任务的间隔（标题显示最近的一条）
-        task, next_run = self.ysqs_next_run_time()
+    def ysqs_update_interval(self):
+        # 每次运行后：根据2条倒计时动态调整单个任务的间隔（标题显示最近的一条）。
+        # 只取未来的时间设 interval：已到点的任务由当前 run 就地处理。若把过去时间(如"下次领悟时间"
+        # 还在等回包、尚未更新)设进去，from_data 会转成 0ms 让定时器立即再触发，导致刚启动(领悟/挑战都到点)
+        # 且名次在前100时重复发查询包。
+        task, next_run = self.ysqs_next_run_time(future_only=True)
         if next_run is not None:
             self.timer_pool["元素骑士"].set_interval(next_run)
-        elif not is_shown_msg("元素骑士"):
+        elif not is_arena_choose and not is_shown_msg("元素骑士"):
             self.ysqs_arena_stop()
             alert_msg("已完成元素骑士竞技场挑战和天赋领悟")
 
@@ -2150,9 +2305,10 @@ class RunTimer(QTimer):
     @staticmethod
     def from_data(data: int | float | datetime):
         if isinstance(data, datetime):
-            return int((data - datetime.now()).total_seconds() * 1000)
+            msec = int((data - datetime.now()).total_seconds() * 1000)
         else:
-            return int(data)
+            msec = int(data)
+        return max(0, msec)
 
     def set_timer_interval(self):
         super().setInterval(self.interval)
@@ -2447,6 +2603,22 @@ def clamp(value: int, lower: int, upper: int):
     return min(max(value, lower), upper)
 
 
+def get_win_rate(x1: int, x2: int, y1: int, y2: int) -> float:
+    # P(X > Y)，X ~ U[x1,x2]，Y ~ U[y1,y2]（连续均匀。攻防区间 min==max 时按退化处理）
+    if y2 <= y1:
+        return clamp((x2 - y1) / (x2 - x1), 0, 1) if x2 > x1 else float(x1 > y1)
+    if x2 <= x1:
+        return clamp((x1 - y1) / (y2 - y1), 0, 1) if y2 > y1 else float(x1 > y1)
+    # 通用：1/(x2-x1) ∫_{x1}^{x2} clip((t-y1)/(y2-y1), 0, 1) dt 的分段解析值
+    total = 0.0
+    p, q = max(x1, y1), min(x2, y2)
+    if q > p:
+        total += ((q - y1) ** 2 - (p - y1) ** 2) / (2 * (y2 - y1))  # 线性段 (t-y1)/(y2-y1)
+    if x2 > y2:
+        total += x2 - max(x1, y2)  # t>=y2 段钳制为 1
+    return total / (x2 - x1)
+
+
 def get_int(buf: bytes, offset: int = 0, bytes_num: int = 4):
     if offset + bytes_num > len(buf):
         return 0
@@ -2599,31 +2771,35 @@ def send_lines_to_server_back(address: tuple[str, int], lines: list, wait_recv_n
 
 
 def is_running(name: str):
+    res = False
     match name:
         case "餐厅":
-            return window.ctHarvestButton.text() == "停止"
+            res = window.ctHarvestButton.text() == "停止"
         case "化石":
-            return window.hsIdentifyButton.text() == "停止"
+            res = window.hsIdentifyButton.text() == "停止"
         case "元素骑士":
-            return window.ysqsArenaFightButton.text() == "停止"
+            res = window.ysqsArenaFightButton.text() == "停止"
         case _:
             if name in window.timer_pool:
                 timer = window.timer_pool[name]
                 if isinstance(timer, dict):
-                    return any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
+                    res = any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
                 elif isinstance(timer, tuple):
-                    return any(isinstance(item, QTimer) and item.isActive() for item in timer)
-                return isinstance(timer, QTimer) and timer.isActive()
+                    res = any(isinstance(item, QTimer) and item.isActive() for item in timer)
+                else:
+                    res = isinstance(timer, QTimer) and timer.isActive()
             else:
                 return False
+    if not res:  # 启动时
+        msg_show_states[name] = False
+    return res
 
 
 def is_shown_msg(name: str):
-    return msg_show_states[name]
-
-
-def show_msg(name: str, state: bool = True):
-    msg_show_states[name] = state
+    is_shown = msg_show_states[name]
+    if not is_shown:
+        msg_show_states[name] = True
+    return is_shown
 
 
 def is_official_server():
@@ -3058,7 +3234,6 @@ def process_recv_packet(socket_num, buf, length):
                                     window.stop_task(task_name)
                                     alert_reward((item_id, item_num))
                                 elif item_id == 0 and not is_shown_msg(task_name):
-                                    show_msg(task_name)
                                     window.stop_task(task_name)
                                     alert_msg("已开完宝盒，暂未获得火龙珠")
                             case 8402:  # 卡罗拉幸运儿游戏开始
@@ -3070,7 +3245,6 @@ def process_recv_packet(socket_num, buf, length):
                                     item_num = get_int(packet.body, 12)
                                     alert_reward((item_id, item_num))
                                 elif not is_shown_msg(task_name):
-                                    show_msg(task_name)
                                     window.stop_task(task_name)
                                     alert_msg("已完成今日卡罗拉幸运儿游戏")
                             case 8409 if is_official_server():  # 卡罗拉幸运儿领奖
