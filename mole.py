@@ -798,7 +798,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.reward_radio_remember.setChecked(True)
 
     def start_reward(self):
-        if self.rewardGetButton.text() != "停止":
+        if not is_running("每日奖励"):
             # 开始领取
             self.run_reward()
             if self.send_thread.isRunning():
@@ -2779,6 +2779,8 @@ def is_running(name: str):
             res = window.hsIdentifyButton.text() == "停止"
         case "元素骑士":
             res = window.ysqsArenaFightButton.text() == "停止"
+        case "每日奖励":
+            res = window.rewardGetButton.text() == "停止"
         case _:
             if name in window.timer_pool:
                 timer = window.timer_pool[name]
