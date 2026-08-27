@@ -2004,7 +2004,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         task, next_run = self.ysqs_next_run_time(future_only=True)
         if next_run is not None:
             self.timer_pool["元素骑士"].set_interval(next_run)
-        elif not is_arena_choose and not is_shown_msg("元素骑士"):
+            return
+        # 无未来时间：可能已全部完成，也可能某条线已到点但仍有一项在途（领悟/挑战包已发、正等回包，
+        # 其倒计时尚未刷新为未来时间，故被 future_only 过滤）。此刻若判定完成会提前结束——
+        # 典型的启动时竞技场次数为0、而天赋还没领悟完。只要还有任一条目非 None（已到点/在途）就交给回包后再判定。
+        if any(next_run is not None for next_run in ysqs_countdown_info.values()):
+            return
+        if not is_arena_choose and not is_shown_msg("元素骑士"):
             self.ysqs_arena_stop()
             alert_msg("已完成元素骑士竞技场挑战和天赋领悟")
 
