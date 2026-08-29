@@ -3145,64 +3145,76 @@ def process_recv_packet(socket_num, buf, length):
                                     if index != -1:
                                         window.ysqsCardBox.setCurrentIndex(index)
                                 window.ysqsCardBox.blockSignals(False)
-                            case 1014 if not is_running("餐厅"):  # 餐厅信息
-                                ct_cooked_dishes_dict.clear()
-                                ct_cooking_dishes_dict.clear()
-                                house_type = get_int(packet.body, 36)  # 内部装潢类型
-                                stoves_num = get_stove_num(house_type)  # 餐厅灶台数
-                                dishes_num = get_int(packet.body, 68)
-                                start = 72
-                                size = 6 * 4
-                                for page in range(dishes_num):
-                                    dish_pos = get_int(packet.body, start + page * size)  # 菜位置
-                                    dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
-                                    dish_id = get_int(packet.body, start + page * size + 8)  # 菜ID
-                                    dish_num = get_int(packet.body, start + page * size + 12)  # 菜数量
-                                    dish_step = get_int(packet.body, start + page * size + 16)  # 菜步骤
-                                    dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
-                                    dish_info = get_dish_info(dish_type)
-                                    if dish_step == 6:  # 已熟菜信息
-                                        ct_cooked_dishes_dict[dish_info["名称"]] = {
-                                            "ID": dish_id,
-                                            "类型": dish_type,
-                                            "位置": dish_pos,
-                                            "完成时间": dish_info["完成时间"],
-                                            "烧糊时间": dish_info["烧糊时间"],
-                                            "数量": dish_num
-                                        }
-                                    elif dish_step == 3 and dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
-                                        ct_cooking_dishes_dict[dish_pos] = {
-                                            "ID": dish_id,
-                                            "类型": dish_type,
-                                            "位置": dish_pos,
-                                            "时间": dish_time,
-                                        }
-                                    elif dish_step < 3:
-                                        window.ct_cook_after(dish_id, dish_type, dish_step, True)
-                                        if dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):
+                            case 1014:  # 餐厅信息
+                                if not is_running("餐厅"):
+                                    ct_cooked_dishes_dict.clear()
+                                    ct_cooking_dishes_dict.clear()
+                                    house_type = get_int(packet.body, 36)  # 内部装潢类型
+                                    stoves_num = get_stove_num(house_type)  # 餐厅灶台数
+                                    dishes_num = get_int(packet.body, 68)
+                                    start = 72
+                                    size = 6 * 4
+                                    for page in range(dishes_num):
+                                        dish_pos = get_int(packet.body, start + page * size)  # 菜位置
+                                        dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
+                                        dish_id = get_int(packet.body, start + page * size + 8)  # 菜ID
+                                        dish_num = get_int(packet.body, start + page * size + 12)  # 菜数量
+                                        dish_step = get_int(packet.body, start + page * size + 16)  # 菜步骤
+                                        dish_time = get_int(packet.body, start + page * size + 20)  # 菜已制作时间
+                                        dish_info = get_dish_info(dish_type)
+                                        if dish_step == 6:  # 已熟菜信息
+                                            ct_cooked_dishes_dict[dish_info["名称"]] = {
+                                                "ID": dish_id,
+                                                "类型": dish_type,
+                                                "位置": dish_pos,
+                                                "完成时间": dish_info["完成时间"],
+                                                "烧糊时间": dish_info["烧糊时间"],
+                                                "数量": dish_num
+                                            }
+                                        elif dish_step == 3 and dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):  # 正在做的菜信息
                                             ct_cooking_dishes_dict[dish_pos] = {
                                                 "ID": dish_id,
                                                 "类型": dish_type,
                                                 "位置": dish_pos,
-                                                "时间": -5,
+                                                "时间": dish_time,
                                             }
-                                for dish_pos in range(1, stoves_num + 1):
-                                    ct_cooking_dishes_dict.setdefault(dish_pos, {
-                                        "类型": 0x147267,
-                                        "位置": dish_pos,
-                                        "下次不收菜": True
-                                    })
-                                # 更新数据并重新选中之前的菜
-                                window.ctDishBox.blockSignals(True)
-                                old_dish_name = window.ctDishBox.currentText()
-                                window.ctDishBox.clear()
-                                window.ctDishBox.addItems(ct_cooked_dishes_dict)
-                                if old_dish_name is not None:
-                                    index = window.ctDishBox.findText(old_dish_name)
-                                    if index != -1:
-                                        window.ctDishBox.setCurrentIndex(index)
-                                window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
-                                window.ctDishBox.blockSignals(False)
+                                        elif dish_step < 3:
+                                            window.ct_cook_after(dish_id, dish_type, dish_step, True)
+                                            if dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):
+                                                ct_cooking_dishes_dict[dish_pos] = {
+                                                    "ID": dish_id,
+                                                    "类型": dish_type,
+                                                    "位置": dish_pos,
+                                                    "时间": -5,
+                                                }
+                                    for dish_pos in range(1, stoves_num + 1):
+                                        ct_cooking_dishes_dict.setdefault(dish_pos, {
+                                            "类型": 0x147267,
+                                            "位置": dish_pos,
+                                            "下次不收菜": True
+                                        })
+                                    # 更新数据并重新选中之前的菜
+                                    window.ctDishBox.blockSignals(True)
+                                    old_dish_name = window.ctDishBox.currentText()
+                                    window.ctDishBox.clear()
+                                    window.ctDishBox.addItems(ct_cooked_dishes_dict)
+                                    if old_dish_name is not None:
+                                        index = window.ctDishBox.findText(old_dish_name)
+                                        if index != -1:
+                                            window.ctDishBox.setCurrentIndex(index)
+                                    window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
+                                    window.ctDishBox.blockSignals(False)
+                                else:  # 做菜任务运行中，将灶台的菜显示为目标菜
+                                    dishes_num = get_int(packet.body, 68)
+                                    start = 72
+                                    size = 6 * 4
+                                    cooked_info = ct_cooked_dishes_dict[window.ctDishBox.currentText()]
+                                    for page in range(dishes_num):
+                                        dish_type = get_int(packet.body, start + page * size + 4)  # 菜类型
+                                        dish_info = get_dish_info(dish_type)
+                                        if dish_info["名称"] in ("酱爆雪顶菇", "阳光酥油肉松"):
+                                            set_int(packet.body, cooked_info["类型"], start + page * size + 4)
+                                    write_back(raw_buf, packet)
                             case 1017:  # 餐厅做菜信息
                                 dish_type = get_int(packet.body)
                                 dish_id = get_int(packet.body, 4)

@@ -7,6 +7,7 @@ from queue import Empty
 from random import randint
 from hashlib import md5
 from time import sleep, monotonic
+from loguru import logger
 
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
 user_id, serial_num = 0, 0  # 米米号、发送包序列号
@@ -17,8 +18,6 @@ lock = Lock()  # 发送锁
 class Client(Process):
     def __init__(self, account: tuple[int, str], init_lines: list):
         super().__init__(daemon=True)
-        self.login_socket = socket(AF_INET, SOCK_STREAM)
-        self.main_socket = socket(AF_INET, SOCK_STREAM)
         self.is_connect = False
         self.send_queue = Queue()
         self.recv_queue = Queue()
@@ -45,6 +44,7 @@ class Client(Process):
     def login(self):
         try:
             # 获取账户认证信息
+            self.login_socket = socket(AF_INET, SOCK_STREAM)
             self.login_socket.settimeout(10)
             self.login_socket.connect(("123.206.131.236", 1863))
             self.login_socket.send(Packet.from_hex(
@@ -64,6 +64,7 @@ class Client(Process):
                 port = 1865
             else:
                 port = 1201
+            self.main_socket = socket(AF_INET, SOCK_STREAM)
             self.main_socket.settimeout(10)
             self.main_socket.connect(("123.206.131.236", port))
 
@@ -103,7 +104,6 @@ class Client(Process):
         else:
             self.last_send = monotonic()
             self.is_done_signaled = False
-            sleep(0.025)
             return True
 
     def send_lines(self, lines: deque):
@@ -160,6 +160,10 @@ class Client(Process):
                                 case 10001:  # 被挤下线
                                     self.is_connect = False
                                     self.state_queue.put("disconnected")
+                                    self.login_socket.close()
+                                    self.main_socket.close()
+                                    recv_buf.clear()
+                                    break
                         recv_buf = recv_buf[packet_len:]
                     else:
                         break
@@ -175,6 +179,8 @@ class Client(Process):
             pass
         try:
             self.send_queue.put(("stop", None))
+            self.login_socket.close()
+            self.main_socket.close()
         except:
             pass
         if self.is_alive():
