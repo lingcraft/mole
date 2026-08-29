@@ -3204,7 +3204,7 @@ def process_recv_packet(socket_num, buf, length):
                                             window.ctDishBox.setCurrentIndex(index)
                                     window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
                                     window.ctDishBox.blockSignals(False)
-                                else:  # 做菜任务运行中，将灶台的菜显示为目标菜
+                                elif get_int(packet.body) == window.user_id:  # 做菜任务运行中，将灶台的菜显示为目标菜
                                     dishes_num = get_int(packet.body, 68)
                                     start = 72
                                     size = 6 * 4
