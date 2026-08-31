@@ -1,6 +1,8 @@
 from collections import deque
 from socket import socket, AF_INET, SOCK_STREAM
+from _cffi_backend import buffer
 from struct import pack, pack_into, unpack_from
+from re import sub
 from threading import Lock, Thread
 from multiprocessing import Process, Queue
 from queue import Empty
