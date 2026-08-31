@@ -77,7 +77,7 @@ class Client(Process):
                 f"0000000000000000C90000000000000000{get_hex(server_id, 2)}{token.hex()}00000010{session.hex()}0000000030{"00" * 63}"
             ).encrypt().data())
             res = read_packet(self.main_socket)
-            if res.version != 0:
+            if res.result != 0:
                 return False
             self.is_connect = True
             self.state_queue.put("connected")
