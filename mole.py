@@ -39,8 +39,9 @@ from ppl import Bot
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
+key_len, serial_num = len(secret_key), 0  # 密钥长度、发送包序列号
 login_socket_num, game_socket_num, login_ip, login_port = 0, 0, 0, 0  # 摩尔主服务器通信号、游戏服务器通信号、IP、Port
-user_id, map_id, serial_num, packet_index = 0, 0, 0, 0  # 米米号、地图号、发送包序列号、封包序号索引
+user_id, map_id, packet_index = 0, 0, 0  # 米米号、地图号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 buf_index = 0  # 数据索引
 is_show_send, is_show_recv = True, True  # 显示send包、recv包
@@ -2349,19 +2350,19 @@ class RunTimer(QTimer):
 class Packet:
     def __init__(self, packet: str | bytearray | bytes | buffer | None = None, cmd_id: int | None = None,
                  body: str | bytearray | bytes | buffer | None = None):
-        self.length = self.serial_num = self.cmd_id = self.user_id = self.version = 0
+        self.length = self.version = self.cmd_id = self.user_id = self.result = 0
         self.body = bytearray()
         if packet is not None:
             packet = self.to_bytearray(packet)
             if len(packet) >= 17:
-                self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
+                self.length, self.version, self.cmd_id, self.user_id, self.result = unpack_from("!IBIII", packet)
                 self.body = packet[17:]
         elif cmd_id is not None:
             self.cmd_id = cmd_id
             self.body = self.to_bytearray(body)
 
     def data(self):
-        head = pack("!IBIII", self.length, self.serial_num, self.cmd_id, self.user_id, self.version)
+        head = pack("!IBIII", self.length, self.version, self.cmd_id, self.user_id, self.result)
         return head + self.body
 
     @staticmethod
@@ -2383,7 +2384,7 @@ class Packet:
 
     def get_serial_num(self):
         global serial_num
-        self.length, self.user_id, self.version = len(self.body) + 18, user_id, 0
+        self.length, self.user_id, self.result = len(self.body) + 18, user_id, 0
         if self.cmd_id == 201:
             serial_num = 65
         else:
@@ -2391,8 +2392,8 @@ class Packet:
             for byte in self.body:
                 crc ^= byte
             # 计算发送包序列号
-            serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
-        self.serial_num = serial_num
+            serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % key_len + self.cmd_id % 13 + crc) % 256
+        self.version = serial_num
 
     def encrypt(self, is_get_serial_num: bool = True):
         if is_get_serial_num:
@@ -2400,9 +2401,9 @@ class Packet:
         res = bytearray(len(self.body) + 1)
         key_index = 0
         for index in range(len(self.body)):
-            res[index] = self.body[index] ^ secret_key[key_index % 21]
+            res[index] = self.body[index] ^ secret_key[key_index % key_len]
             key_index += 1
-            if key_index == 22:
+            if key_index > key_len:
                 key_index = 0
         for index in range(len(res) - 1, 0, -1):
             res[index] |= res[index - 1] >> 3
@@ -2418,9 +2419,9 @@ class Packet:
         key_index = 0
         for index in range(len(res)):
             res[index] = (self.body[index] >> 5) | (self.body[index + 1] << 3) % 256
-            res[index] ^= secret_key[key_index % 21]
+            res[index] ^= secret_key[key_index % key_len]
             key_index += 1
-            if key_index == 22:
+            if key_index > key_len:
                 key_index = 0
         self.body = res
         return self
@@ -2714,7 +2715,7 @@ def send_lines_to_server(address: tuple[str, int], lines: list, wait_recv_nums: 
             if need_wait_recv:
                 for _ in range(wait_recv_nums[index]):
                     packet = Packet(s.recv(17))
-                    if packet.version != 0:
+                    if packet.result != 0:
                         return False
                     try:
                         s.recv(packet.length - 17)
@@ -2901,7 +2902,7 @@ def process_recv_packet(socket_num, buf, length):
                     packet.decrypt()
                     if is_show_recv:
                         show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
-                    if packet.version == 0:  # 正确包
+                    if packet.result == 0:  # 正确包
                         match packet.cmd_id:
                             case 228 if can_get_lamu_info:  # 跟随的拉姆ID
                                 can_get_lamu_info = False

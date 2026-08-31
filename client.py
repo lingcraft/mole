@@ -10,7 +10,8 @@ from time import sleep, monotonic
 from loguru import logger
 
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-user_id, serial_num = 0, 0  # 米米号、发送包序列号
+key_len, serial_num = len(secret_key), 0  # 密钥长度、发送包序列号
+user_id = 0  # 米米号
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 lock = Lock()  # 发送锁
 
@@ -144,7 +145,7 @@ class Client(Process):
                         cipher = recv_buf[:packet_len]
                         packet = Packet(cipher)
                         packet.decrypt()
-                        if packet.version == 0:  # 正确包
+                        if packet.result == 0:  # 正确包
                             match packet.cmd_id:
                                 case 1017:  # 餐厅做菜信息
                                     dish_type = get_int(packet.body)
@@ -188,27 +189,30 @@ class Client(Process):
 
 
 class Packet:
-    def __init__(self, packet: str | bytearray | bytes | None = None, cmd_id: int | None = None, body: str | bytearray | bytes | None = None):
-        self.length = self.serial_num = self.cmd_id = self.user_id = self.version = 0
+    def __init__(self, packet: str | bytearray | bytes | buffer | None = None, cmd_id: int | None = None,
+                 body: str | bytearray | bytes | buffer | None = None):
+        self.length = self.version = self.cmd_id = self.user_id = self.result = 0
         self.body = bytearray()
         if packet is not None:
             packet = self.to_bytearray(packet)
             if len(packet) >= 17:
-                self.length, self.serial_num, self.cmd_id, self.user_id, self.version = unpack_from("!IBIII", packet)
+                self.length, self.version, self.cmd_id, self.user_id, self.result = unpack_from("!IBIII", packet)
                 self.body = packet[17:]
         elif cmd_id is not None:
             self.cmd_id = cmd_id
             self.body = self.to_bytearray(body)
 
     def data(self):
-        head = pack("!IBIII", self.length, self.serial_num, self.cmd_id, self.user_id, self.version)
+        head = pack("!IBIII", self.length, self.version, self.cmd_id, self.user_id, self.result)
         return head + self.body
 
     @staticmethod
-    def to_bytearray(data: str | bytearray | bytes | None):
+    def to_bytearray(data: str | bytearray | bytes | buffer | None):
         if data is None:
             return bytearray()
         if isinstance(data, str):
+            # 支持带标注的输入，如：“绿：0000... {00003E81:药水ID}{0001869F:药水数量}”
+            data = sub(r"{([^}:]*)(?::[^}]*)?}", r"\1", data.split("：", 1)[-1])
             return bytearray.fromhex(data)
         return bytearray(data)
 
@@ -221,7 +225,7 @@ class Packet:
 
     def get_serial_num(self):
         global serial_num
-        self.length, self.user_id, self.version = len(self.body) + 18, user_id, 0
+        self.length, self.user_id, self.result = len(self.body) + 18, user_id, 0
         if self.cmd_id == 201:
             serial_num = 65
         else:
@@ -229,8 +233,8 @@ class Packet:
             for byte in self.body:
                 crc ^= byte
             # 计算发送包序列号
-            serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % 21 + self.cmd_id % 13 + crc) % 256
-        self.serial_num = serial_num
+            serial_num = (serial_num - serial_num // 7 + 147 + (self.length - 1) % key_len + self.cmd_id % 13 + crc) % 256
+        self.version = serial_num
 
     def encrypt(self, is_get_serial_num: bool = True):
         if is_get_serial_num:
@@ -238,9 +242,9 @@ class Packet:
         res = bytearray(len(self.body) + 1)
         key_index = 0
         for index in range(len(self.body)):
-            res[index] = self.body[index] ^ secret_key[key_index % 21]
+            res[index] = self.body[index] ^ secret_key[key_index % key_len]
             key_index += 1
-            if key_index == 22:
+            if key_index > key_len:
                 key_index = 0
         for index in range(len(res) - 1, 0, -1):
             res[index] |= res[index - 1] >> 3
@@ -256,9 +260,9 @@ class Packet:
         key_index = 0
         for index in range(len(res)):
             res[index] = (self.body[index] >> 5) | (self.body[index + 1] << 3) % 256
-            res[index] ^= secret_key[key_index % 21]
+            res[index] ^= secret_key[key_index % key_len]
             key_index += 1
-            if key_index == 22:
+            if key_index > key_len:
                 key_index = 0
         self.body = res
         return self
