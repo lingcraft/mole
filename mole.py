@@ -1789,7 +1789,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 else:
                     ysqs_free_left -= 1
                 ysqs_stones_num = stones_num
-                if has_stones and ysqs_free_left == 0 and stones_num == 0:
+                if has_stones and ysqs_free_left == 0 and stones_num == 0 or talent_level == 40:
                     ysqs_countdown_info["下次领悟时间"] = None
                     self.ysqs_update_interval()
                 else:
@@ -1838,10 +1838,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         })
 
     def ysqs_talent_next(self, talent_level: int, state: int):
-        if state <= 1:  # 0：成功，1：失败，2：道具不够，3：已经满级，4：冷却时间未到，5：未转职
-            ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level + 1 - state))
-        else:
-            ysqs_countdown_info["下次领悟时间"] = None
+        match state:  # 0：成功，1：失败，2：道具不够，3：已经满级，4：冷却时间未到，5：未转职
+            case 0 if talent_level < 39:
+                ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level + 1))
+            case 1:
+                ysqs_countdown_info["下次领悟时间"] = datetime.now() + timedelta(minutes=get_talent_cd(talent_level))
+            case _:
+                ysqs_countdown_info["下次领悟时间"] = None
         ysqs_state_queue.append("领悟完成")
         self.ysqs_update_interval()
 

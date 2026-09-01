@@ -1,7 +1,8 @@
 [project]
 name = "mole"
-version = "1.13.5"
+version = "1.13.6"
 description = """
+- 优化：元素骑士天赋领悟增加天赋等级已满的判断，若领悟前天赋等级已满40级，或领悟前天赋等级39级然后领悟成功到40级了，就停止领悟任务，提升效率
 - 修复：ElementKnightIllustrationsPanel.swf 元素骑士图鉴面板提示信息纠正
 """
 readme = "README.md"
