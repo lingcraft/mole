@@ -9,7 +9,8 @@ from struct import pack, pack_into, unpack_from
 from threading import Lock, Thread
 from cffi import FFI
 from socket import socket, fromfd, AF_INET, SOCK_STREAM
-from collections import Counter
+from collections import Counter, deque
+from collections.abc import Callable
 from copy import deepcopy
 from dict import *
 from datetime import datetime, timedelta
@@ -28,8 +29,6 @@ from math import floor, sqrt
 from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
 from pyamf import sol
-from collections import deque
-from collections.abc import Callable
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
@@ -77,21 +76,21 @@ mmg_friends_num, mmg_query_size_max, mmg_query_page_max, mmg_query_page = 0, 14,
 mlcs_energy, mlcs_arena_times, mlcs_exp_times = 0, 0, 0  # 魔灵体力值、竞技场可挑战次数、经验之路可挑战次数
 mlcs_fight_sprites_dict, mlcs_material_sprites_dict, mlcs_sprites_dict = {}, {}, {}  # 出战魔灵、可删除/材料魔灵、全部魔灵
 # 不可作为升级材料的魔灵类型：进阶材料魔灵家族（豆丁/果子/能量/宝石，最高等级均为 1）+ 烈焰剑齿虎
-mlcs_non_material_sprites_types = frozenset({
+mlcs_non_material_sprites_types = {
     0x1A3F6A,  # 烈焰剑齿虎
     0x1A3F04, 0x1A3F05, 0x1A3F06, 0x1A3F07, 0x1A3F08  # 5种宝石进化材料
-})
+}
 mlcs_factors = (1000000, 1500000, 2000000, 2500000, 3000000, 4000000, 5000000)  # 经验上限计算因子
 # 元素骑士
 ysqs_max_floor, ysqs_attack, ysqs_energy = 0, 0, 0  # 无尽深渊最高层数、最低攻击力、体力值
 can_fight_wjsy, can_fight_ssmy, is_equip_card = False, False, True  # 能否挑战无尽深渊、莎士摩亚、是否装备卡牌
 ysqs_cards_dict, ysqs_material_cards_dict, ysqs_max_level_cards_dict = {}, {}, {}  # 元素可升级卡牌、材料卡牌、最高等级卡牌
 # 不可作为升级材料的卡牌类型：奥丁、汉青、洛基（5星及以下各形态）
-ysqs_non_material_cards_types = frozenset({
+ysqs_non_material_cards_types = {
     0x1962A0,  # 奥丁⭐5
     0x196277,  # 汉青⭐5
     0x19628E, 0x19628F, 0x196290  # 洛基⭐3/4/5
-})
+}
 # 元素骑士竞技场
 ysqs_talent_cd_thresholds = (
     (1, 1), (5, 1), (10, 8), (15, 3), (20, 5), (25, 2), (30, 5), (45, 3), (50, 2), (60, 10)  # 天赋冷却阈值
