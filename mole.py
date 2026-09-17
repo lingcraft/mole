@@ -1834,7 +1834,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             0x2339: {"offsets": (4,)},
             0x231E: {"offsets": (36, 40), "items": (0x19872A,)},  # 天赋等级、上次领悟时间、领悟石
             0x2324: {"offsets": tuple(offset for page in range(6) for offset in (4 + page * 28, 28 + page * 28))}  # 推荐玩家的ID、排名
-        })
+        }, 3000, self.ysqs_arena_stop)
 
     def ysqs_talent_next(self, talent_level: int, state: int):
         match state:  # 0：成功，1：失败，2：道具不够，3：已经满级，4：冷却时间未到，5：未转职
@@ -2552,18 +2552,36 @@ def run_later(func: Callable, delay: int = 300):
     QTimer.singleShot(delay, func)
 
 
-def run_later_expect(func: Callable, expect: dict):
+def run_later_expect(func: Callable, expect: dict, timeout: int | float | None = None, timeout_func: Callable | None = None):
     # 等待到期望包之后运行
     # expect：{cmd_id：{"num"：数量, "offsets"：(offset, ...), "items"：(item, ...)}}
     # expect：{cmd_id：数量} 仅等待收齐指定数量的包
     # offsets：按绝对字节偏移取 4 字节整数
     # items：4 字节步进遍历包体，找到与 marker 匹配的 4 字节后，返回其后的 4 字节整数（取首个匹配）
-    pending_waits.append({
+    # timeout：超时秒数。None（默认）表示不设超时，沿用"一直等到收齐"的旧行为
+    # timeout_func：超时回调。超时后移除该等待并执行它；未给则超时后什么都不做
+    #               （仅移除等待，之后迟到的回包不再触发）
+    wait_info = {
         "expect": expect,
         "counts": {cmd_id: 0 for cmd_id in expect},
         "data": {cmd_id: [] for cmd_id in expect},
         "func": func,
-    })
+    }
+    pending_waits.append(wait_info)
+    if timeout is not None:
+
+        def on_timeout():
+            # 已收齐回包（等待项已被移除）时忽略本次超时
+            for index in range(len(pending_waits) - 1, -1, -1):
+                if pending_waits[index] is wait_info:
+                    pending_waits.pop(index)
+                    break
+            else:
+                return
+            if timeout_func is not None:
+                timeout_func()
+
+        run_later(on_timeout, int(timeout))
 
 
 def is_need_data(expect_info: dict | int):

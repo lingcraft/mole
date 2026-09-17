@@ -1,20 +1,20 @@
 [project]
 name = "mole"
-version = "1.13.6"
+version = "1.13.7"
 description = """
-- 优化：元素骑士天赋领悟增加天赋等级已满的判断，若领悟前天赋等级已满40级，或领悟前天赋等级39级然后领悟成功到40级了，就停止领悟任务，提升效率
-- 修复：ElementKnightIllustrationsPanel.swf 元素骑士图鉴面板提示信息纠正
+- 修复：修复官服点开始后，在选择账号登陆界面要转圈加载5s之后才能登录的问题
+- 修复：元素骑士竞技场任务修复当账号掉线之后再执行失败时，任务倒计时一直卡在00:00的问题，增加超时判断
 """
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "pyside6~=6.11.2",
     "cffi~=2.1.1",
-    "loguru~=0.7.3",
-    "nuitka~=4.2",
+    "nuitka~=4.2.1",
+    "zstandard~=0.25",
     "packaging~=26.3",
     "py3amf~=0.9.1",
     "pypinyin~=0.55.0",
-    "pyside6~=6.11.2",
     "requests~=2.34.2",
-    "zstandard~=0.25",
+    "loguru~=0.7.3",
 ]
