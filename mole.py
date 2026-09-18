@@ -3267,6 +3267,19 @@ def process_recv_packet(socket_num, buf, length):
                                     }
                                     window.ctDishBox.addItem(dish_info["名称"])
                                     window.enable_ct_button(True)
+                            case 1018 if is_running("餐厅卖菜"):  # 餐厅卖菜信息
+                                dish_id = get_int(packet.body, 12)
+                                dish_num = get_int(packet.body, 28)
+                                if dish_num == 0:  # 菜已卖完
+                                    dish_name = next((dish_name for dish_name, dish_info in ct_cooked_dishes_dict.items() if dish_info["ID"] == dish_id), None)
+                                    if ct_cooked_dishes_dict.pop(dish_name, None) is not None:
+                                        window.stop_task("餐厅卖菜")
+                                        window.ctDishBox.blockSignals(True)
+                                        index = window.ctDishBox.findText(dish_name)
+                                        if index != -1:
+                                            window.ctDishBox.removeItem(index)
+                                        window.enable_ct_button(len(ct_cooked_dishes_dict) > 0)
+                                        window.ctDishBox.blockSignals(False)
                             case 8953:  # 开启七彩缤纷宝盒
                                 task_name = "缤纷七彩宝盒"
                                 item_id = get_int(packet.body)

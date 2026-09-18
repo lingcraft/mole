@@ -1,6 +1,8 @@
 from os import environ
 from re import match
 import copy
+import time
+import sys
 import xml.etree.ElementTree as ET
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, timeout
 from threading import Thread, Lock
@@ -184,6 +186,7 @@ def clear_ext_xml_cache() -> None:
 # ---------------------------------------------------------------------------
 class InjectHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"  # keep-alive：Flash 复用连接
+    timeout = 15  # 空闲 keep-alive 连接 15s 无请求则断开并回收线程，避免刷新后僵尸线程堆积
 
     def serve_local(self, data: bytes, content_type: str):
         """以 no-store 方式返回一段本地字节。"""
@@ -369,9 +372,9 @@ class InjectHandler(BaseHTTPRequestHandler):
         self.serve_local(merged, "application/xml")
         logger.info(f"[resource] 修改: {append_path.name}")
 
-    def relay_cacheable(self, resp) -> None:
-        """转发上游响应，剔除 hop-by-hop 头（transfer-encoding/connection/
-        content-encoding/content-length，长度由本方法按真实解压后字节重算）。
+    def relay_cacheable(self, resp, name=None, t0=None) -> None:
+        """转发上游响应（全量），用于官服 0 字节兜底等场景。
+        剔除 hop-by-hop 头（transfer-encoding/connection/content-encoding/content-length，长度按解压后字节重算）。
         缓存相关头（cache-control/pragma/expires）原样保留——若上游本就带
         no-store/no-cache，则遵循上游、不强行改为可缓存；仅当上游完全没有
         任何缓存指令时，补一个 max-age=2592000 促使 Flash 缓存。"""
@@ -394,6 +397,59 @@ class InjectHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         except OSError:
             pass
+        if name is not None and t0 is not None:
+            dt = (time.perf_counter() - t0) * 1000
+            logger.info(f"[resource] 转发 {name} {len(data)//1024}KB {dt:.0f}ms threads={len(sys._current_frames())}")
+
+    def relay_stream(self, resp, name=None, t0=None, cache_path=None) -> int:
+        """保留上游原始字节（含 gzip）与缓存头，分块流式转发；支持 304 条件响应。
+        与 dispatch 透传分支一致：透传 content-encoding（压缩体）与 content-length（压缩后长度），
+        raw.stream(decode_content=False) 保留压缩字节，不再二次解压；上游返回明文时则透传明文。
+        cache_path 指定时，边流式边落本地缓存（平行服采用时保留长期缓存能力，不再整块读入内存）。
+        直接对标原生 Flash/WinINet 的流式 + 压缩 + 缓存行为。返回已发送字节数。"""
+        self.send_response(resp.status_code)
+        has_cache = False
+        for k, v in resp.headers.items():
+            lk = k.lower()
+            if lk in ("transfer-encoding", "connection"):
+                continue
+            # 保留 content-encoding 与 content-length：若上游压缩则透传压缩体，定长压缩传输
+            if lk in ("cache-control", "pragma", "expires"):
+                has_cache = True
+            self.send_header(k, v)
+        if not has_cache:
+            self.send_header("Cache-Control", "max-age=2592000")
+        self.end_headers()
+        sent = 0
+        f = None
+        try:
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    f = cache_path.open("wb")
+                except OSError as e:
+                    logger.warning(f"[resource] 打开本地缓存失败: {e}")
+                    f = None
+            if resp.status_code != 304:
+                for chunk in resp.raw.stream(65536, decode_content=False):
+                    if chunk:
+                        self.wfile.write(chunk)
+                        if f is not None:
+                            f.write(chunk)
+                        sent += len(chunk)
+        except OSError:
+            pass
+        finally:
+            if f is not None:
+                try:
+                    f.close()
+                except OSError:
+                    pass
+            resp.close()
+        if name is not None and t0 is not None:
+            dt = (time.perf_counter() - t0) * 1000
+            logger.info(f"[resource] 转发 {name} {sent//1024}KB {dt:.0f}ms threads={len(sys._current_frames())}")
+        return sent
 
     def serve_resource(self, url: str, name: str, prefer_parallel: bool) -> None:
         """官服/平行服资源统一获取与缓存（serve_fallback 与 serve_parallel_replace 的公共实现）。
@@ -402,45 +458,59 @@ class InjectHandler(BaseHTTPRequestHandler):
         - prefer_parallel=True (replace)：平行服优先，强制替换官服；采用平行服时写本地缓存并以可缓存方式返回；
           平行服取不到才回退官服透传，否则 502。
         本地缓存命中时直接可缓存返回，跳过网络。"""
+        t0 = time.perf_counter()
+
+        def done(tag: str, size: int) -> None:
+            dt = (time.perf_counter() - t0) * 1000
+            logger.info(f"[resource] {tag} {name} {size // 1024}KB {dt:.0f}ms threads={len(sys._current_frames())}")
+
         cache_path = fallback_cache_path(url)
         if cache_path.is_file():
             data = cache_path.read_bytes()
-            logger.info(f"[resource] 加载: {name}")
             self.serve_local_cacheable(data, content_type_for(name))
+            done("缓存", len(data))
             return
+        # 透传客户端条件请求头：让上游能回 304（刷新时直接走 Flash 缓存，对标浏览器秒开）
+        cond_headers = {k: v for k, v in self.headers.items()
+                        if k.lower() in ("if-none-match", "if-modified-since")}
         primary, secondary = (parallel_base, upstream_base) if prefer_parallel else (upstream_base, parallel_base)
         last_official = None  # 官服响应（含 0 字节），仅 fallback 双空兜底用
         resp = source = None
         for base in (primary, secondary):
             try:
-                r = session.get(base + url, timeout=5)
+                r = session.get(base + url, stream=True, timeout=5, headers=cond_headers)
             except Exception:
                 r = None
-            if r is not None and r.status_code == 200 and len(r.content) > 0:
+            if r is None:
+                continue
+            if r.status_code == 304:
+                # 官服可用（用缓存）：直接转发明文/压缩条件响应，供 Flash 验证缓存
+                self.relay_stream(r, name, t0)
+                return
+            cl = r.headers.get("content-length")
+            if r.status_code == 200 and (cl is None or cl != "0"):
                 resp, source = r, base
                 break
             if base is upstream_base:
                 last_official = r
+            else:
+                r.close()  # 平行服此路径不可用，释放连接
         else:
             # 官服与平行服都无有效内容
             if not prefer_parallel and last_official is not None:
-                self.relay_cacheable(last_official)  # 退回官服响应（哪怕 0 字节）
+                self.relay_cacheable(last_official, name, t0)  # 退回官服响应（哪怕 0 字节）
             else:
                 self.send_response(502)
                 self.end_headers()
+                done("上游失败", 0)
             return
         if source is parallel_base:
-            # 采用平行服：写本地缓存并以可缓存方式返回
-            try:
-                cache_path.parent.mkdir(parents=True, exist_ok=True)
-                cache_path.write_bytes(resp.content)
-            except Exception as e:
-                logger.warning(f"[resource] 写入本地缓存失败: {e}")
-            logger.info(f"[resource] 缓存: {name}")
-            self.serve_local_cacheable(resp.content, content_type_for(name))
+            # 采用平行服：分块流式转发（保留 content-encoding 原样），同时落本地缓存
+            sent = self.relay_stream(resp, name, t0, cache_path)
+            done("平行服", sent)
         else:
-            # 采用官服：透传上游缓存头，不写本地缓存
-            self.relay_cacheable(resp)
+            # 采用官服：保留 content-encoding 原样流式转发，不写本地缓存
+            self.relay_stream(resp, name, t0)
 
     def serve_fallback(self, url: str, name: str) -> None:
         """官服资源上游返回 0 字节（或取回失败）时，改用平行服同路径资源（详见 _serve_resource）。"""
@@ -462,6 +532,7 @@ class ExclusiveHTTPServer(ThreadingHTTPServer):
     # 允许不同进程同时 bind 同一端口 → 多实例会串端口。设为 0 后，端口被其他实例占用时
     # bind 真正失败 → 触发 start_bridge 的成对 +2 递增重试，实现多实例隔离。
     allow_reuse_address = 0
+    daemon_threads = True  # 连接线程随主线程退出；配合 InjectHandler.timeout 回收空闲 keep-alive 连接
 
     def handle_error(self, request, client_address):
         # socketserver 在此调用服务器自身的 handle_error（注意：不是 InjectHandler 的方法）。
