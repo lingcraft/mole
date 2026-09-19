@@ -94,6 +94,7 @@ injecter_port: int = 10000  # 本实例注入服务实际监听端口（10000/10
 official_base = "http://mole.61.com"  # 官服基址
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
 upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
+chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
 replace_resources = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
 
 
@@ -203,16 +204,30 @@ class InjectHandler(BaseHTTPRequestHandler):
             # 客户端中途断开：静默结束
             pass
 
-    def serve_local_cacheable(self, data: bytes, content_type: str):
-        """以可缓存方式返回一段本地字节（带较长过期时间，不带 no-store/no-cache），
-        交由 Flash 存入本地 SWF 缓存目录，进一步减少重复加载。"""
+    def serve_local_stream(self, path: Path, content_type: str, delay: float = 0.0):
+        """像官服透传（relay_stream）那样分块流式返回本地文件（带可缓存头），
+        边从文件读取边写出，避免大 swf 整块 read_bytes 读入内存。
+        delay>0 时每块间隔 delay 秒，使客户端加载进度渐进而非瞬间跳变。"""
+        try:
+            size = path.stat().st_size
+        except OSError:
+            self.send_response(404)
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(size))
         self.send_header("Cache-Control", "max-age=2592000")
         self.end_headers()
         try:
-            self.wfile.write(data)
+            with path.open("rb") as fp:
+                while True:
+                    chunk = fp.read(chunk_size)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    if delay > 0:
+                        time.sleep(delay)
         except OSError:
             # 客户端中途断开：静默结束
             pass
@@ -254,12 +269,12 @@ class InjectHandler(BaseHTTPRequestHandler):
                 # 以 DLL 结尾的 SWF（如 ClientAppDLL）仅官服替换：平行服等沿用本服自带，不覆盖
                 if not lower.endswith("dll.swf") or is_official_server():
                     ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
-                    self.serve_local_cacheable(replace_local.read_bytes(), ctype)
+                    self.serve_local_stream(replace_local, ctype)
                     return
             append_local = append_dir / name
             if append_local.is_file():
                 if lower.endswith(".swf"):
-                    self.serve_local(append_local.read_bytes(), "application/x-shockwave-flash")
+                    self.serve_local_stream(append_local, "application/x-shockwave-flash")
                 else:
                     self.serve_merged_xml(url, append_local)
                 return
@@ -290,7 +305,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                 self.send_header(k, v)
             self.end_headers()
             try:
-                for chunk in resp.raw.stream(65536, decode_content=False):
+                for chunk in resp.raw.stream(chunk_size, decode_content=False):
                     self.wfile.write(chunk)
             except OSError:
                 # 客户端中途断开（如 Flash 刷新时取消下载）：静默结束，不打 traceback
@@ -431,7 +446,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                     logger.warning(f"[resource] 打开本地缓存失败: {e}")
                     f = None
             if resp.status_code != 304:
-                for chunk in resp.raw.stream(65536, decode_content=False):
+                for chunk in resp.raw.stream(chunk_size, decode_content=False):
                     if chunk:
                         self.wfile.write(chunk)
                         if f is not None:
@@ -466,9 +481,8 @@ class InjectHandler(BaseHTTPRequestHandler):
 
         cache_path = fallback_cache_path(url)
         if cache_path.is_file():
-            data = cache_path.read_bytes()
-            self.serve_local_cacheable(data, content_type_for(name))
-            done("缓存", len(data))
+            self.serve_local_stream(cache_path, content_type_for(name))
+            done("加载", cache_path.stat().st_size)
             return
         # 透传客户端条件请求头：让上游能回 304（刷新时直接走 Flash 缓存，对标浏览器秒开）
         cond_headers = {k: v for k, v in self.headers.items()
@@ -507,7 +521,7 @@ class InjectHandler(BaseHTTPRequestHandler):
         if source is parallel_base:
             # 采用平行服：分块流式转发（保留 content-encoding 原样），同时落本地缓存
             sent = self.relay_stream(resp, name, t0, cache_path)
-            done("平行服", sent)
+            done("缓存", sent)
         else:
             # 采用官服：保留 content-encoding 原样流式转发，不写本地缓存
             self.relay_stream(resp, name, t0)
