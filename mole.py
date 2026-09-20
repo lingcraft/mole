@@ -2018,7 +2018,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             alert_msg("已完成元素骑士竞技场挑战和天赋领悟")
 
     def ysqs_arena_stop(self):
+        global is_arena_run, is_arena_choose
         if is_running("元素骑士"):
+            is_arena_run = False
+            is_arena_choose = False
             self.ysqsArenaFightButton.setText(self.ysqs_button_text)
             self.stop_update_title("元素骑士")
             self.stop_timer("元素骑士")
