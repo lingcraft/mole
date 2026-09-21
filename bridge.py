@@ -95,7 +95,7 @@ official_base = "http://mole.61.com"  # 官服基址
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
 upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
 chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
-replace_resources = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
+replace_resources = {"JDGoodsXmlData.xml"}  # 官服替换为平行服的资源
 merge_resources = {"MoleShop.xml"}  # 需额外并入平行服「新增」节点的 xml（官服/平行服内容不同，如 MoleShop.xml）；其余 append xml 仅在官服原始资源上应用 append 的增删改规则
 
 
