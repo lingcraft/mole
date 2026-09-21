@@ -96,6 +96,7 @@ parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上�
 upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
 chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
 replace_resources = ["JDGoodsXmlData.xml"]  # 官服替换为平行服的资源
+merge_resources = {"MoleShop.xml"}  # 需额外并入平行服「新增」节点的 xml（官服/平行服内容不同，如 MoleShop.xml）；其余 append xml 仅在官服原始资源上应用 append 的增删改规则
 
 
 def fallback_cache_path(url: str) -> Path:
@@ -276,7 +277,9 @@ class InjectHandler(BaseHTTPRequestHandler):
                 if lower.endswith(".swf"):
                     self.serve_local_stream(append_local, "application/x-shockwave-flash")
                 else:
-                    self.serve_merged_xml(url, append_local)
+                    # 所有 append xml 都在「请求的原始资源（官服内容）」上应用 append 的新增/删除/修改规则；
+                    # 仅 merge_resources 内的（如 MoleShop.xml）官服/平行服内容不同，需额外并入平行服新增节点
+                    self.serve_merged_xml(url, append_local, include_parallel=append_local.name in merge_resources)
                 return
             # 官服：replace_list 命中的资源强制替换为平行服对应资源并允许缓存
             if is_official_server() and name in replace_resources:
@@ -351,37 +354,50 @@ class InjectHandler(BaseHTTPRequestHandler):
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
 
-    def serve_merged_xml(self, url: str, append_path: Path) -> None:
-        """把 swf/append 下的「补充 xml」合并后返回，分三层：
-        1) 取官服与平行服同路径 xml 资源；
-        2) 以官服内容为基底，并入平行服「新增」的节点（平行服删除的不管）；
-        3) 再应用 append xml 的自定义新增/删除规则（含 <remove>）。
-        官服取不到时以平行服为基底；两服均取回/解析失败则回退直接返回本地补充文件。"""
+    def serve_merged_xml(self, url: str, append_path: Path, include_parallel: bool = True) -> None:
+        """把 swf/append 下的补充 xml 应用到官服原始资源后返回：
+        - 始终以「请求的原始资源」为基底，通过 merge_append 应用 append xml 的新增/删除/修改规则（含 <remove>）；
+        - include_parallel=False（MoleShop.xml 外的其他 xml）：只取「当前请求所属服（官服或平行服）」的原始 xml 应用规则，不两服都取；
+        - include_parallel=True（仅 MoleShop.xml 等官服/平行服内容不同的资源）：同时取官服+平行服，官服为基底并入平行服新增（平行服删除的不管）；官服取不到以平行服为基底；两服均失败回退本地。"""
         try:
             append_root = ET.parse(append_path).getroot()
         except Exception as e:
             logger.warning(f"[resource] 解析补充 xml 失败（{e}），回退返回本地补充文件")
             self.serve_local(append_path.read_bytes(), "application/xml")
             return
-        roots = {}  # 标签 → 根节点（官服 / 平行服）
-        for label, base in (("官服", official_base), ("平行服", parallel_base)):
+        if include_parallel:
+            # MoleShop.xml 等：同时取官服与平行服，以官服为基底并入平行服新增
+            bases = (("官服", official_base), ("平行服", parallel_base))
+        else:
+            # 其他：只在「当前请求所属服」的原始 xml 上应用 append 规则，不两服都取
+            bases = (("当前服", upstream_base),)
+        roots = {}
+        for label, base in bases:
             try:
                 resp = session.get(base + url, timeout=5)
                 if resp.status_code == 200 and resp.content:
                     roots[label] = ET.fromstring(resp.content.decode("utf-8-sig"))
             except Exception as e:
                 logger.warning(f"[resource] 取{label} xml 失败（{e}）: {url}")
-        orig = roots.get("官服")
-        if orig is None:
-            # 官服取不到：以平行服内容为基底（跳过第 2 层平行服并入）
-            orig = roots.get("平行服")
+        if include_parallel:
+            orig = roots.get("官服")
             if orig is None:
-                logger.warning(f"[resource] 官服与平行服均取回失败，回退返回本地补充文件: {url}")
+                # 官服取不到：以平行服内容为基底（跳过平行服并入）
+                orig = roots.get("平行服")
+                if orig is None:
+                    logger.warning(f"[resource] 官服与平行服均取回失败，回退返回本地补充文件: {url}")
+                    self.serve_local(append_path.read_bytes(), "application/xml")
+                    return
+            elif "平行服" in roots:
+                # 官服为基底：并入平行服「新增」节点（仅 MoleShop.xml 等需要）
+                merge_parallel_add(orig, roots["平行服"])
+        else:
+            orig = next(iter(roots.values()), None)
+            if orig is None:
+                # 当前服原始 xml 取不到：回退返回本地补充文件
+                logger.warning(f"[resource] 原始 xml 取回失败，回退返回本地补充文件: {url}")
                 self.serve_local(append_path.read_bytes(), "application/xml")
                 return
-        elif "平行服" in roots:
-            # 官服为基底：并入平行服「新增」节点
-            merge_parallel_add(orig, roots["平行服"])
         merge_append(orig, append_root)  # 第 3 层：应用 append xml 的自定义新增/删除规则
         merged = ET.tostring(orig, encoding="utf-8")
         self.serve_local(merged, "application/xml")
