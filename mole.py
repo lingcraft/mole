@@ -35,6 +35,7 @@ from ctypes import windll, c_void_p
 from re import sub
 from loguru import logger
 from ppl import Bot
+import sys
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -1005,11 +1006,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         lamu_max_item_index, lamu_last_item_index = 0, 0
         now = datetime.now()
         # 每日 3 点刷新采集上限（按账号共享：任一拉姆拿满某物品，其他拉姆也不能再拿）
-        limit_data = lamu_limit_item_dict.setdefault(
-            user_id, {"数据": {"火": {}, "水": {}, "木": {}}, "时间": now}
-        )
+        limit_data = lamu_limit_item_dict.setdefault(user_id, {"数据": {}, "时间": now})
         if limit_data["时间"] < datetime(now.year, now.month, now.day, 3) <= now:
-            limit_data["数据"].clear()
+            limit_data["数据"].clear()  # 刷新：清空各类型记录（类型键按需由 setdefault 创建）
             limit_data["时间"] = now
         if lamu_info["类型"] == "超拉":  # 超拉每日礼包/星级礼包仅超拉领取
             self.lamu_gift()
@@ -1020,7 +1019,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def lamu_get_item(self, skill_level: int, item_level: int, type_index: int, item_index: int):
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
-        while item_id in limit_data["数据"][skill_type]:
+        while item_id in limit_data["数据"].setdefault(skill_type, {}):
             type_index += 1
             if type_index >= len(lamu_types):  # 技能类型都用过了
                 item_index += 1
@@ -1043,7 +1042,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
             if not is_skill_success:  # 上次技能拿取失败
-                limit_data["数据"][skill_type][item_id] = item_id
+                limit_data["数据"].setdefault(skill_type, {})[item_id] = item_id
                 limit_data["时间"] = datetime.now()
                 item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
             if item_id is None:
@@ -3365,6 +3364,8 @@ if __name__ == "__main__":
     windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))
     # 设置日志
     logger.add(mole_log, format="[{time:YYYY-MM-DD HH:mm:ss}] {message}", encoding="utf-8", enqueue=True)
+    # 捕获异常
+    sys.excepthook = lambda exc_type, exc_value, exc_tb: logger.opt(exception=(exc_type, exc_value, exc_tb)).error("出现异常")
     # 加载 hook.dll、设置回调、加载 Flash
     hook = ffi.dlopen("hook.dll")
     hook.SetSendCallBack(process_send_packet)

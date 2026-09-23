@@ -1,8 +1,9 @@
 [project]
 name = "mole"
-version = "1.13.10"
+version = "1.13.11"
 description = """
-- 优化：swf/append 下的 xml 资源修改逻辑优化，只有商店商品信息 MoleShop.xml 是以官服为基底+平行服新增内容+自定义修改规则，其他 xml 资源只应用自定义修改规则
+- 修复：修复3点前启动程序，在3点后运行一键获取拉姆变身值功能时会无法获取并且按钮一直灰色的问题
+- 优化：增加异常信息的日志打印，方便排查功能问题
 """
 readme = "README.md"
 requires-python = ">=3.12"
