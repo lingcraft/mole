@@ -1,16 +1,16 @@
 [project]
 name = "mole"
-version = "1.13.11"
+version = "1.13.12"
 description = """
-- 修复：修复3点前启动程序，在3点后运行一键获取拉姆变身值功能时会无法获取并且按钮一直灰色的问题
-- 优化：增加异常信息的日志打印，方便排查功能问题
+- 优化：增加按钮、下拉框聚焦样式，上次点击的控件会紫色边框+背景修改，同时点击时聚焦的控件颜色优化，增加交互体验感
+- 优化：ui_main.ui、ui_main.py 中的 style sheet 统一抽离到 style.py 中去
 """
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pyside6~=6.11.2",
     "cffi~=2.1.1",
-    "nuitka~=4.2.1",
+    "nuitka~=4.2.2",
     "zstandard~=0.25",
     "packaging~=26.3",
     "py3amf~=0.9.1",

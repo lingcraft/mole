@@ -3,7 +3,7 @@
 ################################################################################
 ## Form generated from reading UI file 'ui_main.ui'
 ##
-## Created by: Qt User Interface Compiler version 6.11.1
+## Created by: Qt User Interface Compiler version 6.11.2
 ##
 ## WARNING! All changes made in this file will be lost when recompiling UI file!
 ################################################################################
@@ -74,10 +74,6 @@ class Ui_MainWindow(object):
         self.tabWidget = QTabWidget(self.centralWidget)
         self.tabWidget.setObjectName(u"tabWidget")
         self.tabWidget.setGeometry(QRect(970, 397, 500, 152))
-        self.tabWidget.setStyleSheet(u"QTabWidget::pane {\n"
-"    background-color: #F0F0F0;\n"
-"	border: 1px solid #DCDCDC;\n"
-"}")
         self.tabWidget.setTabPosition(QTabWidget.TabPosition.North)
         self.tabWidget.setTabShape(QTabWidget.TabShape.Rounded)
         self.tabWidget.setElideMode(Qt.TextElideMode.ElideNone)

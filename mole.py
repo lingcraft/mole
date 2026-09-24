@@ -36,6 +36,7 @@ from re import sub
 from loguru import logger
 from ppl import Bot
 import sys
+import style
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
@@ -210,6 +211,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super().__init__()
         # 界面基础设置
         self.setupUi(self)
+        style.apply_window(self)
         # 界面额外设置
         # 读取配置
         self.config = ConfigParser()
@@ -232,6 +234,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.axWidget.dynamicCall("LoadMovie(long,string)", 0, self.url())
         self.set_scale_mode()
         self.tableWidget.setFont(QFont("Cascadia Code, Microsoft YaHei UI", 9))
+        self.tableWidget.verticalHeader().setFont(self.tableWidget.font())
         self.tableWidget.verticalHeader().setDefaultSectionSize(10)  # 行高
         self.tableWidget.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)  # 禁止编辑单元格
         self.tableWidget.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)  # 禁止选多行
@@ -2028,6 +2031,7 @@ class AdvanceDialog(QDialog, Ui_AdvanceDialog):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
+        style.apply_window(self)
         for card_name in card_advance_dict:
             item = QListWidgetItem(card_name)
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -3373,7 +3377,7 @@ if __name__ == "__main__":
     hook.LoadFlash()
     # 设置 Qt
     app = QApplication([])
-    app.setStyle("Fusion")
+    style.apply(app)
     trans = QTranslator()
     trans.load(path("zh_CN.qm"))
     app.installTranslator(trans)

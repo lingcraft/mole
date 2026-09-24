@@ -200,12 +200,6 @@
       <height>152</height>
      </rect>
     </property>
-    <property name="styleSheet">
-     <string notr="true">QTabWidget::pane {
-    background-color: #F0F0F0;
-	border: 1px solid #DCDCDC;
-}</string>
-    </property>
     <property name="tabPosition">
      <enum>QTabWidget::TabPosition::North</enum>
     </property>
