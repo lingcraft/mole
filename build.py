@@ -21,7 +21,7 @@ cmd = " ".join([
     f"--file-version={version}",
     f"--product-version={version}",
     f"--output-dir=\"{args.dir}\"",
-    f"--output-filename=\"{args.file}\"",
+    f"--output-filename={args.file}",
     "--include-package-data=pypinyin",
     "--include-data-files=hook.dll=hook.dll",
     "--include-data-files=pyproject.toml=pyproject.toml",
