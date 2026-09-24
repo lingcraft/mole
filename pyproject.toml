@@ -1,9 +1,8 @@
 [project]
 name = "mole"
-version = "1.13.13"
+version = "1.13.14"
 description = """
-- 修复：修复按钮禁用时聚焦样式会变到下1个为禁用控件上的问题
-- 修复：修复每日奖励页面3个按钮样式异常的问题
+- 优化：更多界面控件加入聚焦样式
 """
 readme = "README.md"
 requires-python = ">=3.12"

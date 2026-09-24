@@ -212,6 +212,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # 界面基础设置
         self.setupUi(self)
         style.apply_window(self)
+        # 这些勾选框 / 输入框沿用「每日奖励勾选项」那套聚焦样式（style 里按 focusIndicator 属性识别）：
+        # 勾选框走 draw_focus_indicator 自绘指示器，文本框走 QSS 的 :focus 紫框。
+        for field in (self.sendCheckBox, self.recvCheckBox, self.socketCheckBox,
+                      self.textEdit, self.socketLineEdit):
+            field.setProperty("focusIndicator", True)
+            style.repolish(field)   # QSS 已挂且控件已 polish，改属性后需重算才会生效
         # 界面额外设置
         # 读取配置
         self.config = ConfigParser()
@@ -771,7 +777,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cb = QCheckBox(name)
             self.reward_checkboxes.append(cb)
         cb.setProperty("packets", packets)
-        cb.setProperty("rewardItem", True)  # 标记：由 style.py 给每日奖励的勾选项加聚焦紫色样式
+        cb.setProperty("focusIndicator", True)  # 标记：由 style.py 给勾选项套上聚焦样式
         layout.addWidget(cb)
         self.reward_widgets.append(cb)
 

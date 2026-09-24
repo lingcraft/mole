@@ -101,6 +101,15 @@ QPushButton[focusLock="true"]:disabled {{
     background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {BG_FOCUS_TOP}, stop:1 {BG_FOCUS_BOTTOM});
 }}
 
+/* 打了 focusIndicator 的输入类控件（发包文本框 textEdit / 通信号输入框 socketLineEdit）：
+   聚焦时同样显示紫框，和按钮/勾选项保持一致的焦点标识。
+   ⚠ 必须带 border-radius：QSS 一旦写了 border，就由它接管边框绘制，不给圆角会盖掉原生的圆角。 */
+QPlainTextEdit[focusIndicator="true"]:focus,
+QLineEdit[focusIndicator="true"]:focus {{
+    border: 1px solid {BORDER_FOCUS};
+    border-radius: 2px;
+}}
+
 /* 弹窗按钮：用 QMessageBox 前缀限定作用范围（否则会继承上面的规则，尺寸/内边距都得再对一遍）。 */
 QMessageBox QPushButton {{
     min-width: {BTN_MIN_WIDTH};
@@ -151,8 +160,8 @@ class ComboHoverStyle(QProxyStyle):
          箭头只能外挂图片，还得处理 url() 的相对路径；
       3. 一接管弹层列表就失去高亮，且列表边框只能画出左右、上下画不出来。
 
-    挂在 app 级：CC_ComboBox 的悬停/聚焦自绘；另外给每日奖励页勾选项（rewardItem）的指示器
-    叠聚焦紫框（见 drawPrimitive），其余绘制（含弹层列表）全部转发给 Fusion。
+    挂在 app 级：CC_ComboBox 的悬停/聚焦自绘；另外对打了 focusIndicator 属性的勾选框，完全自绘其
+    指示器（方框/圆圈，见 draw_focus_indicator）；其余绘制（含弹层列表）全部转发给 Fusion。
     """
 
     HOVER_BORDER = QColor(BORDER_HOVER)
@@ -164,16 +173,17 @@ class ComboHoverStyle(QProxyStyle):
         check_box = QStyle.PrimitiveElement.PE_IndicatorCheckBox
         radio = QStyle.PrimitiveElement.PE_IndicatorRadioButton
         if (element in (check_box, radio) and widget is not None
-                and widget.property("rewardItem")):
-            self.draw_reward_indicator(element, option, painter)
+                and widget.property("focusIndicator")):
+            self.draw_focus_indicator(element, option, painter)
             return
         super().drawPrimitive(element, option, painter, widget)
 
-    def draw_reward_indicator(self, element, option, painter):
-        """自绘每日奖励勾选项的指示器（复选框方框 / 单选框圆圈）。
+    def draw_focus_indicator(self, element, option, painter):
+        """自绘勾选项的指示器（复选框方框 / 单选框圆圈）。
 
-        底色与边框都对齐 QPushButton 的 QSS 四态：常态渐变 / 悬停加深边框 / 聚焦紫框淡紫底 /
-        按下 BG_PRESSED / 禁用浅灰框；选中标记（勾或圆点）自己画。
+        由 mole.py 给需要这套外观的勾选框打上 focusIndicator 属性（每日奖励各项、「拦截 Send/Recv」、
+        「指定通信号」等）。底色与边框都对齐 QPushButton 的 QSS 四态：常态渐变 / 悬停加深边框 /
+        聚焦紫框淡紫底 / 按下 BG_PRESSED / 禁用浅灰框；选中标记（勾或圆点）自己画。
 
         为什么完全自绘而不是叠在原生之上：原生在按下时会先填一层 #D8D8D8，要精确改成
         BG_PRESSED 就得覆盖它，而覆盖会把原生勾/圆点一起盖掉；交给 QSS 又会在没配勾图时丢勾。
