@@ -714,9 +714,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.rewardSelectAllButton = QPushButton("全选")
         self.rewardInvertButton = QPushButton("反选")
         self.rewardGetButton = QPushButton("开始领取")
-        self.rewardSelectAllButton.setEnabled(False)
-        self.rewardInvertButton.setEnabled(False)
-        self.rewardGetButton.setEnabled(False)
+        # 这 3 个是主界面唯一「走布局」的按钮（其余按钮都在 .ui 里 setGeometry 绝对定位）：
+        # 打 layoutBtn 标记，让 style.py 补回内边距/最小宽度，还原 Fusion 原生尺寸、避免文字贴边。
+        for button in (self.rewardSelectAllButton, self.rewardInvertButton, self.rewardGetButton):
+            button.setProperty("layoutBtn", True)
+            button.setEnabled(False)
         btn_layout.addWidget(self.rewardSelectAllButton)
         btn_layout.addWidget(self.rewardInvertButton)
         btn_layout.addWidget(self.rewardGetButton)
@@ -769,6 +771,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             cb = QCheckBox(name)
             self.reward_checkboxes.append(cb)
         cb.setProperty("packets", packets)
+        cb.setProperty("rewardItem", True)  # 标记：由 style.py 给每日奖励的勾选项加聚焦紫色样式
         layout.addWidget(cb)
         self.reward_widgets.append(cb)
 

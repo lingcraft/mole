@@ -18,10 +18,10 @@
     style.apply(app)            # 代理样式挂在 app 上（QApplication 创建后）
     style.apply_window(self)    # QSS 挂在主窗口 / 对话框上
 """
-from PySide6.QtCore import QEvent, QObject, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QLinearGradient, QPainterPath
-from PySide6.QtWidgets import (QApplication, QComboBox, QProxyStyle, QPushButton, QStyle,
-                               QStyleOptionComboBox, QTabWidget)
+from PySide6.QtCore import QEvent, QObject, QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import (QApplication, QCheckBox, QComboBox, QProxyStyle, QPushButton, QRadioButton,
+                               QStyle, QStyleOptionComboBox, QTabWidget)
 
 # ==================== 色值（唯一的真值来源）====================
 # 四态实测可见像素：常态 #ABABAB / #FDFDFD→#EEEEEE；悬停 #8A8A8A（底不变）；
@@ -34,6 +34,7 @@ BG_FOCUS_TOP, BG_FOCUS_BOTTOM = "#FEFEFE", "#E4E4ED"
 BG_FOCUS_HOVER_TOP, BG_FOCUS_HOVER_BOTTOM = "#F8F7FD", "#DEDEEC"
 BG_PRESSED = "#D3D3DC"
 BORDER_DISABLED = "#C4C4C4"        # 禁用态边框（Fusion 原生值，实测取色）
+MARK = "#4D4D4D"                   # 勾 / 圆点颜色（每日奖励勾选项自绘的选中标记）
 # 弹窗按钮（走布局）还原 Fusion 原生 80x20 用的补偿值：QSS 的 min-width 是「内容区」宽度，
 # 不含 padding 与 border，所以 80 - 2*6 - 2 = 66。主界面按钮是绝对定位，不能用（见模块开头）。
 BTN_MIN_WIDTH = "66px"
@@ -81,6 +82,23 @@ QPushButton:focus:pressed {{
    底色与文字 Qt 仍按禁用 palette 绘制，不用自己写。 */
 QPushButton:disabled {{
     border: 1px solid {BORDER_DISABLED};
+}}
+
+/* 走布局（非 setGeometry 绝对定位）的普通按钮：QSS 接管绘制后只按 border 计算 sizeHint，
+   会丢掉 Fusion 原生的内边距 —— 按钮变瘦、文字贴边（如「每日奖励」页的全选/反选/开始领取）。
+   这里用属性选择器只补偿这一类按钮（mole.py 里给它 setProperty("layoutBtn", True)）。
+   ⚠ 主界面绝对定位的按钮绝不能加 padding/min-width —— 会把 setGeometry 撑开，见文件头说明。 */
+QPushButton[layoutBtn="true"] {{
+    min-width: {BTN_MIN_WIDTH};
+    padding: {BTN_PADDING};
+}}
+
+/* 禁用但需要保持"聚焦"外观的按钮：Qt 里禁用的控件无法持有焦点，功能运行中 setEnabled(False)
+   时焦点会被自动转给相邻按钮，紫色聚焦边框看起来就"跳"过去了。这里用属性把聚焦外观锁在它
+   自己身上（由 FocusKeeper 在按钮被禁用时置位），焦点则收给标签栏。 */
+QPushButton[focusLock="true"]:disabled {{
+    border: 1px solid {BORDER_FOCUS};
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {BG_FOCUS_TOP}, stop:1 {BG_FOCUS_BOTTOM});
 }}
 
 /* 弹窗按钮：用 QMessageBox 前缀限定作用范围（否则会继承上面的规则，尺寸/内边距都得再对一遍）。 */
@@ -133,13 +151,86 @@ class ComboHoverStyle(QProxyStyle):
          箭头只能外挂图片，还得处理 url() 的相对路径；
       3. 一接管弹层列表就失去高亮，且列表边框只能画出左右、上下画不出来。
 
-    挂在 app 级：只拦 CC_ComboBox，其余绘制（含弹层列表）全部转发给 Fusion。
+    挂在 app 级：CC_ComboBox 的悬停/聚焦自绘；另外给每日奖励页勾选项（rewardItem）的指示器
+    叠聚焦紫框（见 drawPrimitive），其余绘制（含弹层列表）全部转发给 Fusion。
     """
 
     HOVER_BORDER = QColor(BORDER_HOVER)
     FOCUS_BORDER = QColor(BORDER_FOCUS)
     FOCUS_BG = (BG_FOCUS_TOP, BG_FOCUS_BOTTOM)
     FOCUS_HOVER_BG = (BG_FOCUS_HOVER_TOP, BG_FOCUS_HOVER_BOTTOM)
+
+    def drawPrimitive(self, element, option, painter, widget=None):
+        check_box = QStyle.PrimitiveElement.PE_IndicatorCheckBox
+        radio = QStyle.PrimitiveElement.PE_IndicatorRadioButton
+        if (element in (check_box, radio) and widget is not None
+                and widget.property("rewardItem")):
+            self.draw_reward_indicator(element, option, painter)
+            return
+        super().drawPrimitive(element, option, painter, widget)
+
+    def draw_reward_indicator(self, element, option, painter):
+        """自绘每日奖励勾选项的指示器（复选框方框 / 单选框圆圈）。
+
+        底色与边框都对齐 QPushButton 的 QSS 四态：常态渐变 / 悬停加深边框 / 聚焦紫框淡紫底 /
+        按下 BG_PRESSED / 禁用浅灰框；选中标记（勾或圆点）自己画。
+
+        为什么完全自绘而不是叠在原生之上：原生在按下时会先填一层 #D8D8D8，要精确改成
+        BG_PRESSED 就得覆盖它，而覆盖会把原生勾/圆点一起盖掉；交给 QSS 又会在没配勾图时丢勾。
+        """
+        state = option.state
+        enabled = bool(state & QStyle.StateFlag.State_Enabled)
+        focused = bool(state & QStyle.StateFlag.State_HasFocus)
+        hovered = bool(state & QStyle.StateFlag.State_MouseOver)
+        pressed = bool(state & QStyle.StateFlag.State_Sunken)
+
+        if not enabled:
+            border, top, bottom = BORDER_DISABLED, BG_TOP, BG_BOTTOM
+        elif pressed:                                    # 按下：底色统一 BG_PRESSED
+            border = BORDER_FOCUS if focused else BORDER
+            top = bottom = BG_PRESSED
+        elif focused:
+            border = BORDER_FOCUS
+            top, bottom = ((BG_FOCUS_HOVER_TOP, BG_FOCUS_HOVER_BOTTOM) if hovered
+                           else (BG_FOCUS_TOP, BG_FOCUS_BOTTOM))
+        elif hovered:
+            border, top, bottom = BORDER_HOVER, BG_TOP, BG_BOTTOM
+        else:
+            border, top, bottom = BORDER, BG_TOP, BG_BOTTOM
+
+        rect = QRectF(option.rect).adjusted(0.5, 0.5, -0.5, -0.5)
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        gradient = QLinearGradient(0, rect.top(), 0, rect.bottom())
+        gradient.setColorAt(0, QColor(top))
+        gradient.setColorAt(1, QColor(bottom))
+        painter.setBrush(gradient)
+        painter.setPen(QColor(border))
+        if element == QStyle.PrimitiveElement.PE_IndicatorRadioButton:
+            painter.drawEllipse(rect)
+        else:
+            painter.drawRect(rect)
+
+        # 选中标记：复选框画勾，单选框画圆点
+        if state & QStyle.StateFlag.State_On:
+            if element == QStyle.PrimitiveElement.PE_IndicatorRadioButton:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(MARK))
+                inset = min(rect.width(), rect.height()) * 0.32
+                painter.drawEllipse(rect.adjusted(inset, inset, -inset, -inset))
+            else:
+                pen = QPen(QColor(MARK), max(1.2, rect.width() * 0.14))
+                pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+                pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+                painter.setPen(pen)
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                w, h = rect.width(), rect.height()
+                painter.drawPolyline([
+                    QPointF(rect.left() + w * 0.22, rect.top() + h * 0.52),
+                    QPointF(rect.left() + w * 0.42, rect.top() + h * 0.73),
+                    QPointF(rect.left() + w * 0.80, rect.top() + h * 0.27),
+                ])
+        painter.restore()
 
     def drawComplexControl(self, control, option, painter, widget=None):
         if (control != QStyle.ComplexControl.CC_ComboBox
@@ -199,7 +290,7 @@ class ComboHoverStyle(QProxyStyle):
 
 
 class FocusKeeper(QObject):
-    """记住窗口里最后获得焦点的按钮 / 下拉框，供切换 tab 时恢复。
+    """记住窗口里最后获得焦点的按钮 / 下拉框 / 勾选项（QCheckBox、QRadioButton），供切换 tab 时恢复。
 
     为什么要记：按钮和下拉框的聚焦态（紫边框）由 QSS 的 :focus 绘制，而切换 tab 时
     Qt 会把焦点交给新页面里的第一个可聚焦控件 —— 表现就是「切过去莫名有个控件变紫」。
@@ -214,16 +305,45 @@ class FocusKeeper(QObject):
     def __init__(self, window):
         super().__init__(window)   # parent = 窗口，生命周期跟着窗口走
         self._win = window
-        self.widget = None         # 最后获得过焦点的按钮 / 下拉框
+        self.widget = None         # 最后获得过焦点的按钮 / 下拉框 / 勾选项
 
     def eventFilter(self, obj, event):
         # 只认"鼠标按下"，不认 FocusIn：切换 tab 时 Qt 会自动把焦点转给新页面里的第一个
         # 可聚焦控件，跟着 FocusIn 记的话记忆会被那次自动转移覆盖（实测过，等于全不记）。
-        if (event.type() == QEvent.Type.MouseButtonPress
-                and isinstance(obj, (QPushButton, QComboBox))):
+        event_type = event.type()
+        if (event_type == QEvent.Type.MouseButtonPress
+                and isinstance(obj, (QPushButton, QComboBox, QCheckBox, QRadioButton))):
             if obj.window() is self._win:
                 self.widget = obj
+        elif (event_type == QEvent.Type.EnabledChange
+                and isinstance(obj, QPushButton) and obj.window() is self._win):
+            self.sync_focus_lock(obj)
         return False
+
+    def sync_focus_lock(self, button):
+        """按钮启用状态变化时，同步「锁定聚焦」外观。
+
+        功能运行中会把按钮 setEnabled(False)（如拉姆一键获取），而 Qt 里禁用的控件无法持有
+        焦点 —— 焦点会被自动转给相邻按钮，紫色聚焦边框看起来就"跳"过去了。这里：若是刚操作
+        过的那个按钮被禁用，就用 focusLock 属性把聚焦外观锁在它自己身上，并把焦点收给标签栏；
+        功能结束重新启用时，清掉锁定并把焦点还给它（:focus 生效，紫框随之恢复）。
+        """
+        was_locked = bool(button.property("focusLock"))
+        locked = not button.isEnabled() and button is self.widget
+        if was_locked == locked:
+            return
+        button.setProperty("focusLock", locked)
+        repolish(button)
+        if locked:
+            # 延后到事件循环下一轮：Qt 在 setEnabled(False) 过程中才把焦点转给相邻控件，
+            # 同步 setFocus 会被它覆盖（与 apply_window 里切 tab 的处理同理）。
+            for tabs in self._win.findChildren(QTabWidget):
+                bar = tabs.tabBar()
+                QTimer.singleShot(0, bar.setFocus)
+                break
+        elif was_locked:
+            # 重新启用：把焦点还给这个按钮，让 :focus 生效、紫框恢复（否则焦点还留在标签栏）。
+            button.setFocus()
 
     def restore(self, tabs, bar):
         """切换 tab 后决定焦点去向：记住的控件还在当前页面就还给它，否则收给标签栏。"""
@@ -251,6 +371,14 @@ class FocusKeeper(QObject):
                 return True
             node = node.parentWidget()
         return False
+
+
+def repolish(widget):
+    """自定义属性 + QSS 属性选择器（如 [focusLock="true"]）变化后，逼 Qt 立刻重算样式。"""
+    s = widget.style()
+    s.unpolish(widget)
+    s.polish(widget)
+    widget.update()
 
 
 def apply(app):
