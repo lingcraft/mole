@@ -12,7 +12,7 @@ from time import sleep, monotonic
 from loguru import logger
 
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-key_len, serial_num = len(secret_key), 0  # 密钥长度、发送包序列号
+key_len, head_len, serial_num = len(secret_key), 17, 0  # 密钥长度、包头长度、发送包序列号
 user_id = 0  # 米米号
 recv_buf = bytearray()  # 接收封包的数据缓冲区
 lock = Lock()  # 发送锁
@@ -90,7 +90,7 @@ class Client(Process):
             return True
 
     def send_line(self, data: str | dict):
-        if len(data) < 17:
+        if len(data) < head_len:
             return True
         try:
             if isinstance(data, dict):
@@ -197,9 +197,9 @@ class Packet:
         self.body = bytearray()
         if packet is not None:
             packet = self.to_bytearray(packet)
-            if len(packet) >= 17:
+            if len(packet) >= head_len:
                 self.length, self.version, self.cmd_id, self.user_id, self.result = unpack_from("!IBIII", packet)
-                self.body = packet[17:]
+                self.body = packet[head_len:]
         elif cmd_id is not None:
             self.cmd_id = cmd_id
             self.body = self.to_bytearray(body)
@@ -323,8 +323,8 @@ def get_login_token(session: bytes):
 
 
 def read_packet(_socket: socket):
-    packet = Packet(_socket.recv(17))
-    body_len = packet.length - 17
+    packet = Packet(_socket.recv(head_len))
+    body_len = packet.length - head_len
     while len(packet.body) < body_len:
         chunk = _socket.recv(body_len - len(packet.body))
         if not chunk:

@@ -40,7 +40,7 @@ import style
 
 # 封包
 secret_key = b"^FStx,wl6NquAVRF@f%6\x00"  # 封包算法密钥
-key_len, serial_num = len(secret_key), 0  # 密钥长度、发送包序列号
+key_len, head_len, serial_num = len(secret_key), 17, 0  # 密钥长度、包头长度、发送包序列号
 login_socket_num, game_socket_num, login_ip, login_port = 0, 0, 0, 0  # 摩尔主服务器通信号、游戏服务器通信号、IP、Port
 user_id, map_id, packet_index = 0, 0, 0  # 米米号、地图号、封包序号索引
 recv_buf = bytearray()  # 接收封包的数据缓冲区
@@ -2369,9 +2369,9 @@ class Packet:
         self.body = bytearray()
         if packet is not None:
             packet = self.to_bytearray(packet)
-            if len(packet) >= 17:
+            if len(packet) >= head_len:
                 self.length, self.version, self.cmd_id, self.user_id, self.result = unpack_from("!IBIII", packet)
-                self.body = packet[17:]
+                self.body = packet[head_len:]
         elif cmd_id is not None:
             self.cmd_id = cmd_id
             self.body = self.to_bytearray(body)
@@ -2727,7 +2727,7 @@ def send_lines(lines: list, interval: int = Interval.INSTANT, progress: Callable
     for index, data in enumerate(lines):
         if QThread.currentThread().isInterruptionRequested():
             break
-        if isinstance(data, str) and len(data) < 17:
+        if isinstance(data, str) and len(data) < head_len:
             if 0 < len(data) < 5 and data.isdigit():
                 sleep(int(data) / 1000)
             continue
@@ -2757,11 +2757,11 @@ def send_lines_to_server(address: tuple[str, int], lines: list, wait_recv_nums: 
             s.send(Packet.from_hex(data))
             if need_wait_recv:
                 for _ in range(wait_recv_nums[index]):
-                    packet = Packet(s.recv(17))
+                    packet = Packet(s.recv(head_len))
                     if packet.result != 0:
                         return False
                     try:
-                        s.recv(packet.length - 17)
+                        s.recv(packet.length - head_len)
                     except:
                         return False
     return True
@@ -2774,7 +2774,7 @@ def send_lines_to_socket(lines: list, interval: int = Interval.INSTANT):
         try:
             with fromfd(socket_num, AF_INET, SOCK_STREAM) as s:
                 for data in lines:
-                    if len(data) < 17:
+                    if len(data) < head_len:
                         continue
                     s.send(Packet.from_hex(data))
                     if interval > 0:
@@ -2893,7 +2893,7 @@ def process_send_packet(socket_num, buf, length):
     global login_socket_num, game_socket_num, login_ip, login_port, user_id, can_get_lamu_info
     raw_buf = ffi.buffer(buf, length)
     # 摩尔包
-    if get_remote_info(socket_num) > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > 17:
+    if get_remote_info(socket_num) > 0 and raw_buf[:2] == b"\x00\x00" and len(raw_buf) > head_len:
         packet = Packet(raw_buf)
         if packet.cmd_id == 201:  # 登录包
             login_socket_num = socket_num
