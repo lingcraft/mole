@@ -32,7 +32,7 @@ from pyamf import sol
 from client import Client
 from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
 from ctypes import windll, c_void_p
-from re import sub
+from re import search, sub
 from loguru import logger
 from ppl import Bot
 import sys
@@ -2385,8 +2385,18 @@ class Packet:
         if data is None:
             return bytearray()
         if isinstance(data, str):
-            # 支持带标注的输入，如：“绿：0000... {00003E81:药水ID}{0001869F:药水数量}”
-            data = sub(r"{([^}:]*)(?::[^}]*)?}", r"\1", data.split("：", 1)[-1])
+            # 支持带标注的输入，如：“学习技能：0000000000000004670000000000000000
+            # {00009A96:拉姆ID}{00000003:技能类别}{3:技能等级}”
+            # 大括号里的值：0 开头 → 按 16 进制；否则含 [a-fA-F] 按 16 进制、纯数字按 10 进制。
+            # 统一转成 4 字节（8 位、前补 0）的 16 进制，免得手数位数。
+            def to_field(match):
+                value = match.group(1)
+                if value == "":
+                    return value
+                base = 16 if value.startswith("0") or search(r"[a-fA-F]", value) else 10
+                return f"{int(value, base):08X}"
+
+            data = sub(r"{([^}:]*)(?::[^}]*)?}", to_field, data.split("：", 1)[-1])
             return bytearray.fromhex(data)
         return bytearray(data)
 
