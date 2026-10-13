@@ -237,7 +237,7 @@ class Packet:
 
     def get_serial_num(self):
         global serial_num
-        self.length, self.user_id, self.result = len(self.body) + 18, user_id, 0
+        self.length, self.user_id, self.result = len(self.body) + head_len + 1, user_id, 0
         if self.cmd_id == 201:
             serial_num = 65
         else:
