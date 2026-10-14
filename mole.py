@@ -2387,13 +2387,16 @@ class Packet:
         if isinstance(data, str):
             # 支持带标注的输入，如：“学习技能：0000000000000004670000000000000000
             # {00009A96:拉姆ID}{00000003:技能类别}{3:技能等级}”
-            # 大括号里的值：0 开头 → 按 16 进制；否则含 [a-fA-F] 按 16 进制、纯数字按 10 进制。
-            # 统一转成 4 字节（8 位、前补 0）的 16 进制，免得手数位数。
+            # 大括号里的值：0 开头 → 16 进制、按写的位数原样使用（仅补齐偶数位）——
+            # {01}=1字节、{001}=2字节、{00009A96}=4字节；
+            # 非 0 开头：含 [a-fA-F] 按 16 进制、纯数字按 10 进制，统一转 4 字节（8 位、前补 0）。
             def to_field(match):
                 value = match.group(1)
                 if value == "":
                     return value
-                base = 16 if value.startswith("0") or search(r"[a-fA-F]", value) else 10
+                if value.startswith("0"):
+                    return "0" + value if len(value) % 2 else value
+                base = 16 if search(r"[a-fA-F]", value) else 10
                 return f"{int(value, base):08X}"
 
             data = sub(r"{([^}:]*)(?::[^}]*)?}", to_field, data.split("：", 1)[-1])
