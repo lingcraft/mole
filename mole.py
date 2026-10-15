@@ -22,6 +22,7 @@ from os import environ
 from pathlib import Path
 from shutil import rmtree
 from tomllib import load, loads
+from urllib.parse import urlparse
 from requests import get
 from bisect import bisect_right
 from itertools import accumulate
@@ -30,7 +31,8 @@ from pypinyin import lazy_pinyin, Style
 from packaging.version import parse
 from pyamf import sol
 from client import Client
-from bridge import start_bridge, set_upstream, injector_url, push_cmd, set_response_handler
+from bridge import (start_bridge, set_upstream, injector_url, push_cmd, set_response_handler,
+                    official_host, parallel_host)
 from ctypes import windll, c_void_p
 from re import search, sub
 from loguru import logger
@@ -159,19 +161,17 @@ config = Path(environ["appdata"]) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
 hook_log = base_dir / "hook.log"
 mole_log = base_dir / "mole.log"
-login_record = next(
-    (
-        record_dir / "127.0.0.1" / "#mole" / "login.sol"
-        for record_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
-    ),
-    None
-)
-account_records = [
-    sol_file
-    for cache_dir in (Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects").glob("*")
-    for sol_file in (cache_dir / "127.0.0.1" / "#mole").glob("*.sol")
-    if sol_file.stem.isdigit()
-]
+# sol 数据
+domains = (official_host, parallel_host)
+shared_objects = Path(environ["appdata"]) / "Macromedia" / "Flash Player" / "#SharedObjects"
+login_records = {
+    domain: [sol for sol in shared_objects.glob(f"*/{domain}/#mole/login.sol")]
+    for domain in domains
+}
+account_records = {
+    domain: [sol for sol in shared_objects.glob(f"*/{domain}/#mole/*.sol") if sol.stem.isdigit()]
+    for domain in domains
+}
 caches_dir = Path(environ["localappdata"]) / "Microsoft" / "Windows" / "INetCache" / "IE"
 is_window_init = False
 
@@ -225,14 +225,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.config.read(config, encoding="utf-8")
         with open(path("pyproject.toml"), "rb") as file:  # 获取版本
             self.version = load(file)["project"]["version"]
-        self.account_dict = {}
-        if login_record and login_record.exists():
-            with open(login_record, "rb") as file:  # 获取登录信息
-                self.account_dict = {data["userID"]: get_password(data["pwd"]) for data in sol.decode(file.read())[1]["list"]}
-        self.friend_dict = {}
-        for account_record in account_records:  # 获取好友信息
-            with open(account_record, "rb") as file:
-                self.friend_dict[int(account_record.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
+        self.load_sol_data()  # 获取登录信息、好友信息
         # 界面主区域设置
         set_upstream(server_dict[self.server].replace("$node", node_dict[self.node]))
         start_bridge()  # 注入服务、命令桥，端口自适应
@@ -371,8 +364,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).closeEvent(event)
 
     def url(self):
-        prefix = "" if self.server == "官服" else f"/server{list(server_dict).index(self.server)}"
+        # 服务器在真实上游的路径前缀（版本服为 /moleverse/xxx）；URL 不含节点 ⇒ 切换节点 URL 不变、各节点共享缓存
+        prefix = urlparse(server_dict[self.server]).path
         return injector_url(f"{prefix}/Client.swf?t={time()}")
+
+    def load_sol_data(self):
+        """按当前服读取 sol 账号/好友表：官服 → mole.61.com；平行服/版本服 → mole.61player.com。
+        切换服务器时随 refresh() 重新调用 ⇒ 两服数据相互独立。"""
+        domain = official_host if self.server == "官服" else parallel_host
+        self.account_dict = {}
+        for login_file in login_records[domain]:
+            try:
+                with open(login_file, "rb") as file:  # 获取登录信息
+                    self.account_dict.update({data["userID"]: get_password(data["pwd"]) for data in sol.decode(file.read())[1]["list"]})
+            except Exception as e:
+                logger.warning(f"[sol] 账号数据解析失败 {login_file.parent.parent.name}: {e}")
+        self.friend_dict = {}
+        for account_record in account_records[domain]:
+            try:
+                with open(account_record, "rb") as file:  # 获取好友信息
+                    self.friend_dict[int(account_record.stem)] = [int(data["friend"]) for data in sol.decode(file.read())[1]["FriendsList"] if "friend" in data]
+            except Exception as e:
+                logger.warning(f"[sol] 好友数据解析失败 {account_record.parent.parent.name}/{account_record.name}: {e}")
 
     def set_scale_mode(self):
         start = monotonic()
@@ -439,6 +452,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.axWidget.dynamicCall("LoadMovie(long, string)", 0, self.url())
         self.set_scale_mode()
         self.enable_all_buttons(False)
+        self.load_sol_data()
 
     def clear_cache(self):
         if not self.clear_thread.isRunning():

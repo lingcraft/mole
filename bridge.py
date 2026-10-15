@@ -1,5 +1,4 @@
 from os import environ
-from re import match
 import copy
 import time
 import sys
@@ -9,7 +8,7 @@ from threading import Thread, Lock
 from requests import Session
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from ctypes import wintypes, WinDLL
+from ctypes import wintypes, WinDLL, Structure, c_ulong, c_char_p, byref, sizeof, windll, get_last_error
 from urllib.parse import urlparse, parse_qs
 from json import loads
 from loguru import logger
@@ -94,6 +93,8 @@ injecter_port: int = 10000  # 本实例注入服务实际监听端口（10000/10
 official_base = "http://mole.61.com"  # 官服基址
 parallel_base = "http://mole.61player.com"  # 平行服基址：官服资源上游 0 字节时回退取此
 upstream_base = official_base  # 真实服务器基址，由 mole.py 按服/节点设置
+official_host = urlparse(official_base).netloc  # 官服可见域名（Flash 的身份：sol 归属 / WinINet 缓存键都靠它）
+parallel_host = urlparse(parallel_base).netloc  # 平行服/版本服可见域名（固定为主节点域名 ⇒ 切节点不改 URL、共享缓存）
 chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
 replace_resources = {"JDGoodsXmlData.xml"}  # 官服替换为平行服的资源
 merge_resources = {"MoleShop.xml"}  # 需额外并入平行服「新增」节点的 xml（官服/平行服内容不同，如 MoleShop.xml）；其余 append xml 仅在官服原始资源上应用 append 的增删改规则
@@ -115,7 +116,8 @@ def content_type_for(name: str) -> str:
     return "application/octet-stream"
 
 
-session = Session()  # 默认走系统代理
+session = Session()  # 上游请求会话
+session.trust_env = False  # 上游必须直连：不读注册表/环境变量代理（本机 Clash 等系统代理不会劫持上游转发）
 cmd_queue: list[str] = []  # SWF 命令队列（如 "alert|标题|内容"）
 
 
@@ -144,14 +146,50 @@ def is_official_server() -> bool:
     return urlparse(upstream_base).netloc == "mole.61.com"
 
 
+def visible_host() -> str:
+    """Flash 看到的域名（决定 sol 归属与 WinINet 缓存键，随服切换）：
+    官服 → mole.61.com（与官方客户端共享 Flash 缓存与账号数据）；
+    平行服/版本服 → 固定 mole.61player.com（主节点域名：URL 不含节点 ⇒ 切换节点不改变缓存键）。"""
+    return official_host if is_official_server() else parallel_host
+
+
 def injector_url(path: str = "/Client.swf") -> str:
-    """返回本地注入服务的完整 URL（Flash 的 LoadMovie 目标）。"""
-    return f"http://127.0.0.1:{injecter_port}{path}"
+    """返回 Flash 的 LoadMovie 目标：**可见域名、不带端口**（身份 / 缓存键所在）。
+    官服 → mole.61.com、平行服/版本服 → mole.61player.com，与官方客户端/浏览器同域名同路径形态
+    ⇒ sol 归属一致（共享账号数据）、WinINet 缓存键一致（命中官方 Flash 缓存）；
+    端口不进 URL ⇒ 缓存键稳定；实际连接由进程级代理（set_proxy）落到本服务。"""
+    return f"http://{visible_host()}{path}"
+
+
+class INTERNET_PROXY_INFO(Structure):
+    """WinINet 代理配置结构（InternetSetOptionA 的 INTERNET_OPTION_PROXY(38) 参数；A 版=窄字符串）。"""
+    _fields_ = [("dwAccessType", c_ulong),   # 3 = INTERNET_OPEN_TYPE_PROXY
+                ("lpszProxy", c_char_p),
+                ("lpszProxyBypass", c_char_p)]
+
+
+def set_proxy(port: int, host: str = "127.0.0.1") -> None:
+    """把**本进程**的 WinINet HTTP 代理指向本地桥接 —— 只影响本进程，不改系统代理设置。
+
+    ⚠ 实测要点：
+    · NULL 句柄 + INTERNET_OPTION_PROXY(38) 是**进程内存级**设置：注册表分毫不动、进程退出即失效、
+      其它进程不受影响、多开互不干扰（无需备份/还原）；
+    · 必须用 **A 版**（InternetSetOptionA + 窄字符串）——W 版在 NULL 句柄下字符串会乱码、不生效；
+    · 只代理 http（https 直连，不经过本服务）；勿用 INTERNET_OPTION_PER_CONNECTION_OPTION(75)——它写注册表全局值。
+    URL 域名/路径不变 ⇒ sol 归属与 WinINet 缓存键不受影响。"""
+    try:
+        info = INTERNET_PROXY_INFO(3, f"http={host}:{port}".encode(), b"")
+        if windll.wininet.InternetSetOptionA(None, 38, byref(info), sizeof(info)):
+            logger.info(f"[bridge] 进程代理已启动")
+        else:
+            logger.warning(f"[bridge] 进程代理设置失败（err={get_last_error()}）")
+    except Exception as e:
+        logger.warning(f"[bridge] 进程代理设置异常：{e}")
 
 
 def clear_ext_xml_cache() -> None:
     """清除 WinINet 缓存里的 ext.xml，避免客户端命中旧版（未注入 mod 的）配置。
-    注入器已对 ext.xml 发 no-store，此函数只清历史残留。"""
+    注入器已对 ext.xml 发 no-store，此函数只清历史残留（按 Flash 请求的可见 URL 删）。"""
     # 1) 按 URL 删除 WinINet 索引条目（索引+文件一并清理）
     try:
         wininet = WinDLL("wininet", use_last_error=True)
@@ -159,9 +197,9 @@ def clear_ext_xml_cache() -> None:
         delete_url_cache_entry_w.argtypes = [wintypes.LPCWSTR]  # 必须显式声明，否则 64 位下指针被截断
         delete_url_cache_entry_w.restype = wintypes.BOOL
         urls = {
-            "http://mole.61.com/resource/xml/ext.xml",
-            f"{upstream_base}/resource/xml/ext.xml",
-            f"http://127.0.0.1:{injecter_port}/resource/xml/ext.xml",
+            f"http://{official_host}/resource/xml/ext.xml",  # 官服可见 URL
+            f"http://{parallel_host}/resource/xml/ext.xml",  # 平行服可见 URL
+            f"http://{parallel_host}{urlparse(upstream_base).path}/resource/xml/ext.xml",  # 版本服可见 URL（当前版本）
         }
         for url in urls:
             try:
@@ -184,7 +222,7 @@ def clear_ext_xml_cache() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 注入服务：本地 HTTP，Flash 直连；命中 mod 则返回本地文件，否则转发上游
+# 注入服务：本地 HTTP，Flash 经进程级代理过来（绝对 URI 形态）；命中 mod 则返回本地文件，否则转发上游
 # ---------------------------------------------------------------------------
 class InjectHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"  # keep-alive：Flash 复用连接
@@ -234,37 +272,47 @@ class InjectHandler(BaseHTTPRequestHandler):
             pass
 
     def dispatch(self):
+        # 代理请求行为绝对 URI（http://host/path?query）→ 拆出目标域名与路径
         url = self.path
-        # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器后，GET /cmd-port 取真实 socket 端口
-        # （不依赖 ext.xml 的 ?port= 查询串，兼容 new 实例化 / loadBytes 等拿不到参数的场景）
+        proxy_host = None
+        if url[:7].lower() == "http://":
+            rest = url[7:]
+            slash = rest.find("/")
+            proxy_host, url = (rest, "/") if slash < 0 else (rest[:slash], rest[slash:])
+        # 命令桥端口发现：SWF 从 loaderInfo.url 解析出注入服务器基址（parseBase 只取域名 ⇒ 请求恒打在根路径），
+        # GET /cmd-port 取真实 socket 端口（不依赖 ext.xml 的 ?port= 查询串，兼容 new 实例化 / loadBytes 等拿不到参数的场景）
         if url.split("?", 1)[0] == "/cmd-port":
             self.serve_local(str(bridge_port).encode("utf-8"), "text/plain; charset=utf-8")
             return
         # BridgeDLL 诊断回传：把 SWF 内部状态打印到控制台，便于排查连桥问题
         if url.split("?", 1)[0] == "/log":
             try:
-                q = parse_qs(urlparse(self.path).query)
+                q = parse_qs(urlparse(url).query)
                 logger.info(f"[bridgedll] {q.get("m", [""])[0]}")
             except Exception:
                 pass
             self.serve_local(b"ok", "text/plain; charset=utf-8")
             return
-        # 官服无前缀直接透传；其他服用 /server<索引>/ 前缀隔离缓存，这里剥离前缀再按原逻辑处理
-        m = match(r"^/server\d+(/.*)$", url)
-        if m:
-            url = m.group(1)
+        # 仅「本方案请求」（可见域名）应用本地 mod 与路径归一；其他域名（代理卷进来的、原先直连的）按原目标透传
+        is_own = proxy_host is None or proxy_host.lower() == visible_host()
+        if is_own:
+            # 版本服把路径里已含的版本前缀（如 /moleverse/20090626）拨正
+            # ⇒ 恢复「真实上游 URL = upstream_base + url」不变式（相对 / 根路径两种请求形态都归一到同一上游）
+            version_path = urlparse(upstream_base).path
+            if version_path and url.startswith(version_path + "/"):
+                url = url[len(version_path):]
         # ext.xml：动态注入根目录下的 *.swf，无额外 SWF 时原样透传
-        if self.command == "GET" and "ext.xml" in url:
+        if is_own and self.command == "GET" and url.split("?", 1)[0].endswith("/ext.xml"):
             if self.serve_ext_xml(url):
                 return
-        # 额外资源：
+        # 额外资源（仅本方案请求）：
         # 1) swf/replace 中的同名 SWF/XML → 就地替换为本地文件，覆盖上游官方文件
         #    （注：以 DLL 结尾的 SWF 仅官服替换，平行服等沿用本服自带、不覆盖）
         # 2) swf/append 中的 .swf → 直接返回本地 mod 文件
         # 3) swf/append 中的 .xml → 视为「新增内容」：拉取上游原始 xml 并合并新增节点后返回
         name = url.split("?", 1)[0].rsplit("/", 1)[-1]
         lower = name.lower()
-        if lower.endswith(".swf") or lower.endswith(".xml"):
+        if is_own and (lower.endswith(".swf") or lower.endswith(".xml")):
             replace_local = replace_dir / name  # 优先 replace：同名覆盖官方 SWF/XML
             if replace_local.is_file():
                 # 以 DLL 结尾的 SWF（如 ClientAppDLL）仅官服替换：平行服等沿用本服自带，不覆盖
@@ -289,11 +337,14 @@ class InjectHandler(BaseHTTPRequestHandler):
             if is_official_server():
                 self.serve_fallback(url, name)
                 return
-        # 其余请求透传上游（保留缓存头，流式转发压缩字节）
+        # 其余请求透传上游（保留缓存头，流式转发压缩字节）：
+        # · 本方案请求（可见域名）→ 当前服/节点的真实服务器（URL 里只有可见域名，真实节点在这里映射
+        #   ⇒ 切换节点不改变 Flash 侧 URL、缓存命中不受影响）
+        # · 其他域名（原先直连的）→ 按原目标域名转发（通用代理行为）
         headers = {k: v for k, v in self.headers.items()
-                   if k.lower() not in ("proxy-connection", "proxy-authorization", "host")}
+                   if k.lower() not in ("proxy-connection", "proxy-authorization", "connection", "host")}
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)) or None
-        target = upstream_base + url
+        target = f"http://{proxy_host}{url}" if proxy_host is not None and not is_own else upstream_base + url
         try:
             resp = session.request(self.command, target, headers=headers, data=body, stream=True, timeout=5)
         except Exception:
@@ -349,7 +400,7 @@ class InjectHandler(BaseHTTPRequestHandler):
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
             logger.info(f"[ext.xml] 注入: {"，".join(p.name for p in mods)}")
-        else:
+        elif mods:
             logger.info(f"[ext.xml] 注入失败，ext.xml 中未找到 <ext> 节点")
         self.serve_local(text.encode("utf-8"), "application/xml")
         return True
@@ -436,7 +487,8 @@ class InjectHandler(BaseHTTPRequestHandler):
         """保留上游原始字节（含 gzip）与缓存头，分块流式转发；支持 304 条件响应。
         与 dispatch 透传分支一致：透传 content-encoding（压缩体）与 content-length（压缩后长度），
         raw.stream(decode_content=False) 保留压缩字节，不再二次解压；上游返回明文时则透传明文。
-        cache_path 指定时，边流式边落本地缓存（平行服采用时保留长期缓存能力，不再整块读入内存）。
+        cache_path 指定时，边流式边写唯一临时文件，整段流完才原子改名到 cache_path
+        （中断/并发不会留下半截或交错缓存；对客户端字节流与加载进度无任何影响）。
         直接对标原生 Flash/WinINet 的流式 + 压缩 + 缓存行为。返回已发送字节数。"""
         self.send_response(resp.status_code)
         has_cache = False
@@ -453,14 +505,18 @@ class InjectHandler(BaseHTTPRequestHandler):
         self.end_headers()
         sent = 0
         f = None
+        tmp_path = None
+        completed = False
         try:
             if cache_path is not None:
                 cache_path.parent.mkdir(parents=True, exist_ok=True)
+                tmp_path = cache_path.with_name(f"{cache_path.name}.{id(self)}.part")  # 唯一临时名：并发请求不互踩
                 try:
-                    f = cache_path.open("wb")
+                    f = tmp_path.open("wb")
                 except OSError as e:
                     logger.warning(f"[resource] 打开本地缓存失败: {e}")
                     f = None
+                    tmp_path = None
             if resp.status_code != 304:
                 for chunk in resp.raw.stream(chunk_size, decode_content=False):
                     if chunk:
@@ -468,6 +524,7 @@ class InjectHandler(BaseHTTPRequestHandler):
                         if f is not None:
                             f.write(chunk)
                         sent += len(chunk)
+                completed = True  # 整段流完才算完整缓存
         except OSError:
             pass
         finally:
@@ -476,6 +533,17 @@ class InjectHandler(BaseHTTPRequestHandler):
                     f.close()
                 except OSError:
                     pass
+            if f is not None and tmp_path is not None:
+                if completed:
+                    try:
+                        tmp_path.replace(cache_path)  # 完整才原子改名生效
+                    except OSError as e:
+                        logger.warning(f"[resource] 缓存改名失败: {e}")
+                else:
+                    try:
+                        tmp_path.unlink()  # 中断/失败：丢弃半截缓存
+                    except OSError:
+                        pass
             resp.close()
         if name is not None and t0 is not None:
             dt = (time.perf_counter() - t0) * 1000
@@ -535,6 +603,8 @@ class InjectHandler(BaseHTTPRequestHandler):
                 done("上游失败", 0)
             return
         if source is parallel_base:
+            if last_official is not None:
+                last_official.close()  # 官服空响应已不再使用，释放其连接
             # 采用平行服：分块流式转发（保留 content-encoding 原样），同时落本地缓存
             sent = self.relay_stream(resp, name, t0, cache_path)
             done("缓存", sent)
@@ -567,17 +637,16 @@ class ExclusiveHTTPServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         # socketserver 在此调用服务器自身的 handle_error（注意：不是 InjectHandler 的方法）。
         # 切节点等场景 Flash/BridgeDLL 会直接 RST/中止 keep-alive 连接，读请求行时抛
-        # ConnectionResetError(10054)/ConnectionAbortedError(10053)/BrokenPipeError，属正常
-        # 客户端行为，压掉默认打印的整段 traceback 噪声。
-        import sys
-        exc = sys.exc_info()[1]
-        if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, OSError)):
+        # ConnectionResetError(10054)/ConnectionAbortedError(10053)/BrokenPipeError 等 OSError 子类，
+        # 属正常客户端行为，压掉默认打印的整段 traceback 噪声。
+        if isinstance(sys.exc_info()[1], OSError):
             return
         super().handle_error(request, client_address)
 
 
 def start_bridge():
-    """启动本地桥服务（守护线程）：注入服务(默认端口 10000) + socket 命令桥(默认端口 10001)。
+    """启动本地桥服务（守护线程）：注入服务(默认端口 10000) + socket 命令桥(默认端口 10001)，
+    并把本进程 WinINet 代理指向注入服务（set_proxy，内存级、只影响本进程）。
     端口对被占用时整对 +2 递增重试（10002/10003、10004/10005…），避免 OS 动态分配(port 0) 的慢速探测，
     保证多客户端实例各用独立端口、互不干扰。"""
     global injecter_port
@@ -599,6 +668,7 @@ def start_bridge():
                 raise OSError("无法找到可用的注入/命令桥端口对") from None
     injecter_port = http_srv.server_address[1]
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
+    set_proxy(injecter_port)  # ★ 主通道：本进程 WinINet 代理 → 本地服务（内存级，退出即失效；不改系统设置）
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge(srv)
