@@ -32,9 +32,9 @@ from packaging.version import parse
 from pyamf import sol
 from client import Client
 from bridge import (start_bridge, set_upstream, injector_url, push_cmd, set_response_handler,
-                    official_host, parallel_host)
+                    official_host, parallel_host, clear_mod_resource_caches)
 from ctypes import windll, c_void_p
-from re import search, sub
+from re import fullmatch, search, sub
 from loguru import logger
 from ppl import Bot
 import sys
@@ -157,8 +157,9 @@ int WINAPI Send(ULONG64, PCHAR, INT);
 void LoadFlash();
 """)
 # 路径
-config = Path(environ["appdata"]) / "mole" / "config.ini"
 base_dir = Path(__file__).resolve().parent
+config_dir = Path(environ["appdata"]) / "mole"
+config = config_dir / "config.ini"
 hook_log = base_dir / "hook.log"
 mole_log = base_dir / "mole.log"
 # sol 数据
@@ -172,7 +173,6 @@ account_records = {
     domain: [sol for sol in shared_objects.glob(f"*/{domain}/#mole/*.sol") if sol.stem.isdigit()]
     for domain in domains
 }
-caches_dir = Path(environ["localappdata"]) / "Microsoft" / "Windows" / "INetCache" / "IE"
 is_window_init = False
 
 
@@ -268,8 +268,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.send_to_server_thread.result.connect(self.mmg_get_reward)
         self.update_thread = UpdateThread()
         self.update_thread.result.connect(self.update_notice)
-        self.clear_thread = ClearThread()
-        self.clear_thread.result.connect(self.refresh)
+        self.clear_cache_thread = ClearCacheThread()
+        self.clear_program_thread = ClearProgramThread(self.version)
         self.advance_dialog = AdvanceDialog()
         self.show_signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
@@ -455,8 +455,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.load_sol_data()
 
     def clear_cache(self):
-        if not self.clear_thread.isRunning():
-            self.clear_thread.start()
+        if not self.clear_cache_thread.isRunning():
+            self.clear_cache_thread.start()
+
+    def clear_program(self):
+        if not self.clear_program_thread.isRunning():
+            self.clear_program_thread.start()
 
     def add_data(self, data_type: str, socket_num: int, cmd_id: int, cmd_analyse: str, data: str):
         self.tableWidget.blockSignals(True)
@@ -2302,16 +2306,25 @@ class UpdateThread(QThread):
         self.is_first = False
 
 
-class ClearThread(QThread):
-    result = Signal()
+class ClearCacheThread(QThread):
+    def run(self):
+        # 清理与 swf/append、swf/replace 下文件同名的 swf/xml 缓存（更新本地 mod / 合并 xml 后刷新用），
+        clear_mod_resource_caches()
+
+
+class ClearProgramThread(QThread):
+    def __init__(self, version: str):
+        super().__init__()
+        self.version = version
 
     def run(self):
-        for cache_dir in caches_dir.glob("*/"):
-            try:
-                rmtree(cache_dir)
-            except:
-                pass
-        self.result.emit()
+        cache_root = config_dir / "cache" / "program"
+        if not cache_root.is_dir():
+            return
+        for child in cache_root.iterdir():
+            if child.is_dir() and child.name != self.version and fullmatch(r"[0-9]+(\.[0-9]+)*", child.name):
+                rmtree(child, ignore_errors=True)
+                logger.info(f"[cache] 已清理旧版本程序目录：{child.name}")
 
 
 class RunTimer(QTimer):
@@ -3421,6 +3434,8 @@ if __name__ == "__main__":
     window = MainWindow()
     is_window_init = True
     window.show()
+    # 清理程序缓存
+    window.clear_program()
     # 检查更新
     window.check_update()
     # 进入事件循环

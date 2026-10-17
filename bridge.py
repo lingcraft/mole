@@ -1,5 +1,6 @@
-from os import environ
+from os import environ, walk
 import copy
+import re
 import time
 import sys
 import xml.etree.ElementTree as ET
@@ -13,20 +14,35 @@ from urllib.parse import urlparse, parse_qs
 from json import loads
 from loguru import logger
 
-# swf/append 下的 *.swf 注入 ext.xml 让客户端额外加载；
-# swf/replace 下的同名 SWF 在客户端请求时就地替换为本地文件（覆盖上游官方 SWF）。
-# 注意：replace 仅放要覆盖的官方 SWF，append 仅放自定义 mod，勿混用。
+# swf/append 下的 *.swf 注入 ext.xml 让客户端额外加载；*.xml 拉上游原始 xml 并合并后返回；
+# swf/replace 下的同名 SWF/XML 在客户端请求时就地替换为本地文件（覆盖上游官方资源）。
+# 两个目录统一命名规则：「【官服】xxx」去掉前缀匹配 xxx，且仅官服生效；无前缀文件所有服生效
+# （replace 兼容旧规则：无前缀且以 DLL.swf 结尾的仅官服生效；append 无此特例，BridgeDLL.swf 等两服都要）。
+# 注意：replace 仅放要覆盖的官方资源，append 仅放自定义 mod，勿混用。
 base_dir = Path(__file__).resolve().parent
+OFFICIAL_PREFIX = "【官服】"  # 文件名前缀：去掉后匹配资源名，且仅官服生效（append/replace 通用）
 append_dir = base_dir / "swf" / "append"    # 追加 SWF
 replace_dir = base_dir / "swf" / "replace"  # 替换 SWF
 cache_dir = Path(environ["appdata"]) / "mole" / "cache"  # SWF 缓存
 
 
-def list_append_swfs() -> list[Path]:
-    """列出 swf/append 下所有 *.swf（按文件名排序，保证加载顺序稳定）。"""
+def list_append_swfs() -> list[tuple[Path, str]]:
+    """列出 swf/append 下当前服生效的 *.swf → [(本地文件, 注入名)]（按文件名排序，保证加载顺序稳定）。
+
+    命名规则与 replace 一致：「【官服】xxx.swf」仅官服生效，注入名去前缀（xxx.swf）；
+    无前缀所有服生效；官服下同时存在前缀版与无前缀版时前缀版优先（同名只注入一份）。"""
     if not append_dir.is_dir():
         return []
-    return sorted((p for p in append_dir.glob("*.swf") if p.is_file()), key=lambda p: p.name.lower())
+    entries = sorted((p for p in append_dir.glob("*.swf") if p.is_file()), key=lambda p: p.name.lower())
+    out: dict[str, Path] = {}  # 注入名 → 本地文件
+    for p in entries:
+        if p.name.startswith(OFFICIAL_PREFIX):
+            if not is_official_server():
+                continue
+            out[p.name[len(OFFICIAL_PREFIX):]] = p  # 前缀版直接占位（官服下优先于同名无前缀版）
+        else:
+            out.setdefault(p.name, p)
+    return [(p, n) for n, p in out.items()]
 
 
 def merge_append(orig: ET.Element, append: ET.Element) -> None:
@@ -98,6 +114,7 @@ parallel_host = urlparse(parallel_base).netloc  # 平行服/版本服可见域�
 chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
 replace_resources = {"JDGoodsXmlData.xml"}  # 官服替换为平行服的资源
 merge_resources = {"MoleShop.xml"}  # 需额外并入平行服「新增」节点的 xml（官服/平行服内容不同，如 MoleShop.xml）；其余 append xml 仅在官服原始资源上应用 append 的增删改规则
+login_gate_host = "login.mole.61.com"  # 官服 Server.xml 的 MOUrl 指向的死域（80 端口秒拒）：登录的跨域策略与 ip.txt 都发往这里，由 dispatch 登录闸门本地秒回（内容复用 sock_policy）
 
 
 def fallback_cache_path(url: str) -> Path:
@@ -144,6 +161,52 @@ def set_upstream(base: str) -> None:
 def is_official_server() -> bool:
     """当前上游是否为官服（mole.61.com）；非官服不启用平行服回退。"""
     return urlparse(upstream_base).netloc == "mole.61.com"
+
+
+def resolve_replace_file(name: str) -> Path | None:
+    """解析 swf/replace 中该用哪个本地文件替换请求的资源（入参为请求文件名，如 home.swf）。
+
+    规则（文件名前缀决定生效范围）：
+    - 「【官服】xxx」：去掉前缀匹配 xxx，且仅官服替换（平行服不替换）；
+    - 无前缀的同名文件：所有服都替换；
+    - 兼容旧规则：无前缀且以 DLL.swf 结尾的 SWF（如 ClientAppDLL.swf）仅官服替换；
+    - 官服下若同时存在「【官服】xxx」与无前缀 xxx，优先取前者；
+    - 未命中返回 None。
+    """
+    lower = name.lower()
+    if is_official_server():
+        pref = replace_dir / f"{OFFICIAL_PREFIX}{name}"
+        if pref.is_file():
+            return pref
+        plain = replace_dir / name
+        if plain.is_file():
+            return plain
+        return None
+    # 平行服：不替换以「【官服】」前缀标记的文件；无前缀的 DLL 结尾文件沿用旧规则（不替换）
+    if lower.endswith("dll.swf"):
+        return None
+    plain = replace_dir / name
+    if plain.is_file():
+        return plain
+    return None
+
+
+def resolve_append_file(name: str) -> Path | None:
+    """解析 swf/append 中该用哪个本地文件（入参为请求文件名，如 Server.xml）。
+
+    命名规则与 replace 一致：
+    - 「【官服】xxx」：去掉前缀匹配 xxx，且仅官服生效（平行服不加载/不合并）；
+    - 无前缀的同名文件：所有服都生效；
+    - 官服下若同时存在「【官服】xxx」与无前缀 xxx，优先取前者；
+    - 未命中返回 None（append 无 DLL.swf 旧规则特例：BridgeDLL.swf 等两服都要）。"""
+    if is_official_server():
+        pref = append_dir / f"{OFFICIAL_PREFIX}{name}"
+        if pref.is_file():
+            return pref
+        plain = append_dir / name
+        return plain if plain.is_file() else None
+    plain = append_dir / name
+    return plain if plain.is_file() else None
 
 
 def visible_host() -> str:
@@ -219,6 +282,77 @@ def clear_ext_xml_cache() -> None:
                     pass
     except Exception:
         pass
+
+
+def collect_mod_resource_names(only_xml: bool = False) -> set[str]:
+    """收集 swf/append 与 swf/replace 下需清理缓存的资源名（去掉「【官服】」前缀）。
+
+    only_xml=True 只收集 xml（启动时用：动态合并类资源如 Server.xml 必须每次重新请求）。"""
+    names: set[str] = set()
+    for d in (append_dir, replace_dir):
+        if not d.is_dir():
+            continue
+        try:
+            entries = list(d.iterdir())
+        except OSError:
+            continue
+        for p in entries:
+            if not p.is_file():
+                continue
+            n = p.name[len(OFFICIAL_PREFIX):] if p.name.startswith(OFFICIAL_PREFIX) else p.name
+            low = n.lower()
+            if not (low.endswith(".swf") or low.endswith(".xml")):
+                continue
+            if only_xml and not low.endswith(".xml"):
+                continue
+            names.add(n)
+    return names
+
+
+def clear_mod_resource_caches(only_xml: bool = False) -> None:
+    """清除 WinINet 缓存中与 swf/append、swf/replace 下文件同名的 swf/xml 条目。
+
+    用途：更新本地 mod / 合并 xml（如「【官服】Server.xml」对应的 Server.xml）后，
+    避免 Flash 命中旧缓存导致改动不生效（读到的还是旧版资源）。
+    only_xml=True 只清 xml（启动时调用；swf 留给用户手动「清除缓存」）。
+
+    双保险：
+    ① DeleteUrlCacheEntryW 删缓存索引条目（URL 路径未知，用通配形态尽力尝试）；
+    ② 兜底扫描 INetCache\\IE 按文件名删除（含 [n] 重名变体，同 clear_ext_xml_cache 的做法）。"""
+    names = collect_mod_resource_names(only_xml)
+    if not names:
+        return
+    # ① 删 WinINet 索引条目（索引+文件一并清理；通配不支持时返回 FALSE，无副作用）
+    try:
+        wininet = WinDLL("wininet", use_last_error=True)
+        delete_url_cache_entry_w = wininet.DeleteUrlCacheEntryW
+        delete_url_cache_entry_w.argtypes = [wintypes.LPCWSTR]  # 必须显式声明，否则 64 位下指针被截断
+        delete_url_cache_entry_w.restype = wintypes.BOOL
+        for n in names:
+            for host in {official_host, parallel_host}:
+                for url in (f"http://{host}/*/{n}", f"http://{host}/{n}"):
+                    try:
+                        delete_url_cache_entry_w(url)
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    # ② 兜底：按文件名删 INetCache\IE 下的缓存文件（含 Server[1].xml 这类重名变体）
+    try:
+        cache_root = Path(environ["localappdata"]) / "Microsoft" / "Windows" / "INetCache" / "IE"
+        if cache_root.is_dir():
+            targets = {n.lower() for n in names}
+            for root, _dirs, files in walk(cache_root):
+                for fn in files:
+                    m = re.fullmatch(r"(.+?)(\[\d+\])?(\.[a-z0-9]+)", fn.lower())
+                    if m and f"{m.group(1)}{m.group(3)}" in targets:
+                        try:
+                            (Path(root) / fn).unlink()
+                        except Exception:
+                            pass
+    except Exception:
+        pass
+    logger.info(f"[cache] 已清理{'xml' if only_xml else 'swf/xml'} 缓存: {'，'.join(sorted(names))}")
 
 
 # ---------------------------------------------------------------------------
@@ -307,27 +441,25 @@ class InjectHandler(BaseHTTPRequestHandler):
                 return
         # 额外资源（仅本方案请求）：
         # 1) swf/replace 中的同名 SWF/XML → 就地替换为本地文件，覆盖上游官方文件
-        #    （注：以 DLL 结尾的 SWF 仅官服替换，平行服等沿用本服自带、不覆盖）
-        # 2) swf/append 中的 .swf → 直接返回本地 mod 文件
-        # 3) swf/append 中的 .xml → 视为「新增内容」：拉取上游原始 xml 并合并新增节点后返回
+        #    （注：「【官服】」前缀的仅官服替换；无前缀的所有服替换；以 DLL 结尾的 SWF 旧规则仅官服替换）
+        # 2) swf/append 中的 .swf → 直接返回本地 mod 文件（「【官服】」前缀的仅官服生效）
+        # 3) swf/append 中的 .xml → 拉取上游原始 xml 并合并新增/删除/修改节点后返回（同样支持【官服】前缀）
         name = url.split("?", 1)[0].rsplit("/", 1)[-1]
         lower = name.lower()
         if is_own and (lower.endswith(".swf") or lower.endswith(".xml")):
-            replace_local = replace_dir / name  # 优先 replace：同名覆盖官方 SWF/XML
-            if replace_local.is_file():
-                # 以 DLL 结尾的 SWF（如 ClientAppDLL）仅官服替换：平行服等沿用本服自带，不覆盖
-                if not lower.endswith("dll.swf") or is_official_server():
-                    ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
-                    self.serve_local_stream(replace_local, ctype)
-                    return
-            append_local = append_dir / name
-            if append_local.is_file():
+            replace_local = resolve_replace_file(name)  # 优先 replace：同名覆盖官方 SWF/XML
+            if replace_local is not None:
+                ctype = "application/x-shockwave-flash" if lower.endswith(".swf") else "application/xml"
+                self.serve_local_stream(replace_local, ctype)
+                return
+            append_local = resolve_append_file(name)  # append：同一套「【官服】」前缀规则
+            if append_local is not None:
                 if lower.endswith(".swf"):
                     self.serve_local_stream(append_local, "application/x-shockwave-flash")
                 else:
                     # 所有 append xml 都在「请求的原始资源（官服内容）」上应用 append 的新增/删除/修改规则；
                     # 仅 merge_resources 内的（如 MoleShop.xml）官服/平行服内容不同，需额外并入平行服新增节点
-                    self.serve_merged_xml(url, append_local, include_parallel=append_local.name in merge_resources)
+                    self.serve_merged_xml(url, append_local, include_parallel=name in merge_resources)
                 return
             # 官服：replace_list 命中的资源强制替换为平行服对应资源并允许缓存
             if is_official_server() and name in replace_resources:
@@ -337,6 +469,35 @@ class InjectHandler(BaseHTTPRequestHandler):
             if is_official_server():
                 self.serve_fallback(url, name)
                 return
+        # 登录闸门（仅官服）：官服 Server.xml 的 MOUrl 指向死域 login.mole.61.com，登录时 Flash 要
+        # 跨域请求它的 crossdomain.xml（策略）与 ip.txt（登录服地址），任何真实往返都是 5s 白等
+        # （连接拒绝 + WinINet 重试）。平行服域名是活的、有自己的正常流程，不走此闸门。
+        # 两个应答在本地等价复刻：
+        # · /crossdomain.xml → 复用 sock_policy 原字节（domain="*"，HTTP 策略检查忽略 to-ports；
+        #   与本地命令桥「信任所有域」的立场一致）。带 2022 年 Last-Modified 让 WinINet
+        #   启发式长缓存，与旧透传行为一致（共享缓存里那条对摩尔江江等仍生效）
+        # · /ip.txt → 本地 404：onGetIpPort 对失败统一走 Server.xml DirSer 兜底，语义零变化，
+        #   纯省 ~200ms 往返（也无「写死 IP 过期」风险）
+        if is_official_server() and proxy_host is not None and proxy_host.lower() == login_gate_host:
+            gate_path = url.split("?", 1)[0]
+            if gate_path == "/crossdomain.xml":
+                self.send_response(200)
+                self.send_header("Content-Type", "application/xml")
+                self.send_header("Content-Length", str(len(sock_policy)))
+                self.send_header("Last-Modified", "Mon, 26 Dec 2022 08:48:51 GMT")
+                self.end_headers()
+                try:
+                    self.wfile.write(sock_policy)
+                except OSError:
+                    pass  # 客户端中途断开：静默结束
+                logger.debug("[gate] crossdomain.xml 本地秒回（官服闸门，复用 sock_policy）")
+                return
+            if gate_path == "/ip.txt":
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                logger.debug("[gate] ip.txt 本地 404 快速失败（官服闸门）")
+                return
         # 其余请求透传上游（保留缓存头，流式转发压缩字节）：
         # · 本方案请求（可见域名）→ 当前服/节点的真实服务器（URL 里只有可见域名，真实节点在这里映射
         #   ⇒ 切换节点不改变 Flash 侧 URL、缓存命中不受影响）
@@ -344,7 +505,10 @@ class InjectHandler(BaseHTTPRequestHandler):
         headers = {k: v for k, v in self.headers.items()
                    if k.lower() not in ("proxy-connection", "proxy-authorization", "connection", "host")}
         body = self.rfile.read(int(self.headers.get("Content-Length", 0) or 0)) or None
-        target = f"http://{proxy_host}{url}" if proxy_host is not None and not is_own else upstream_base + url
+        if proxy_host is not None and not is_own:
+            target = f"http://{proxy_host}{url}"
+        else:
+            target = upstream_base + url
         try:
             resp = session.request(self.command, target, headers=headers, data=body, stream=True, timeout=5)
         except Exception:
@@ -383,7 +547,8 @@ class InjectHandler(BaseHTTPRequestHandler):
                 pass
 
     def serve_ext_xml(self, url: str) -> bool:
-        """取上游原版 ext.xml，把 swf/append 下所有 *.swf 追加为 <item> 后返回。
+        """取上游原版 ext.xml，把 swf/append 下当前服生效的 *.swf 追加为 <item> 后返回
+        （「【官服】xxx.swf」仅官服注入，注入 path 去前缀 = xxx.swf）。
         返回 True 表示已处理；False 表示放弃（如上游取回失败），交回 dispatch 走透传。"""
         mods = list_append_swfs()
         try:
@@ -395,11 +560,11 @@ class InjectHandler(BaseHTTPRequestHandler):
         text = resp.text
         if mods and "</ext>" in text:
             items = "".join(
-                f"\t\t<item name=\"摩尔拓展.....\" path=\"{p.name}\" ver=\"081224\"/>\n"
-                for p in mods
+                f"\t<item name=\"摩尔拓展.....\" path=\"{inject_name}\" ver=\"081224\"/>\n"
+                for _, inject_name in mods
             )
             text = text.replace("</ext>", items + "\t</ext>", 1)
-            logger.info(f"[ext.xml] 注入: {"，".join(p.name for p in mods)}")
+            logger.info(f"[ext.xml] 注入: {"，".join(inject_name for _, inject_name in mods)}")
         elif mods:
             logger.info(f"[ext.xml] 注入失败，ext.xml 中未找到 <ext> 节点")
         self.serve_local(text.encode("utf-8"), "application/xml")
@@ -670,6 +835,7 @@ def start_bridge():
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     set_proxy(injecter_port)  # ★ 主通道：本进程 WinINet 代理 → 本地服务（内存级，退出即失效；不改系统设置）
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
+    clear_mod_resource_caches(only_xml=True)  # 清 append/replace 的 xml 缓存（如 Server.xml），保证动态合并资源每次都重新请求
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge(srv)
     return http_srv

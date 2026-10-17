@@ -30,6 +30,7 @@ cmd = " ".join([
     "--include-data-files=manifest=manifest",
     "--include-data-files=zh_CN.qm=zh_CN.qm",
     "--include-data-dir=swf=swf",
+    "--onefile-tempdir-spec=\"{HOME}\\AppData\\Roaming\\mole\\cache\\program\\{VERSION}\"",
     "--onefile"
 ])
 
