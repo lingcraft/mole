@@ -32,7 +32,7 @@ from packaging.version import parse
 from pyamf import sol
 from client import Client
 from bridge import (start_bridge, set_upstream, injector_url, push_cmd, set_response_handler,
-                    official_host, parallel_host, clear_mod_resource_caches)
+                    official_host, parallel_host, clear_resource_cache)
 from ctypes import windll, c_void_p
 from re import fullmatch, search, sub
 from loguru import logger
@@ -2309,7 +2309,7 @@ class UpdateThread(QThread):
 class ClearCacheThread(QThread):
     def run(self):
         # 清理与 swf/append、swf/replace 下文件同名的 swf/xml 缓存（更新本地 mod / 合并 xml 后刷新用），
-        clear_mod_resource_caches()
+        clear_resource_cache()
 
 
 class ClearProgramThread(QThread):
