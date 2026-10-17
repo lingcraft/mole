@@ -489,13 +489,11 @@ class InjectHandler(BaseHTTPRequestHandler):
                     self.wfile.write(sock_policy)
                 except OSError:
                     pass  # 客户端中途断开：静默结束
-                logger.debug("[gate] crossdomain.xml 本地秒回（官服闸门，复用 sock_policy）")
                 return
             if gate_path == "/ip.txt":
                 self.send_response(404)
                 self.send_header("Content-Length", "0")
                 self.end_headers()
-                logger.debug("[gate] ip.txt 本地 404 快速失败（官服闸门）")
                 return
         # 其余请求透传上游（保留缓存头，流式转发压缩字节）：
         # · 本方案请求（可见域名）→ 当前服/节点的真实服务器（URL 里只有可见域名，真实节点在这里映射

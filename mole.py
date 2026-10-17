@@ -266,10 +266,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.send_ex_thread = SendExThread()
         self.send_to_server_thread = SendToServerThread()
         self.send_to_server_thread.result.connect(self.mmg_get_reward)
-        self.update_thread = UpdateThread()
-        self.update_thread.result.connect(self.update_notice)
+        self.check_update_thread = CheckUpdateThread()
+        self.check_update_thread.result.connect(self.update_notice)
         self.clear_cache_thread = ClearCacheThread()
-        self.clear_program_thread = ClearProgramThread(self.version)
         self.advance_dialog = AdvanceDialog()
         self.show_signal.connect(self.add_data)
         self.client = None  # 独立进程客户端，懒启动时才创建
@@ -458,10 +457,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not self.clear_cache_thread.isRunning():
             self.clear_cache_thread.start()
 
-    def clear_program(self):
-        if not self.clear_program_thread.isRunning():
-            self.clear_program_thread.start()
-
     def add_data(self, data_type: str, socket_num: int, cmd_id: int, cmd_analyse: str, data: str):
         self.tableWidget.blockSignals(True)
         global packet_index
@@ -636,8 +631,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.send_ex_thread.stop()
 
     def check_update(self):
-        if not self.update_thread.isRunning():
-            self.update_thread.start()
+        if not self.check_update_thread.isRunning():
+            self.check_update_thread.start()
 
     def update_notice(self, is_first: bool, version: str, description: str):
         is_latest_msg = f"当前版本 v{self.version} 已是最新！"
@@ -2281,7 +2276,7 @@ class SendToServerThread(QThread):
         self.result.emit(is_success)
 
 
-class UpdateThread(QThread):
+class CheckUpdateThread(QThread):
     result = Signal(bool, str, str)
 
     def __init__(self):
@@ -2308,23 +2303,7 @@ class UpdateThread(QThread):
 
 class ClearCacheThread(QThread):
     def run(self):
-        # 清理与 swf/append、swf/replace 下文件同名的 swf/xml 缓存（更新本地 mod / 合并 xml 后刷新用），
         clear_resource_cache()
-
-
-class ClearProgramThread(QThread):
-    def __init__(self, version: str):
-        super().__init__()
-        self.version = version
-
-    def run(self):
-        cache_root = config_dir / "cache" / "program"
-        if not cache_root.is_dir():
-            return
-        for child in cache_root.iterdir():
-            if child.is_dir() and child.name != self.version and fullmatch(r"[0-9]+(\.[0-9]+)*", child.name):
-                rmtree(child, ignore_errors=True)
-                logger.info(f"[cache] 已清理旧版本程序目录：{child.name}")
 
 
 class RunTimer(QTimer):
@@ -3434,8 +3413,6 @@ if __name__ == "__main__":
     window = MainWindow()
     is_window_init = True
     window.show()
-    # 清理程序缓存
-    window.clear_program()
     # 检查更新
     window.check_update()
     # 进入事件循环
