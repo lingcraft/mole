@@ -352,7 +352,6 @@ def clear_mod_resource_caches(only_xml: bool = False) -> None:
                             pass
     except Exception:
         pass
-    logger.info(f"[cache] 已清理{'xml' if only_xml else 'swf/xml'} 缓存: {'，'.join(sorted(names))}")
 
 
 # ---------------------------------------------------------------------------
@@ -835,7 +834,6 @@ def start_bridge():
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     set_proxy(injecter_port)  # ★ 主通道：本进程 WinINet 代理 → 本地服务（内存级，退出即失效；不改系统设置）
     clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
-    clear_mod_resource_caches(only_xml=True)  # 清 append/replace 的 xml 缓存（如 Server.xml），保证动态合并资源每次都重新请求
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge(srv)
     return http_srv
