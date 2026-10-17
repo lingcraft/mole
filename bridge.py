@@ -250,7 +250,7 @@ def set_proxy(port: int, host: str = "127.0.0.1") -> None:
         logger.warning(f"[bridge] 进程代理设置异常：{e}")
 
 
-def clear_ext_cache() -> None:
+def clear_ext_xml_cache() -> None:
     """清除 WinINet 缓存里的 ext.xml，避免客户端命中旧版（未注入 mod 的）配置。
     注入器已对 ext.xml 发 no-store，此函数只清历史残留（按 Flash 请求的可见 URL 删）。"""
     # 1) 按 URL 删除 WinINet 索引条目（索引+文件一并清理）
@@ -831,7 +831,7 @@ def start_bridge():
     injecter_port = http_srv.server_address[1]
     logger.info(f"[bridge] 注入服务端口: {injecter_port}")
     set_proxy(injecter_port)  # ★ 主通道：本进程 WinINet 代理 → 本地服务（内存级，退出即失效；不改系统设置）
-    clear_ext_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
+    clear_ext_xml_cache()  # 此时 injecter_port 已知，清对应本地 ext.xml 缓存
     Thread(target=http_srv.serve_forever, daemon=True).start()
     start_socket_bridge(srv)
     return http_srv
