@@ -114,6 +114,7 @@ parallel_host = urlparse(parallel_base).netloc  # 平行服/版本服可见域�
 chunk_size: int = 4096  # 流式收发块大小（本地 swf 读取与官服透传共用，对齐官服原生加载的进度平滑）
 replace_resources = {"JDGoodsXmlData.xml"}  # 官服替换为平行服的资源
 merge_resources = {"MoleShop.xml"}  # 需额外并入平行服「新增」节点的 xml（官服/平行服内容不同，如 MoleShop.xml）；其余 append xml 仅在官服原始资源上应用 append 的增删改规则
+no_fallback_resources = {"Client.swf"}  # 不回退平行服的资源
 login_gate_host = "login.mole.61.com"  # 官服 Server.xml 的 MOUrl 指向的死域（80 端口秒拒）：登录的跨域策略与 ip.txt 都发往这里，由 dispatch 登录闸门本地秒回（内容复用 sock_policy）
 
 
@@ -725,18 +726,30 @@ class InjectHandler(BaseHTTPRequestHandler):
             dt = (time.perf_counter() - t0) * 1000
             logger.info(f"[resource] {tag} {name} {size // 1024}KB {dt:.0f}ms threads={len(sys._current_frames())}")
 
-        cache_path = fallback_cache_path(url)
-        if cache_path.is_file():
-            self.serve_local_stream(cache_path, content_type_for(name))
-            done("加载", cache_path.stat().st_size)
-            return
+        # 版本敏感文件（Client.swf）：始终实时取官服，不读/不写回退缓存，也不回退平行服；
+        # 顺手清理历史污染的回退缓存文件。
+        official_only = name in no_fallback_resources and not prefer_parallel
+        if official_only:
+            stale = fallback_cache_path(url)
+            if stale.is_file():
+                try:
+                    stale.unlink()
+                except OSError:
+                    pass
+            cache_path = None
+        else:
+            cache_path = fallback_cache_path(url)
+            if cache_path.is_file():
+                self.serve_local_stream(cache_path, content_type_for(name))
+                done("加载", cache_path.stat().st_size)
+                return
         # 透传客户端条件请求头：让上游能回 304（刷新时直接走 Flash 缓存，对标浏览器秒开）
         cond_headers = {k: v for k, v in self.headers.items()
                         if k.lower() in ("if-none-match", "if-modified-since")}
         primary, secondary = (parallel_base, upstream_base) if prefer_parallel else (upstream_base, parallel_base)
         last_official = None  # 官服响应（含 0 字节），仅 fallback 双空兜底用
         resp = source = None
-        for base in (primary, secondary):
+        for base in ((primary,) if official_only else (primary, secondary)):
             try:
                 r = session.get(base + url, stream=True, timeout=5, headers=cond_headers)
             except Exception:
