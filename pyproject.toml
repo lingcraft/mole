@@ -1,15 +1,15 @@
 [project]
 name = "mole"
-version = "1.14.1"
+version = "1.14.2"
 description = """
-- 修复：修复当官服登录页 Client.swf 请求失败时，会自动回退到平行服的资源导致卡在“请稍候，正在进入摩尔庄园...”的问题，登录页 Client.swf 加入失败回退平行服资源的黑名单
+- 修复：修复 11 级变身等级的拉姆采集物品时最后会多采集 1 次大型巨龙能量块的 bug，优化拉姆可采集物品的获取逻辑
 """
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "pyside6==6.12.0",
     "cffi==2.1.1",
-    "nuitka==4.3",
+    "nuitka==4.3.1",
     "zstandard==0.25",
     "packaging==26.3",
     "py3amf==0.9.1",

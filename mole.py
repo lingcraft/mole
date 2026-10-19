@@ -1041,9 +1041,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.lamu_learn(lamu_id)
         self.lamu_feed(lamu_id)
 
-    def lamu_get_item(self, skill_level: int, item_level: int, type_index: int, item_index: int):
+    def lamu_get_item(self):
+        # 按当前采集状态找下一个可采集物品（跳过已达上限的）。
+        # 上次采集失败的物品视为已达上限：先标记再跳过，省去调用方二次查找。
+        is_skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
         skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
         item_id = items[item_index][1]
+        if not is_skill_success:  # 上次拿取失败 = 该物品已达上限：标记后由下方 while 跳过
+            limit_data["数据"].setdefault(skill_type, {})[item_id] = item_id
+            limit_data["时间"] = datetime.now()
         while item_id in limit_data["数据"].setdefault(skill_type, {}):
             type_index += 1
             if type_index >= len(lamu_types):  # 技能类型都用过了
@@ -1059,20 +1065,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.lamu_set_vars(item_level, type_index, item_index)
             skill_type, skill_id, items = self.lamu_get_skill_info(skill_level, item_level, type_index)
             item_id = items[item_index][1]
-        return item_id, skill_id, skill_type
+        return item_id, skill_id
 
     def lamu_run(self):
         global lamu_last_skill_id
-        is_skill_success, skill_level, item_level, type_index, item_index = self.lamu_get_vars()
-        item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
+        item_id, skill_id = self.lamu_get_item()
+        if item_id is None:
+            self.lamu_next()
+            return
+        item_level = self.lamu_get_vars()[2]
         if lamu_times < 11 or item_level == 6:  # 最高级物品全部拿到上限
-            if not is_skill_success:  # 上次技能拿取失败
-                limit_data["数据"].setdefault(skill_type, {})[item_id] = item_id
-                limit_data["时间"] = datetime.now()
-                item_id, skill_id, skill_type = self.lamu_get_item(skill_level, item_level, type_index, item_index)
-            if item_id is None:
-                self.lamu_next()
-                return
             if skill_id != lamu_last_skill_id:  # 变身技能与上次不同
                 lines = [f"0000000000000004BC0000000000000000{get_hex(lamu_id)}{get_hex(skill_id)}"]  # 变身
                 lamu_last_skill_id = skill_id
