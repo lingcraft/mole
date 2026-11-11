@@ -158,6 +158,7 @@ void LoadFlash();
 """)
 # 路径
 base_dir = Path(__file__).resolve().parent
+program_dir = Path(sys.executable).resolve().parent
 config_dir = Path(environ["appdata"]) / "mole"
 config = config_dir / "config.ini"
 hook_log = base_dir / "hook.log"
