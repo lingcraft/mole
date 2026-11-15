@@ -2566,6 +2566,12 @@ def switch_map(_map_id: int, map_type: int = 0):
     push_cmd(f"switchMap|{_map_id},{map_type}")  # 进地图，已在地图时不会重新进，会提示已在地图，如果是进入餐厅则不管在不在都会重新进
 
 
+def get_map_info(_map_id: int):
+    send_lines([
+        f"0000000000000001910000000000000000{get_hex(_map_id)}0000000000000000000000000000000000000000",  # 获取地图信息
+    ])
+
+
 def get_item_info(item_id: int, func: Callable | None = None):
     if func is not None:
         item_info_callbacks[item_id] = func
@@ -2962,6 +2968,7 @@ def process_recv_packet(socket_num, buf, length):
                             case 201 if get_int(packet.body, 96) != 0x2F:  # 登录包
                                 set_int(packet.body, 0x2F, 96)  # 登录后进入粒粒小广场
                                 write_back(raw_buf, packet)
+                                get_map_info(0x2F)
                             case 228 if can_get_lamu_info:  # 跟随的拉姆ID
                                 can_get_lamu_info = False
                                 super_lamu_id = get_int(packet.body)
