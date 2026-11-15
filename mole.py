@@ -2959,6 +2959,9 @@ def process_recv_packet(socket_num, buf, length):
                         show_data(Show.RECV, socket_num, packet)  # 界面显示recv数据
                     if packet.result == 0:  # 正确包
                         match packet.cmd_id:
+                            case 201 if get_int(packet.body, 96) != 0x2F:  # 登录包
+                                set_int(packet.body, 0x2F, 96)  # 登录后进入粒粒小广场
+                                write_back(raw_buf, packet)
                             case 228 if can_get_lamu_info:  # 跟随的拉姆ID
                                 can_get_lamu_info = False
                                 super_lamu_id = get_int(packet.body)

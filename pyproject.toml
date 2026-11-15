@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.14.2"
+version = "1.14.3"
 description = """
-- 修复：修复 11 级变身等级的拉姆采集物品时最后会多采集 1 次大型巨龙能量块的 bug，优化拉姆可采集物品的获取逻辑
+- 新增：登录游戏后默认进入的地图固定为粒粒小广场
 """
 readme = "README.md"
 requires-python = ">=3.12"
