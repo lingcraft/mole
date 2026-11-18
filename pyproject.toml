@@ -15,5 +15,5 @@ dependencies = [
     "py3amf==0.9.1",
     "pypinyin==0.55.0",
     "requests==2.34.2",
-    "loguru==0.7.3",
+    "loguru==0.8.0",
 ]
