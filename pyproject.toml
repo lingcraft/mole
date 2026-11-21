@@ -1,8 +1,8 @@
 [project]
 name = "mole"
-version = "1.14.3"
+version = "1.14.4"
 description = """
-- 新增：登录游戏后默认进入的地图固定为粒粒小广场
+- 优化：获取摩尔豆到上限时自动停止
 """
 readme = "README.md"
 requires-python = ">=3.12"

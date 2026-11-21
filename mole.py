@@ -581,17 +581,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     # 简单的多次任务
     def start_task(self, name: str, func: Callable, interval: int, button: QPushButton | None = None, start_func: Callable | None = None, stop_text: str = "停止"):
-        if name in self.timer_pool:
-            timer, text, button = self.timer_pool[name]
-            if timer.isActive():  # 停止
-                button.setText(text)
-                if interval < Interval.NORMAL and self.is_show_recv:
-                    self.recvCheckBox.setChecked(True)
-                if name == "循环发送":
-                    self.send_ex_thread.stop()
-                timer.stop()
-                return
-        else:  # 创建
+        if self.stop_task(name):  # 正在运行 → 这次点击是"停止"
+            return
+        if name in self.timer_pool:  # 复用已停止的旧 timer（保留 delay/func 等状态）
+            timer = self.timer_pool[name][0]
+        else:  # 首次创建
             timer = RunTimer(func, interval)
             self.timer_pool[name] = timer, button.text(), button
         # 启动
@@ -606,25 +600,27 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         msg_show_states[name] = False
         timer.start()
 
-    def stop_task(self, name: str):
-        if name in self.timer_pool:
-            timer, text, button = self.timer_pool[name]
-            if timer.isActive():  # 停止
-                button.setText(text)
-                timer.stop()
+    def stop_task(self, name: str) -> bool:
+        """停止任务；返回是否真的停掉了一个正在运行的任务"""
+        if (item := self.timer_pool.get(name)) is None:
+            return False
+        timer, text, button = item
+        if not timer.isActive():
+            return False
+        button.setText(text)
+        if timer.interval < Interval.NORMAL and self.is_show_recv:
+            self.recvCheckBox.setChecked(True)
+        if name == "循环发送":
+            self.send_ex_thread.stop()
+        timer.stop()
+        return True
 
     def stop_timer(self, name: str):
-        if name in self.timer_pool:
-            timer = self.timer_pool[name]
-            if isinstance(timer, dict):
-                for item in timer.values():
-                    if isinstance(item, QTimer) and item.isActive():
-                        item.stop()
-            elif isinstance(timer, tuple):
-                for item in timer:
-                    if isinstance(item, QTimer) and item.isActive():
-                        item.stop()
-            elif isinstance(timer, QTimer) and timer.isActive():
+        if (item := self.timer_pool.get(name)) is None:
+            return
+        timers = item.values() if isinstance(item, dict) else item if isinstance(item, tuple) else (item,)
+        for timer in timers:
+            if isinstance(timer, QTimer) and timer.isActive():
                 timer.stop()
 
     def stop_send(self):
@@ -2850,16 +2846,10 @@ def is_running(name: str):
         case "每日奖励":
             res = window.rewardGetButton.text() == "停止"
         case _:
-            if name in window.timer_pool:
-                timer = window.timer_pool[name]
-                if isinstance(timer, dict):
-                    res = any(isinstance(item, QTimer) and item.isActive() for item in timer.values())
-                elif isinstance(timer, tuple):
-                    res = any(isinstance(item, QTimer) and item.isActive() for item in timer)
-                else:
-                    res = isinstance(timer, QTimer) and timer.isActive()
-            else:
+            if (item := window.timer_pool.get(name)) is None:
                 return False
+            timers = item.values() if isinstance(item, dict) else item if isinstance(item, tuple) else (item,)
+            res = any(isinstance(timer, QTimer) and timer.isActive() for timer in timers)
     if not res:  # 启动时
         msg_show_states[name] = False
     return res
@@ -3359,6 +3349,10 @@ def process_recv_packet(socket_num, buf, length):
                                 if item_id == 0x2EA6E:  # 瓦尔卡火龙蛋
                                     window.hs_stop()
                                     alert_reward((item_id, item_num))
+                            case 11045: # 刷摩尔豆
+                                money = get_int(packet.body)
+                                if money > 0x7FFFFFFF - 800:
+                                    window.stop_task("摩尔豆")
                         check_waiting_packets(packet)  # 检查待匹配包，放到结尾确保包数据已处理过
                     else:  # 错误包
                         match packet.cmd_id:
